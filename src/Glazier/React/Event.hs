@@ -21,7 +21,7 @@ module Glazier.React.Event
   , parseEvent
   , ModifierKey(..)
   , MouseEvent(..)
-  , unsafeParseMouseEvent
+  , parseMouseEvent
   )
 where
 
@@ -80,12 +80,12 @@ castSyntheticEvent _ | otherwise = Nothing
 -- | Using the NFData idea from React/Flux/PropertiesAndEvents.hs
 -- React re-uses SyntheticEvent from a pool, which means it may no longer be valid if we lazily
 -- parse it. However, we still want lazy parsing so we don't parse unnecessary fields.
--- The safe interface requires two input functions:
+-- This safe interface requires two input functions:
 -- 1. a function to reduce SyntheticEvent to a NFData. The mkEventCallback will ensure that the
 -- NFData is forced which will ensure all the required fields from Synthetic event has been parsed.
 -- This function must not block.
 -- 2. a second function that uses the NFData. This function may block.
--- mkEventHandler results in a function that you can safely pass into 'GHC.Foreign.Callback.syncCallback1'.
+-- mkEventHandler results in a function that you can safely pass into 'GHC.Foreign.Callback.syncCallback1' with 'GHCJS.Foreign.Callback.ContinueAsync'.
 -- NB. Since Javascript is single threaded, and Haskell is lazy, GHCJS threads are a strange
 -- mixture of synchronous and asynchronous threads, where a synchronous thread might be converted
 -- to an asynchronous thread if a "black hole" is encountered.
@@ -195,14 +195,17 @@ data MouseEvent = MouseEvent
 
 foreign import javascript unsafe
     "$1.getModifierState($2)"
-    js_unsafeGetModifierState ::  JSVal -> JSString -> JSVal
+    js_unsafeGetModifierState :: JSVal -> JSString -> JSVal
 
 unsafeGetModifierState :: JSVal -> ModifierKey -> Bool
 unsafeGetModifierState obj = fromJSBool . js_unsafeGetModifierState obj . pack . show
 
--- | This is unsafe as it will crash if SyntheticEvent is not a mouse event.
-unsafeParseMouseEvent :: SyntheticEvent -> MouseEvent
-unsafeParseMouseEvent (SyntheticEvent evt) =
+foreign import javascript unsafe
+    "($1 instanceof MouseEvent)"
+    js_isMouseEvent :: JSVal -> Bool
+
+parseMouseEvent :: SyntheticEvent -> Maybe MouseEvent
+parseMouseEvent (SyntheticEvent evt) | js_isMouseEvent (js_unsafeProperty evt "nativeEvent") = Just $
     MouseEvent
     { mouseEventAltKey = unsafeProperty evt "altKey"
     , mouseEventButton = unsafeProperty evt "button"
@@ -219,3 +222,4 @@ unsafeParseMouseEvent (SyntheticEvent evt) =
     , mouseEventScreenY = unsafeProperty evt "xcreenY"
     , mouseEventShiftKey = unsafeProperty evt "shiftKey"
     }
+parseMouseEvent _ | otherwise = Nothing
