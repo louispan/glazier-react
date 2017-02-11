@@ -1,3 +1,4 @@
 // This is used so that the props can be assigned from Haskell
 // and retrieved via Javascript.
-var h$glazier$todo = {};
+// This must be 'var' and not 'const' to be visible under the 'window' global.
+var h$glazier$react$todo = {};

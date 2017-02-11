@@ -32,13 +32,13 @@ foreign import javascript unsafe
   runCallback :: Callback (IO ()) -> IO ()
 
 foreign import javascript unsafe
-  "h$glazier$todo[$1] = $2;"
+  "h$glazier$react$todo[$1] = $2;"
   js_assignGlobal :: JSString -> JSVal -> IO ()
 
 foreign import javascript unsafe
-  "h$glazier$todo[$1] = $2;"
+  "h$glazier$react$todo[$1] = $2;"
   js_assignGlobalString :: JSString -> JSString -> IO ()
 
 foreign import javascript unsafe
-  "h$glazier$todo[$1] = $2;"
+  "h$glazier$react$todo[$1] = $2;"
   js_assignGlobalCallback :: JSString -> Callback a -> IO ()
