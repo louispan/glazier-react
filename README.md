@@ -6,3 +6,10 @@
 * NB. the examples/todo was created using the skeleton from https://facebook.github.io/react/docs/installation.html
  - npm install -g create-react-app
  - create-react-app todo
+
+
+* todo
+```
+cd examples/todo
+npm install
+```
