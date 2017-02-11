@@ -11,6 +11,9 @@ class App extends Component {
         // h$glazier$react$todo is a global variable from ghcjs all.js
         // global variable loaded via <script> tags in the index.html are accessible from `window`.
         window.h$glazier$react$todo.cb(e);
+        console.log(e);
+        console.log(e.target);
+        console.log(e.target instanceof EventTarget);
     }
 
     render() {

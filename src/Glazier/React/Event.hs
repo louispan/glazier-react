@@ -1,15 +1,16 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE  OverloadedStrings #-}
 
 -- | This module based on React/Flux/PropertiesAndEvents.hs.
 module Glazier.React.Event
-  ( DOMEventTarget(..)
-  , DOMEvent(..)
-  , SyntheticEvent(..)
+  ( DOMEventTarget
+  , DOMEvent
+  , SyntheticEvent
+  , castSyntheticEvent
   , mkEventHandler
   , Event(..)
   -- , HasEvent(..)
@@ -26,23 +27,55 @@ where
 
 -- import Control.Lens
 import Control.DeepSeq
-import qualified Data.Text as T
-import GHCJS.Marshal.Pure (PFromJSVal(..))
-import GHCJS.Foreign (fromJSBool)
-import GHCJS.Types (JSString, JSVal, IsJSVal)
 import Data.JSString (pack)
+import qualified Data.Text as T
+import GHCJS.Foreign (fromJSBool)
+import GHCJS.Marshal.Pure (PFromJSVal(..))
+import GHCJS.Types (IsJSVal, JSString, JSVal)
+import JavaScript.Cast (Cast(..))
 
 -- | The object that dispatched the event.
--- <https://developer.mozilla.org/en-US/docs/Web/API/Event/target>
+-- https://developer.mozilla.org/en-US/docs/Web/API/Event/target
 newtype DOMEventTarget = DOMEventTarget JSVal
+
 instance IsJSVal DOMEventTarget
 
+instance Cast DOMEventTarget where
+    unsafeWrap = DOMEventTarget
+    instanceRef _ = js_DOMEventTarget
+
+foreign import javascript unsafe
+    "EventTarget"
+    js_DOMEventTarget :: JSVal
+
+-- | The native event
+-- https://developer.mozilla.org/en-US/docs/Web/API/Event
 newtype DOMEvent = DOMEvent JSVal
+
 instance IsJSVal DOMEvent
 
+instance Cast DOMEvent where
+    unsafeWrap = DOMEvent
+    instanceRef _ = js_DOMEvent
+
+foreign import javascript unsafe
+    "Event"
+    js_DOMEvent :: JSVal
+
 -- | Every event in React is a synthetic event, a cross-browser wrapper around the native event.
+-- FIXME: protect SyntheticEvent so that it can only be constructed on SyntheticEvent
 newtype SyntheticEvent = SyntheticEvent JSVal
 instance IsJSVal SyntheticEvent
+
+foreign import javascript unsafe
+    "($1 && $1.nativeEvent && $1.nativeEvent instanceof Event)"
+    js_isSyntheticEvent :: JSVal -> Bool
+
+-- | SyntheticEvent cannot be a Javascript.Cast
+-- See https://github.com/ghcjs/ghcjs-base/issues/86
+castSyntheticEvent :: JSVal -> Maybe SyntheticEvent
+castSyntheticEvent a | js_isSyntheticEvent a = Just (SyntheticEvent a)
+castSyntheticEvent _ | otherwise = Nothing
 
 -- | Using the NFData idea from React/Flux/PropertiesAndEvents.hs
 -- React re-uses SyntheticEvent from a pool, which means it may no longer be valid if we lazily
@@ -92,6 +125,14 @@ data Event = Event
     }
 
 -- makeFields ''Event
+
+-- | A pure version of 'GHCJS.Foreign.Internal.unsafeProperty with the arguments flipped.
+-- since it's already marked unsafe, we might as well lie about possible side effects too.
+foreign import javascript unsafe "$1[$2]"
+  js_unsafeProperty :: JSVal -> JSString -> JSVal
+
+unsafeProperty :: PFromJSVal a => JSVal -> JSString -> a
+unsafeProperty v = pFromJSVal . js_unsafeProperty v
 
 -- | This should alway be safe to use (if given a valid SyntheticEvent).
 parseEvent :: SyntheticEvent -> Event
@@ -152,6 +193,13 @@ data MouseEvent = MouseEvent
   , mouseEventShiftKey :: Bool
   }
 
+foreign import javascript unsafe
+    "$1.getModifierState($2)"
+    js_unsafeGetModifierState ::  JSVal -> JSString -> JSVal
+
+unsafeGetModifierState :: JSVal -> ModifierKey -> Bool
+unsafeGetModifierState obj = fromJSBool . js_unsafeGetModifierState obj . pack . show
+
 -- | This is unsafe as it will crash if SyntheticEvent is not a mouse event.
 unsafeParseMouseEvent :: SyntheticEvent -> MouseEvent
 unsafeParseMouseEvent (SyntheticEvent evt) =
@@ -171,18 +219,3 @@ unsafeParseMouseEvent (SyntheticEvent evt) =
     , mouseEventScreenY = unsafeProperty evt "xcreenY"
     , mouseEventShiftKey = unsafeProperty evt "shiftKey"
     }
-
-unsafeProperty :: PFromJSVal a => JSVal -> JSString -> a
-unsafeProperty v = pFromJSVal . js_unsafeProperty v
-
--- | A pure version of 'GHCJS.Foreign.Internal.unsafeProperty with the arguments flipped.
--- since it's already marked unsafe, we might as well lie about possible side effects too.
-foreign import javascript unsafe "$1[$2]"
-  js_unsafeProperty :: JSVal -> JSString -> JSVal
-
-foreign import javascript unsafe
-    "$1.getModifierState($2)"
-    js_unsafeGetModifierState ::  JSVal -> JSString -> JSVal
-
-unsafeGetModifierState :: JSVal -> ModifierKey -> Bool
-unsafeGetModifierState obj = fromJSBool . js_unsafeGetModifierState obj . pack . show
