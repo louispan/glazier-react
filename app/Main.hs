@@ -42,7 +42,9 @@ main = do
     --     (void . sequenceA . fmap T.putStrLn)
     -- void $ js_globalAssignCallback "cb" cb
 
-    -- Create a 'Pipes.Concurrent' mailbox for receiving actions from events
+    -- Create a 'Pipes.Concurrent' mailbox for receiving actions from html events.
+    -- NB. using 'PC.bounded 1' also works without deadlocks, but doesn't save memory
+    -- blocked events are kept by the GHCJCSruntime.
     (output, input) <- liftIO . PC.spawn $ PC.unbounded
 
     onIncrement <- syncCallback1 ContinueAsync $ R.mkEventHandler
@@ -51,7 +53,6 @@ main = do
 
     -- It is not trivial to call arbitrary Haskell functions from Javascript
     -- A hacky way is to create a Callback and assign it to a global.
-    -- In this example app, the webpage is always being rendered so the callback is not released.
     void $ js_globalAssignCallback "onIncrement" onIncrement
 
     onDecrement <- syncCallback1 ContinueAsync $ R.mkEventHandler
@@ -59,7 +60,7 @@ main = do
          (void . atomically . PC.send output . const Decrement)
     void $ js_globalAssignCallback "onDecrement" onDecrement
 
-    -- This useless plubming is to test that React.Component.setState is only called
+    -- This useless event handler is to test that React.Component.setState is only called
     -- if the state actually changes.
     onIgnore <- syncCallback1 ContinueAsync $ R.mkEventHandler
          (const ()) -- don't need any data from the event, just that it happened
@@ -67,34 +68,39 @@ main = do
     void $ js_globalAssignCallback "onIgnore" onDecrement
 
     -- Setup the render callback
-    renderCb <- syncCallback1' (view G._Window' (jsval <$> counterWindow))
-    void $ js_globalAssignCallback "render" renderCb
+    render <- syncCallback1' (view G._Window' (jsval <$> counterWindow))
+    void $ js_globalAssignCallback "render" render
 
     -- trigger a render now that the render callback is initialized
     let initialState = (review _JSInt 0)
-    js_globalNotifyListeners "counterState" initialState
+    js_globalShout "counterState" initialState
 
     -- Run the gadget effect which reads actions from 'Pipes.Concurrent.Input'
-    -- and notifies React of any state changes.
-    -- This will only stop if input is finished.
-    P.runEffect $ gadgetEffect initialState input
+    -- and notifies html React of any state changes.
+    -- runEffect will only stop if input is finished (which in this example never does).
+    s <- P.runEffect $ gadgetEffect initialState input
 
     -- Cleanup
-    -- Wwe actually never get here because in this example runEffect never quits
-    -- but in other apps, interpretCommandsPipe might be quit-able (MaybeT)
+    -- We actually never get here because in this example runEffect never quits
+    -- but in other apps, gadgetEffect might be quit-able (MaybeT)
     -- so let's add the cleanup code here to be explicit.
     releaseCallback onIncrement
     releaseCallback onDecrement
     releaseCallback onIgnore
-    releaseCallback renderCb
+    releaseCallback render
+    js_printFinalState s
 
 foreign import javascript unsafe
-  "h$glazier$react$todo[$1] = $2;"
+  "hgr$todo[$1] = $2;"
   js_globalAssignCallback :: JSString -> Callback a -> IO ()
 
 foreign import javascript unsafe
-  "h$glazier$react$todo.notifyListeners($1, $2);"
-  js_globalNotifyListeners :: JSString -> JSVal -> IO ()
+  "hgr$todo.shout($1, $2);"
+  js_globalShout :: JSString -> JSVal -> IO ()
+
+foreign import javascript unsafe
+  "console.log('Final state': $1);"
+  js_printFinalState :: JSVal -> IO ()
 
 _JSInt :: Prism' JSVal Int
 _JSInt = prism' toJSInt (nullableToMaybe . Nullable)
@@ -124,7 +130,7 @@ data StateChangedCommand = StateChanged
 notifyStateChanged :: (MonadIO io, MonadState JSVal io) => StateChangedCommand -> io ()
 notifyStateChanged StateChanged = do
     s <- get
-    liftIO $ js_globalNotifyListeners "counterState" s
+    liftIO $ js_globalShout "counterState" s
 
 notifyStateChanged' :: (Foldable t, MonadState JSVal io, MonadIO io) => t StateChangedCommand -> io ()
 notifyStateChanged' = traverse_ notifyStateChanged
@@ -135,5 +141,5 @@ interpretCommandsPipe = PP.mapM notifyStateChanged'
 gadgetProducer :: (MFunctor t, MonadState JSVal (t STM), MonadTrans t, MonadIO io) => PC.Input CounterAction -> P.Producer' (Maybe StateChangedCommand) (t io) ()
 gadgetProducer input = hoist (hoist (liftIO . atomically)) (GP.gadgetToProducer input counterGadget')
 
-gadgetEffect :: MonadIO io => JSVal -> PC.Input CounterAction -> P.Effect io ()
-gadgetEffect s input = PL.evalStateP s $ gadgetProducer input P.>-> interpretCommandsPipe P.>-> PP.drain
+gadgetEffect :: MonadIO io => JSVal -> PC.Input CounterAction -> P.Effect io JSVal
+gadgetEffect s input = PL.execStateP s $ gadgetProducer input P.>-> interpretCommandsPipe P.>-> PP.drain
