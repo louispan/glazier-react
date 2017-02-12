@@ -1,6 +1,4 @@
-const React = window.React;
-const Component = window.React.Component;
-
+import React, {Component} from 'react';
 import logo from './logo.svg';
 import './App.css';
 
@@ -25,7 +23,11 @@ class App extends Component {
 
     // At onload, the setup from Haskell main has not yet completed,
     // which means the haskell render callback or event triggers have not been registered into the global registry.
-    // This mean 'onClick={ window.h$glazier$react$todo.cb }' directly in render() won't work.
+    // This mean 'onClick={ window.h$glazier$react$todo.cb }' directly in render() won't work, hence a wrapper is required.
+    //
+    // It is a bit confusing to know which callbacks have a valid this.
+    // My convention is callbacks called 'onXXX' are not bound with this by default.
+    // and 'withXXX' are expected to have a valid this.
     onIncrement(e) {
         if (window.hgr$todo.onIncrement) {
             window.hgr$todo.onIncrement(e);
@@ -44,10 +46,6 @@ class App extends Component {
         }
     }
 
-    // Since renderHaskell is not a event callback, but called directly in render(),
-    // the this pointer is valid.
-    // My convention is callbacks called 'onXXX' are not bound with this by default.
-    // and 'withXXX' are expected to have a valid this.
     renderHaskell() {
         if (window.hgr$todo.render) {
             return window.hgr$todo.render(this.state.count);

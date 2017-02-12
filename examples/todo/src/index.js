@@ -1,6 +1,5 @@
-const React = window.React;
-const ReactDOM = window.ReactDOM;
-
+import React from 'react';
+import ReactDOM from 'react-dom';
 import App from './App';
 import './index.css';
 

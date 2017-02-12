@@ -65,7 +65,7 @@ main = do
     onIgnore <- syncCallback1 ContinueAsync $ R.mkEventHandler
          (const ()) -- don't need any data from the event, just that it happened
          (void . atomically . PC.send output . const Ignore)
-    void $ js_globalAssignCallback "onIgnore" onDecrement
+    void $ js_globalAssignCallback "onIgnore" onIgnore
 
     -- Setup the render callback
     render <- syncCallback1' (view G._Window' (jsval <$> counterWindow))
@@ -99,7 +99,7 @@ foreign import javascript unsafe
   js_globalShout :: JSString -> JSVal -> IO ()
 
 foreign import javascript unsafe
-  "console.log('Final state': $1);"
+  "console.log('Final state', $1);"
   js_printFinalState :: JSVal -> IO ()
 
 _JSInt :: Prism' JSVal Int
