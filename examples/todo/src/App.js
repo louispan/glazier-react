@@ -6,13 +6,15 @@ import './App.css';
 
 class App extends Component {
 
-    // h$glazier$react$todo is a global variable from ghcjs all.js
+    // NB. h$glazier$react$todo is a global variable from ghcjs all.js
     // global variable loaded via <script> tags in the index.html are accessible from `window`.
     constructor(props) {
         super(props);
-        this.state = { renderExtra: window.h$glazier$react$todo.renderExtra };
-        window.h$glazier$react$todo.addListener('renderExtra',
-            function(){ this.setState({ renderExtra: window.h$glazier$react$todo.renderExtra })}.bind(this));
+        // This component is stateful as it renders using a Haskell callback, which is setup later
+        this.state = { renderExtra: window.h$glazier$react$todo.haskellRender };
+        // Use a global registry to be notified when setup is compoleted
+        window.h$glazier$react$todo.addListener('haskellRender',
+            function(){ this.setState({ renderExtra: window.h$glazier$react$todo.haskellRender })}.bind(this));
     }
     // However, at onload, the setup from Haskell main has not yet completed,
     // so using 'onClick={ window.h$glazier$react$todo.cb }' directly in render() won't work.
@@ -28,8 +30,8 @@ class App extends Component {
     }
 
     renderExtra() {
-        if (this.state.renderExtra) {
-            return this.state.renderExtra("hello");
+        if (this.state.haskellRender) {
+            return this.state.haskellRender("hello");
         }
         else {
             return null;

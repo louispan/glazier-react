@@ -36,10 +36,10 @@ main = do
     -- A hacky way is to create a Callback and assign it to a global.
     -- In this example app, the webpage is always being rendered so the callback is not released.
     void $ js_globalAssignCallback "cb" cb
-    extraRenderCb <- syncCallback1' (runReaderT (G.runWindow $ jsval <$> testWindow))
-    void $ js_globalAssignCallback "renderExtra" extraRenderCb
+    haskellRenderCb <- syncCallback1' (runReaderT (G.runWindow $ jsval <$> testWindow))
+    void $ js_globalAssignCallback "haskellRender" haskellRenderCb
     putStrLn "notifying"
-    js_globalNotifyListeners "renderExtra" -- trigger a refresh
+    js_globalNotifyListeners "haskellRender" -- trigger a refresh
     putStrLn "finished setup"
 
 foreign import javascript unsafe
