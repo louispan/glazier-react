@@ -11,10 +11,10 @@ class App extends Component {
     constructor(props) {
         super(props);
         // This component is stateful as it renders using a Haskell callback, which is setup later
-        this.state = { renderExtra: window.h$glazier$react$todo.haskellRender };
+        this.state = { haskellRender: window.h$glazier$react$todo.haskellRender };
         // Use a global registry to be notified when setup is compoleted
         window.h$glazier$react$todo.addListener('haskellRender',
-            function(){ this.setState({ renderExtra: window.h$glazier$react$todo.haskellRender })}.bind(this));
+            function(){ this.setState({ haskellRender: window.h$glazier$react$todo.haskellRender })}.bind(this));
     }
     // However, at onload, the setup from Haskell main has not yet completed,
     // so using 'onClick={ window.h$glazier$react$todo.cb }' directly in render() won't work.
