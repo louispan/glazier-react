@@ -30,8 +30,8 @@ import Control.DeepSeq
 import Data.JSString (pack)
 import qualified Data.Text as T
 import GHCJS.Foreign (fromJSBool)
-import GHCJS.Marshal.Pure (PFromJSVal(..))
-import GHCJS.Types (IsJSVal, JSString, JSVal)
+import GHCJS.Marshal.Pure (PFromJSVal(..), PToJSVal(..))
+import GHCJS.Types (IsJSVal, JSString, JSVal, jsval)
 import JavaScript.Cast (Cast(..))
 
 -- | The object that dispatched the event.
@@ -39,6 +39,8 @@ import JavaScript.Cast (Cast(..))
 newtype DOMEventTarget = DOMEventTarget JSVal
 
 instance IsJSVal DOMEventTarget
+instance PToJSVal DOMEventTarget where
+    pToJSVal = jsval
 
 instance Cast DOMEventTarget where
     unsafeWrap = DOMEventTarget
@@ -53,6 +55,8 @@ foreign import javascript unsafe
 newtype DOMEvent = DOMEvent JSVal
 
 instance IsJSVal DOMEvent
+instance PToJSVal DOMEvent where
+    pToJSVal = jsval
 
 instance Cast DOMEvent where
     unsafeWrap = DOMEvent
@@ -65,7 +69,10 @@ foreign import javascript unsafe
 -- | Every event in React is a synthetic event, a cross-browser wrapper around the native event.
 -- FIXME: protect SyntheticEvent so that it can only be constructed on SyntheticEvent
 newtype SyntheticEvent = SyntheticEvent JSVal
+
 instance IsJSVal SyntheticEvent
+instance PToJSVal SyntheticEvent where
+    pToJSVal = jsval
 
 foreign import javascript unsafe
     "($1 && $1.nativeEvent && $1.nativeEvent instanceof Event)"
@@ -85,7 +92,8 @@ castSyntheticEvent _ | otherwise = Nothing
 -- NFData is forced which will ensure all the required fields from Synthetic event has been parsed.
 -- This function must not block.
 -- 2. a second function that uses the NFData. This function may block.
--- mkEventHandler results in a function that you can safely pass into 'GHC.Foreign.Callback.syncCallback1' with 'GHCJS.Foreign.Callback.ContinueAsync'.
+-- mkEventHandler results in a function that you can safely pass into 'GHC.Foreign.Callback.syncCallback1'
+-- with 'GHCJS.Foreign.Callback.ContinueAsync'.
 -- NB. Since Javascript is single threaded, and Haskell is lazy, GHCJS threads are a strange
 -- mixture of synchronous and asynchronous threads, where a synchronous thread might be converted
 -- to an asynchronous thread if a "black hole" is encountered.

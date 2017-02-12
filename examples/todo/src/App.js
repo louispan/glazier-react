@@ -5,15 +5,35 @@ import logo from './logo.svg';
 import './App.css';
 
 class App extends Component {
-    // for whatever reason using onClick={ window.h$glazier$react$todo.cb }> doesn't work
-    // so we need this wrapper function
+
+    // h$glazier$react$todo is a global variable from ghcjs all.js
+    // global variable loaded via <script> tags in the index.html are accessible from `window`.
+    constructor(props) {
+        super(props);
+        this.state = { renderExtra: window.h$glazier$react$todo.renderExtra };
+        window.h$glazier$react$todo.addListener('renderExtra',
+            function(){ this.setState({ renderExtra: window.h$glazier$react$todo.renderExtra })}.bind(this));
+    }
+    // However, at onload, the setup from Haskell main has not yet completed,
+    // so using 'onClick={ window.h$glazier$react$todo.cb }' directly in render() won't work.
+    // We use a wrapper function to defer references to props of window.h$glazier$react$todo.
     handleClick(e) {
-        // h$glazier$react$todo is a global variable from ghcjs all.js
-        // global variable loaded via <script> tags in the index.html are accessible from `window`.
-        window.h$glazier$react$todo.cb(e);
-        console.log(e);
-        console.log(e.target);
-        console.log(e.target instanceof EventTarget);
+        if (window.h$glazier$react$todo.cb) {
+            window.h$glazier$react$todo.cb(e);
+            console.log(e);
+            console.log(e.target);
+            var wack = window.React.createElement("div");
+            console.log(wack);
+        }
+    }
+
+    renderExtra() {
+        if (this.state.renderExtra) {
+            return this.state.renderExtra("hello");
+        }
+        else {
+            return null;
+        }
     }
 
     render() {
@@ -21,11 +41,14 @@ class App extends Component {
             <div className="App">
                 <div className="App-header">
                     <img src={logo} className="App-logo" alt="logo" />
-                    <h2 onClick={ this.handleClick }>Welcome to React</h2>
+                <h2 onClick={ this.handleClick }>Welcome to React2</h2>
                 </div>
                 <p className="App-intro">
                     To get started, edit <code>src/App.js</code> and save to reload.
                 </p>
+                <div>
+                <h2>{ this.renderExtra() }</h2>
+                </div>
             </div>
         );
     }
