@@ -1,85 +1,139 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Main where
 
+import Control.Concurrent.STM
 import Control.Lens
 import Control.Monad
--- import Data.Coerce
-import Data.JSString (JSString, pack)
-import Data.String
-import qualified Data.Text.IO as T
-import Data.Traversable
+import Control.Monad.IO.Class
+import Control.Monad.Morph
+import Control.Monad.State.Strict
+import Data.Foldable
+import Data.Monoid
 import GHCJS.Foreign.Callback
     ( Callback
     , OnBlocked(..)
+    , releaseCallback
     , syncCallback1
     , syncCallback1'
     )
--- import qualified Glazier.Pipes.Strict as GP
-import GHCJS.Marshal.Pure (PToJSVal(..))
-import GHCJS.Types (IsJSVal, JSString, JSVal, jsval, nullRef)
-import qualified Glazier.React.Event as R
-import qualified Glazier.React.Window as R
-import JavaScript.Array (JSArray, fromList)
+import GHCJS.Nullable (Nullable(..), nullableToMaybe)
+import GHCJS.Prim (toJSInt)
+import GHCJS.Types (JSString, JSVal, jsval, nullRef)
 import qualified Glazier as G
-import Control.Monad.Trans.Reader
+import qualified Glazier.Pipes.Strict as GP
+import qualified Glazier.React.Element as R
+import qualified Glazier.React.Event as R
+import JavaScript.Array (fromList)
+import qualified Pipes as P
+import qualified Pipes.Concurrent as PC
+import qualified Pipes.Prelude as PP
+import qualified Pipes.Lift as PL
 
--- The user must remember to free with h$release(cb) if they no longer need the cb
+-- | 'main' is used to create React classes and setup callbacks to be used externally by the browser.
 main :: IO ()
 main = do
-    putStrLn "hello world"
-    cb <- syncCallback1 ContinueAsync $ R.mkEventHandler
-        (fmap (R.eventEventType . R.parseEvent) . R.castSyntheticEvent)
-        (void . sequenceA . fmap T.putStrLn)
+    -- cb <- syncCallback1 ContinueAsync $ R.mkEventHandler
+    --     (fmap (R.eventType . R.parseEvent) . R.castSyntheticEvent)
+    --     (void . sequenceA . fmap T.putStrLn)
+    -- void $ js_globalAssignCallback "cb" cb
+
+    -- Create a 'Pipes.Concurrent' mailbox for receiving actions from events
+    (output, input) <- liftIO . PC.spawn $ PC.unbounded
+
+    onIncrement <- syncCallback1 ContinueAsync $ R.mkEventHandler
+         (const ()) -- don't need any data from the event, just that it happened
+         (void . atomically . PC.send output . const Increment)
+
     -- It is not trivial to call arbitrary Haskell functions from Javascript
     -- A hacky way is to create a Callback and assign it to a global.
     -- In this example app, the webpage is always being rendered so the callback is not released.
-    void $ js_globalAssignCallback "cb" cb
-    haskellRenderCb <- syncCallback1' (runReaderT (G.runWindow $ jsval <$> testWindow))
-    void $ js_globalAssignCallback "haskellRender" haskellRenderCb
-    putStrLn "notifying"
-    js_globalNotifyListeners "haskellRender" -- trigger a refresh
-    putStrLn "finished setup"
+    void $ js_globalAssignCallback "onIncrement" onIncrement
+
+    onDecrement <- syncCallback1 ContinueAsync $ R.mkEventHandler
+         (const ()) -- don't need any data from the event, just that it happened
+         (void . atomically . PC.send output . const Decrement)
+    void $ js_globalAssignCallback "onDecrement" onDecrement
+
+    -- This useless plubming is to test that React.Component.setState is only called
+    -- if the state actually changes.
+    onIgnore <- syncCallback1 ContinueAsync $ R.mkEventHandler
+         (const ()) -- don't need any data from the event, just that it happened
+         (void . atomically . PC.send output . const Ignore)
+    void $ js_globalAssignCallback "onIgnore" onDecrement
+
+    -- Setup the render callback
+    renderCb <- syncCallback1' (view G._Window' (jsval <$> counterWindow))
+    void $ js_globalAssignCallback "render" renderCb
+
+    -- trigger a render now that the render callback is initialized
+    let initialState = (review _JSInt 0)
+    js_globalNotifyListeners "counterState" initialState
+
+    -- Run the gadget effect which reads actions from 'Pipes.Concurrent.Input'
+    -- and notifies React of any state changes.
+    -- This will only stop if input is finished.
+    P.runEffect $ gadgetEffect initialState input
+
+    -- Cleanup
+    -- Wwe actually never get here because in this example runEffect never quits
+    -- but in other apps, interpretCommandsPipe might be quit-able (MaybeT)
+    -- so let's add the cleanup code here to be explicit.
+    releaseCallback onIncrement
+    releaseCallback onDecrement
+    releaseCallback onIgnore
+    releaseCallback renderCb
 
 foreign import javascript unsafe
   "h$glazier$react$todo[$1] = $2;"
   js_globalAssignCallback :: JSString -> Callback a -> IO ()
 
 foreign import javascript unsafe
-  "h$glazier$react$todo.notifyListeners($1);"
-  js_globalNotifyListeners :: JSString -> IO ()
+  "h$glazier$react$todo.notifyListeners($1, $2);"
+  js_globalNotifyListeners :: JSString -> JSVal -> IO ()
 
-newtype JSFunction1 r = JSFunction1 JSVal
-instance IsJSVal (JSFunction1 r)
-instance PToJSVal (JSFunction1 r) where
-    pToJSVal = jsval
+_JSInt :: Prism' JSVal Int
+_JSInt = prism' toJSInt (nullableToMaybe . Nullable)
 
--- foreign import javascript unsafe
---   "$r = function(props) { return React.createElement('p', null, props); };"
---   js_testRender :: JSFunction1 R.ReactElement
+counterWindow :: Applicative m => G.Window m JSVal R.ReactElement
+counterWindow = review G._Window $ \a -> pure $ R.createElement "div" nullRef (fromList [a])
 
--- -- foreign import javascript unsafe
--- --   "$r = function(props) { return 'hello'; };"
--- --   js_testFunction :: JSFunction1 JSVal ReactElement
+data CounterAction = Increment | Decrement | Ignore -- used to test that we don't re-render
+    deriving (Show)
 
--- foreign import javascript unsafe
---   "$r = $1($2);"
---   js_callFunction1 :: JSFunction1 R.ReactElement -> JSVal -> R.ReactElement
+-- | A simple gadget using Haskell Int as the state
+counterGadget :: Applicative m => G.Gadget Int m CounterAction (Maybe StateChangedCommand)
+counterGadget = review G._Gadget $ \a s -> case a of
+    Increment -> pure (Just StateChanged, s + 1)
+    Decrement -> pure (Just StateChanged, s - 1)
+    Ignore -> pure (Nothing, s)
 
--- testWindow :: G.Window IO JSVal [R.ReactElement]
--- testWindow = review G._Window $ \_ -> (: []) <$> R.createElement "h3" nullRef (fromList [jsval msg])
---   where
---     msg :: JSString
---     msg = "blah"
+-- | Implant the Haskell state into JSVal
+-- This is so that React can use shallow comparison of JSVal to avoid re-rendering
+-- if state has not changed
+counterGadget' :: Monad m => G.Gadget JSVal m CounterAction (Maybe StateChangedCommand)
+counterGadget' = getFirst <$> (G.implant _JSInt (First <$> counterGadget))
 
-foreign import javascript unsafe
-  "$r = React.createElement('div', null, $1);"
-  js_testRender1 :: JSVal -> R.ReactElement
+-- | If state changed, then run the notifyListeners IO action
+data StateChangedCommand = StateChanged
 
-testWindow :: Applicative m => G.Window m JSVal R.ReactElement
-testWindow = review G._Window $ \a -> pure $ js_testRender1 a
+notifyStateChanged :: (MonadIO io, MonadState JSVal io) => StateChangedCommand -> io ()
+notifyStateChanged StateChanged = do
+    s <- get
+    liftIO $ js_globalNotifyListeners "counterState" s
 
+notifyStateChanged' :: (Foldable t, MonadState JSVal io, MonadIO io) => t StateChangedCommand -> io ()
+notifyStateChanged' = traverse_ notifyStateChanged
 
-mkRender :: G.Window IO JSVal R.ReactElement -> (JSVal -> IO R.ReactElement)
-mkRender (G.Window m) = runReaderT m
+interpretCommandsPipe :: (MonadState JSVal io, MonadIO io) => P.Pipe (Maybe StateChangedCommand) () io ()
+interpretCommandsPipe = PP.mapM notifyStateChanged'
+
+gadgetProducer :: (MFunctor t, MonadState JSVal (t STM), MonadTrans t, MonadIO io) => PC.Input CounterAction -> P.Producer' (Maybe StateChangedCommand) (t io) ()
+gadgetProducer input = hoist (hoist (liftIO . atomically)) (GP.gadgetToProducer input counterGadget')
+
+gadgetEffect :: MonadIO io => JSVal -> PC.Input CounterAction -> P.Effect io ()
+gadgetEffect s input = PL.evalStateP s $ gadgetProducer input P.>-> interpretCommandsPipe P.>-> PP.drain

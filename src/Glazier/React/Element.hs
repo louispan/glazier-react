@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 -- | Window here refers to 'Glazier.Window' (ie. rendering View of state), not browser window
-module Glazier.React.Window
+module Glazier.React.Element
     ( ReactElement(..)
     , createElement
     , combineElements
@@ -27,7 +27,6 @@ foreign import javascript unsafe
 
 createElement :: JSString -> JSVal -> JSArray -> ReactElement
 createElement = js_createElement
-
 
 -- | React only allows a single top most element.
 -- Provide a handly function to wrap a list of ReactElements inside a 'div'

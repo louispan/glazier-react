@@ -51,6 +51,11 @@ packages:
 # (e.g., acme-missiles-0.3)
 extra-deps:
 - 'glazier-0.7.0.0'
+- 'glazier-pipes-0.1.4.0'
+- pipes-misc-0.2.3.0
+- stm-extras-0.1.0.1
+- pipes-category-0.2.0.1
+- mmorph-1.0.9
 
 # Override default flag values for local packages and extra-deps
 flags: {}

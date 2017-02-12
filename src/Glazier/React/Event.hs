@@ -4,6 +4,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 
 -- | This module based on React/Flux/PropertiesAndEvents.hs.
 module Glazier.React.Event
@@ -119,17 +120,17 @@ foreign import javascript unsafe
 
 -- | Every `SyntheticEvent` can be parsed to an `Event`.
 data Event = Event
-    { eventBubbles :: Bool
-    , eventCancelable :: Bool
-    , eventCurrentTarget :: DOMEventTarget
-    , eventDefaultPrevented :: Bool
-    , eventEventPhase :: Int
-    , eventIsTrusted :: Bool
-    , eventNativeEvent :: DOMEvent
-    , eventTarget :: DOMEventTarget
-    , eventTimestamp :: Int
+    { bubbles :: Bool
+    , cancelable :: Bool
+    , currentTarget :: DOMEventTarget
+    , defaultPrevented :: Bool
+    , eventPhase :: Int
+    , isTrusted :: Bool
+    , nativeEvent :: DOMEvent
+    , target :: DOMEventTarget
+    , timestamp :: Int
     -- type is a reserved word, so prefix to eventType
-    , eventEventType :: T.Text
+    , eventType :: T.Text
     }
 
 -- makeFields ''Event
@@ -146,16 +147,16 @@ unsafeProperty v = pFromJSVal . js_unsafeProperty v
 parseEvent :: SyntheticEvent -> Event
 parseEvent (SyntheticEvent evt) =
     Event
-    { eventBubbles = unsafeProperty evt "bubbles"
-    , eventCancelable = unsafeProperty evt "cancelable"
-    , eventCurrentTarget = DOMEventTarget $ js_unsafeProperty evt "currentTarget"
-    , eventDefaultPrevented = unsafeProperty evt "defaultPrevented"
-    , eventEventPhase = unsafeProperty evt "eventPhase"
-    , eventIsTrusted = unsafeProperty evt "isTrusted"
-    , eventNativeEvent = DOMEvent $ js_unsafeProperty evt "nativeEvent"
-    , eventTarget = DOMEventTarget $ js_unsafeProperty evt "target"
-    , eventTimestamp = unsafeProperty evt "timestamp"
-    , eventEventType = unsafeProperty evt "type"
+    { bubbles = unsafeProperty evt "bubbles"
+    , cancelable = unsafeProperty evt "cancelable"
+    , currentTarget = DOMEventTarget $ js_unsafeProperty evt "currentTarget"
+    , defaultPrevented = unsafeProperty evt "defaultPrevented"
+    , eventPhase = unsafeProperty evt "eventPhase"
+    , isTrusted = unsafeProperty evt "isTrusted"
+    , nativeEvent = DOMEvent $ js_unsafeProperty evt "nativeEvent"
+    , target = DOMEventTarget $ js_unsafeProperty evt "target"
+    , timestamp = unsafeProperty evt "timestamp"
+    , eventType = unsafeProperty evt "type"
     }
 
 -- | See https://www.w3.org/TR/DOM-Level-3-Events-key/#keys-modifier
@@ -185,20 +186,20 @@ data ModifierKey
 -- onDrop (drop) onMouseDown (mousedown) onMouseEnter (mouseenter) onMouseLeave (mouseleave)
 -- onMouseMove (mousemove) onMouseOut (mouseout) onMouseOver (mouseover) onMouseUp (mouseup)
 data MouseEvent = MouseEvent
-  { mouseEventAltKey :: Bool
-  , mouseEventButton :: Int
-  , mouseEventButtons :: Int
-  , mouseEventClientX :: Int
-  , mouseEventClientY :: Int
-  , mouseEventCtrlKey :: Bool
-  , mouseEventGetModifierState :: ModifierKey -> Bool
-  , mouseEventMetaKey :: Bool
-  , mouseEventPageX :: Int
-  , mouseEventPageY :: Int
-  , mouseEventRelatedTarget :: DOMEventTarget
-  , mouseEventScreenX :: Int
-  , mouseEventScreenY :: Int
-  , mouseEventShiftKey :: Bool
+  { altKey :: Bool
+  , button :: Int
+  , buttons :: Int
+  , clientX :: Int
+  , clientY :: Int
+  , ctrlKey :: Bool
+  , getModifierState :: ModifierKey -> Bool
+  , metaKey :: Bool
+  , pageX :: Int
+  , pageY :: Int
+  , relatedTarget :: DOMEventTarget
+  , screenX :: Int
+  , screenY :: Int
+  , shiftKey :: Bool
   }
 
 foreign import javascript unsafe
@@ -215,19 +216,19 @@ foreign import javascript unsafe
 parseMouseEvent :: SyntheticEvent -> Maybe MouseEvent
 parseMouseEvent (SyntheticEvent evt) | js_isMouseEvent (js_unsafeProperty evt "nativeEvent") = Just $
     MouseEvent
-    { mouseEventAltKey = unsafeProperty evt "altKey"
-    , mouseEventButton = unsafeProperty evt "button"
-    , mouseEventButtons = unsafeProperty evt "buttons"
-    , mouseEventClientX = unsafeProperty evt "clientX"
-    , mouseEventClientY = unsafeProperty evt "clientY"
-    , mouseEventCtrlKey = unsafeProperty evt "ctrlKey"
-    , mouseEventGetModifierState = unsafeGetModifierState evt
-    , mouseEventMetaKey = unsafeProperty evt "metaKey"
-    , mouseEventPageX = unsafeProperty evt "pageX"
-    , mouseEventPageY = unsafeProperty evt "pageY"
-    , mouseEventRelatedTarget = DOMEventTarget $ js_unsafeProperty evt "relatedTarget"
-    , mouseEventScreenX = unsafeProperty evt "screenX"
-    , mouseEventScreenY = unsafeProperty evt "xcreenY"
-    , mouseEventShiftKey = unsafeProperty evt "shiftKey"
+    { altKey = unsafeProperty evt "altKey"
+    , button = unsafeProperty evt "button"
+    , buttons = unsafeProperty evt "buttons"
+    , clientX = unsafeProperty evt "clientX"
+    , clientY = unsafeProperty evt "clientY"
+    , ctrlKey = unsafeProperty evt "ctrlKey"
+    , getModifierState = unsafeGetModifierState evt
+    , metaKey = unsafeProperty evt "metaKey"
+    , pageX = unsafeProperty evt "pageX"
+    , pageY = unsafeProperty evt "pageY"
+    , relatedTarget = DOMEventTarget $ js_unsafeProperty evt "relatedTarget"
+    , screenX = unsafeProperty evt "screenX"
+    , screenY = unsafeProperty evt "xcreenY"
+    , shiftKey = unsafeProperty evt "shiftKey"
     }
 parseMouseEvent _ | otherwise = Nothing

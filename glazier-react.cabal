@@ -18,7 +18,7 @@ library
   hs-source-dirs:      src
   js-sources:          jsbits/react.js
   exposed-modules:     Glazier.React.Event
-                       Glazier.React.Window
+                       Glazier.React.Element
   build-depends:       base >= 4.7 && < 5
                      , deepseq
                      , lens
@@ -33,12 +33,19 @@ executable glazier-react-exe
   hs-source-dirs:      app
   main-is:             Main.hs
   js-sources:          app/jsbits/global.js
-  ghc-options:         -threaded -rtsopts -with-rtsopts=-N
+  ghc-options:         -Wall -threaded -rtsopts -with-rtsopts=-N
   cpp-options:         -DGHCJS_BROWSER
   build-depends:       base
+                     , ghcjs-prim
                      , glazier
+                     , glazier-pipes
                      , glazier-react
                      , lens
+                     , mmorph
+                     , mtl
+                     , pipes
+                     , pipes-concurrency
+                     , stm
                      , transformers
                      , text
   default-language:    Haskell2010
