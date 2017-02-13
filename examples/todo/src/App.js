@@ -1,20 +1,18 @@
 import React, {Component} from 'react';
 import logo from './logo.svg';
 import './App.css';
+import {registry, combineElements} from '../build/todo';
 
 class App extends Component {
 
-    // hgr$registry is a global variable from ghcjs all.js which must be loaded via  via <script> tags in the index.html
-    // It is not possible to export all.js as a webpack module because Babel freezes trying to compile haskell.
-    // Global variable loaded via <script> tags in the index.html are accessible from `window`.
     constructor(props) {
         super(props);
 
         // This component is stateful as the state is modifiable via a Haskell callback, which is setup later
         this.state = { };
 
-        // Use a global registry to be notified when state has changed.
-        window.hgr$registry.listen(
+        // Use the registry to be notified when state has changed.
+        registry.listen(
             'counterState',
             function(newCount){
                 this.setState({ count: newCount })
@@ -27,19 +25,19 @@ class App extends Component {
     // using object methods instead of lambdas inlined in render() mean the same
     // event handler is used.
     onIncrement(e) {
-        window.hgr$registry.shout('onIncrement', e);
+        registry.shout('onIncrement', e);
     }
 
     onDecrement(e) {
-        window.hgr$registry.shout('onDecrement', e);
+        registry.shout('onDecrement', e);
     }
 
     onIgnore(e) {
-        window.hgr$registry.shout('onIgnore', e);
+        registry.shout('onIgnore', e);
     }
 
     renderHaskell() {
-        return window.hgr$combineElements(null, window.hgr$registry.shout('render', this.state.count));
+        return combineElements(null, registry.shout('render', this.state.count));
     }
 
     render() {
