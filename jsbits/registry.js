@@ -1,3 +1,4 @@
+// The registry is like a simplified NodeJS EventEmitter.
 // This is used so that the props can be assigned from Haskell
 // and retrieved via Javascript.
 // It is required to interoperate with foreign React components.
@@ -5,34 +6,57 @@
 // However, if you want reduce DOM diffing by using the React.Component.setState,
 // then you'll need a registry for interoperability.
 // Use this registry to create a global variable that is accessible from both haskell and html.
-// The global must be 'var' and not 'const' to be visible under the 'window' global because
-// a ghcjs bug which includes js-sources twice (https://github.com/ghcjs/ghcjs/issues/567)
-// This global will need to be added to externs file before minimizing using closure-compiler.
-// FIXME: externs file for registry
-function Registry() {
+function hgr$registry() {
     // private
+
     // Using closures to hide data: http://www.crockford.com/javascript/private.html
-    const listeners = {};
+    const handlers = {};
+
+    // a copy of Lodash's omit, to copy dictionary except for one key
+    function omit(obj, omitKey) {
+        return Object.keys(obj).reduce(function(result, key) {
+            if(key !== omitKey) {
+                result[key] = obj[key];
+            }
+            return result;
+        }, {});
+    }
 
     // privileged public
 
     // This is used from javascript to be called back for named triggers.
+    // returns a unregister function.
     this.listen = function(name, listener) {
-        if (!listeners[name])
-            listeners[name] = [];
-        listeners[name].push(listener);
+        if (!handlers[name])
+            handlers[name] = { nextIndex: 0, listeners: {} };
+
+        var i = handlers[name].nextIndex;
+        handlers[name].nextIndex += 1;
+        handlers[name].listeners[i] = listener;
+        var unregister = function() {
+            handlers[name] = omit(handlers[name], i);
+        };
+        return unregister;
     };
 
-    //  This is used from haskell to notify all javascript listeners.
+    // This is used from haskell to notify all javascript listeners.
+    // returns a list in an arbitrary order of the results from each listener.
     this.shout = function(name, data) {
-        if (listeners[name]) {
-            for (var i = 0; i < listeners[name].length; i++) {
-                listeners[name][i](data);
+        const ret = []
+        if (handlers[name]) {
+            // iterate using copy of keys to safeguard against listeners added/removed
+            // during callbacks.
+            for (const key of Object.keys(handlers[name].listeners)) {
+                const listener = handlers[name].listeners[key];
+                if (listener) {
+                    ret.push(listener(data));
+                }
             }
         }
+        return ret;
     }
 
-    this.mkName = function(names) {
+    this.makeName = function(names) {
         return arr.join('#');
     }
 }

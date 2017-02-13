@@ -4,7 +4,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE RankNTypes #-}
 
-module Main where
+module Main (main) where
 
 import Control.Concurrent.STM
 import Control.Lens
@@ -91,11 +91,11 @@ main = do
     js_printFinalState s
 
 foreign import javascript unsafe
-  "hgr$todo[$1] = $2;"
+  "hgr$registry.listen($1, $2);"
   js_globalAssignCallback :: JSString -> Callback a -> IO ()
 
 foreign import javascript unsafe
-  "hgr$todo.shout($1, $2);"
+  "hgr$registry.shout($1, $2);"
   js_globalShout :: JSString -> JSVal -> IO ()
 
 foreign import javascript unsafe

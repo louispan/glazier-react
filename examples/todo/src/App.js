@@ -4,55 +4,42 @@ import './App.css';
 
 class App extends Component {
 
-    // hgr$todo is a global variable from ghcjs all.js which must be loaded via  via <script> tags in the index.html
+    // hgr$registry is a global variable from ghcjs all.js which must be loaded via  via <script> tags in the index.html
     // It is not possible to export all.js as a webpack module because Babel freezes trying to compile haskell.
     // Global variable loaded via <script> tags in the index.html are accessible from `window`.
     constructor(props) {
         super(props);
-        // This component is stateful as the state is modifiable via a Haskell callback, which is setup later
 
+        // This component is stateful as the state is modifiable via a Haskell callback, which is setup later
         this.state = { };
 
         // Use a global registry to be notified when state has changed.
-        window.hgr$todo.listen(
+        window.hgr$registry.listen(
             'counterState',
             function(newCount){
                 this.setState({ count: newCount })
             }.bind(this));
     }
 
-    // At onload, the setup from Haskell main has not yet completed,
-    // which means the haskell render callback or event triggers have not been registered into the global registry.
-    // This mean 'onClick={ window.h$glazier$react$todo.cb }' directly in render() won't work, hence a wrapper is required.
-    //
     // It is a bit confusing to know which callbacks have a valid this.
     // My convention is callbacks called 'onXXX' are not bound with this by default.
     // and 'withXXX' are expected to have a valid this.
+    // using object methods instead of lambdas inlined in render() mean the same
+    // event handler is used.
     onIncrement(e) {
-        if (window.hgr$todo.onIncrement) {
-            window.hgr$todo.onIncrement(e);
-        }
+        window.hgr$registry.shout('onIncrement', e);
     }
 
     onDecrement(e) {
-        if (window.hgr$todo.onDecrement) {
-            window.hgr$todo.onDecrement(e);
-        }
+        window.hgr$registry.shout('onDecrement', e);
     }
 
     onIgnore(e) {
-        if (window.hgr$todo.onIgnore) {
-            window.hgr$todo.onIgnore(e);
-        }
+        window.hgr$registry.shout('onIgnore', e);
     }
 
     renderHaskell() {
-        if (window.hgr$todo.render) {
-            return window.hgr$todo.render(this.state.count);
-        }
-        else {
-            return null;
-        }
+        return window.hgr$combineElements(null, window.hgr$registry.shout('render', this.state.count));
     }
 
     render() {

@@ -31,4 +31,8 @@ createElement = js_createElement
 -- | React only allows a single top most element.
 -- Provide a handly function to wrap a list of ReactElements inside a 'div'
 combineElements :: JSVal -> [ReactElement] -> ReactElement
-combineElements props xs = js_createElement "div" props (fromList $ jsval <$> xs)
+combineElements props xs = js_combineElements props (fromList $ jsval <$> xs)
+
+foreign import javascript unsafe
+  "$r = hgr$combineElements($1, $2);"
+  js_combineElements :: JSVal -> JSArray -> ReactElement
