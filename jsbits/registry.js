@@ -26,7 +26,8 @@ function hgr$registry() {
 
     // This is used from javascript to be called back for named triggers.
     // returns a unregister function.
-    this.listen = function(name, listener) {
+    // NB. this['method'] (instead of this.listen) protects against minification.
+    this['listen'] = function(name, listener) {
         if (!handlers[name])
             handlers[name] = { nextIndex: 0, listeners: {} };
 
@@ -41,7 +42,7 @@ function hgr$registry() {
 
     // This is used from haskell to notify all javascript listeners.
     // returns a list in an arbitrary order of the results from each listener.
-    this.shout = function(name, data) {
+    this['shout'] = function(name, data) {
         const ret = []
         if (handlers[name]) {
             // iterate using copy of keys to safeguard against listeners added/removed
@@ -56,7 +57,7 @@ function hgr$registry() {
         return ret;
     }
 
-    this.makeName = function(names) {
+    this['makeName'] = function(names) {
         return arr.join('#');
     }
 }

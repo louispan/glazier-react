@@ -1,4 +1,5 @@
-// Wrap ghcjs code into a NodeJS module friendly format
+'use strict';
+// Wrap ghcjs ouptut into a NodeJS module - ie. expect 'exports' and 'require' is in scope
 (function(global) {
 const React = require('react');
 const ReactDOM = require('react-dom');

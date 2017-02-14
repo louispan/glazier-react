@@ -1,7 +1,9 @@
 import React, {Component} from 'react';
 import logo from './logo.svg';
 import './App.css';
-import {registry, combineElements} from '../build/todo';
+import {registry, combineElements} from '../build/todo.min.js.gz';
+
+console.log(registry, combineElements);
 
 class App extends Component {
 

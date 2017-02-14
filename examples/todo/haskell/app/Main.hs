@@ -53,23 +53,23 @@ main = do
 
     -- It is not trivial to call arbitrary Haskell functions from Javascript
     -- A hacky way is to create a Callback and assign it to a global.
-    void $ js_globalAssignCallback "onIncrement" onIncrement
+    void $ js_globalListen "onIncrement" onIncrement
 
     onDecrement <- syncCallback1 ContinueAsync $ R.mkEventHandler
          (const ()) -- don't need any data from the event, just that it happened
          (void . atomically . PC.send output . const Decrement)
-    void $ js_globalAssignCallback "onDecrement" onDecrement
+    void $ js_globalListen "onDecrement" onDecrement
 
     -- This useless event handler is to test that React.Component.setState is only called
     -- if the state actually changes.
     onIgnore <- syncCallback1 ContinueAsync $ R.mkEventHandler
          (const ()) -- don't need any data from the event, just that it happened
          (void . atomically . PC.send output . const Ignore)
-    void $ js_globalAssignCallback "onIgnore" onIgnore
+    void $ js_globalListen "onIgnore" onIgnore
 
     -- Setup the render callback
     render <- syncCallback1' (view G._Window' (jsval <$> counterWindow))
-    void $ js_globalAssignCallback "render" render
+    void $ js_globalListen "render" render
 
     -- trigger a render now that the render callback is initialized
     let initialState = (review _JSInt 0)
@@ -91,11 +91,11 @@ main = do
     js_printFinalState s
 
 foreign import javascript unsafe
-  "hgr$registry.listen($1, $2);"
-  js_globalAssignCallback :: JSString -> Callback a -> IO ()
+  "hgr$todo$registry['listen']($1, $2);"
+  js_globalListen :: JSString -> Callback a -> IO ()
 
 foreign import javascript unsafe
-  "hgr$registry.shout($1, $2);"
+  "hgr$todo$registry['shout']($1, $2);"
   js_globalShout :: JSString -> JSVal -> IO ()
 
 foreign import javascript unsafe
