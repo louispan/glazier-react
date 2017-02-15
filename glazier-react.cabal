@@ -20,11 +20,17 @@ library
                        jsbits/registry.js
   exposed-modules:     Glazier.React.Event
                        Glazier.React.Element
+                       Glazier.React.DOM
+                       Glazier.React.Internal
   build-depends:       base >= 4.7 && < 5
                      , deepseq
-                     , lens
                      , glazier
-                     , text
+                     , lens >= 4 && < 5
+                     , mmorph >= 1 && < 2
+                     , mtl >= 2 && <3
+                     , profunctors >= 5 && < 6
+                     , semigroupoids >= 5 && < 6
+                     , transformers >= 0.4 && < 0.6
   default-language:    Haskell2010
   ghc-options:         -Wall
   if impl(ghcjs)

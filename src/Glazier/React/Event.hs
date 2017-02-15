@@ -28,8 +28,7 @@ where
 
 -- import Control.Lens
 import Control.DeepSeq
-import Data.JSString (pack)
-import qualified Data.Text as T
+import Data.JSString (JSString, pack)
 import GHCJS.Foreign (fromJSBool)
 import GHCJS.Marshal.Pure (PFromJSVal(..), PToJSVal(..))
 import GHCJS.Types (IsJSVal, JSString, JSVal, jsval)
@@ -68,7 +67,6 @@ foreign import javascript unsafe
     js_DOMEvent :: JSVal
 
 -- | Every event in React is a synthetic event, a cross-browser wrapper around the native event.
--- FIXME: protect SyntheticEvent so that it can only be constructed on SyntheticEvent
 newtype SyntheticEvent = SyntheticEvent JSVal
 
 instance IsJSVal SyntheticEvent
@@ -130,7 +128,7 @@ data Event = Event
     , target :: DOMEventTarget
     , timestamp :: Int
     -- type is a reserved word, so prefix to eventType
-    , eventType :: T.Text
+    , eventType :: JSString
     }
 
 -- makeFields ''Event

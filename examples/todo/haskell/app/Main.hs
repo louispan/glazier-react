@@ -1,8 +1,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Main (main) where
 
@@ -29,10 +29,11 @@ import qualified Glazier.Pipes.Strict as GP
 import qualified Glazier.React.Element as R
 import qualified Glazier.React.Event as R
 import JavaScript.Array (fromList)
+import JavaScript.Object (Object)
 import qualified Pipes as P
 import qualified Pipes.Concurrent as PC
-import qualified Pipes.Prelude as PP
 import qualified Pipes.Lift as PL
+import qualified Pipes.Prelude as PP
 
 -- | 'main' is used to create React classes and setup callbacks to be used externally by the browser.
 main :: IO ()
@@ -68,7 +69,7 @@ main = do
     void $ js_globalListen "onIgnore" onIgnore
 
     -- Setup the render callback
-    render <- syncCallback1' (view G._Window' (jsval <$> counterWindow))
+    render <- syncCallback1' (view G._Window' (jsval <$> counterWindow) . R.unsafeCoerceReactElement)
     void $ js_globalListen "render" render
 
     -- trigger a render now that the render callback is initialized
@@ -105,8 +106,8 @@ foreign import javascript unsafe
 _JSInt :: Prism' JSVal Int
 _JSInt = prism' toJSInt (nullableToMaybe . Nullable)
 
-counterWindow :: Applicative m => G.Window m JSVal R.ReactElement
-counterWindow = review G._Window $ \a -> pure $ R.createElement "div" nullRef (fromList [a])
+counterWindow :: Applicative m => G.Window m R.ReactElement R.ReactElement
+counterWindow = review G._Window $ \a -> pure $ R.createElement "div" Nothing [a]
 
 data CounterAction = Increment | Decrement | Ignore -- used to test that we don't re-render
     deriving (Show)
