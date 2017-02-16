@@ -12,13 +12,12 @@ module Glazier.React.Event
   , DOMEvent
   , SyntheticEvent
   , castSyntheticEvent
-  , mkEventHandler
+  , eventHandler
   , Event(..)
-  -- , HasEvent(..)
-  , js_preventDefault
-  , js_isDefaultPrevented
-  , js_stopPropagation
-  , js_isPropagationStopped
+  , preventDefault
+  , isDefaultPrevented
+  , stopPropagation
+  , isPropagationStopped
   , parseEvent
   , ModifierKey(..)
   , MouseEvent(..)
@@ -67,6 +66,7 @@ foreign import javascript unsafe
     js_DOMEvent :: JSVal
 
 -- | Every event in React is a synthetic event, a cross-browser wrapper around the native event.
+-- 'SyntheticEvent' must only be used in the first part of 'eventHandler'.
 newtype SyntheticEvent = SyntheticEvent JSVal
 
 instance IsJSVal SyntheticEvent
@@ -90,33 +90,46 @@ castSyntheticEvent _ | otherwise = Nothing
 -- 1. a function to reduce SyntheticEvent to a NFData. The mkEventCallback will ensure that the
 -- NFData is forced which will ensure all the required fields from Synthetic event has been parsed.
 -- This function must not block.
--- 2. a second function that uses the NFData. This function may block.
+-- 2. a second function that uses the NFData. This function is allowed to block.
 -- mkEventHandler results in a function that you can safely pass into 'GHC.Foreign.Callback.syncCallback1'
 -- with 'GHCJS.Foreign.Callback.ContinueAsync'.
--- NB. Since Javascript is single threaded, and Haskell is lazy, GHCJS threads are a strange
--- mixture of synchronous and asynchronous threads, where a synchronous thread might be converted
--- to an asynchronous thread if a "black hole" is encountered.
+-- The reason of this is because Javascript is single threaded, but Haskell is lazy.
+-- Therefore GHCJS threads are a strange mixture of synchronous and asynchronous threads,
+-- where a synchronous thread might be converted to an asynchronous thread if a "black hole" is encountered.
 -- See https://github.com/ghcjs/ghcjs-base/blob/master/GHCJS/Concurrent.hs
-mkEventHandler :: NFData a => (evt -> a) -> (a -> b) -> (evt -> b)
-mkEventHandler f g evt = g $!! f evt
+eventHandler :: NFData a => (evt -> a) -> (a -> b) -> (evt -> b)
+eventHandler f g evt = g $!! f evt
 
 foreign import javascript unsafe
     "$1.preventDefault()"
     js_preventDefault :: SyntheticEvent -> IO ()
 
+preventDefault :: SyntheticEvent -> IO ()
+preventDefault = js_preventDefault
+
 foreign import javascript unsafe
     "$1.isDefaultPrevented()"
     js_isDefaultPrevented :: SyntheticEvent -> Bool
+
+isDefaultPrevented :: SyntheticEvent -> Bool
+isDefaultPrevented = js_isDefaultPrevented
 
 foreign import javascript unsafe
     "$1.stopPropagation()"
     js_stopPropagation :: SyntheticEvent -> IO ()
 
+stopPropagation :: SyntheticEvent -> IO ()
+stopPropagation = js_stopPropagation
+
 foreign import javascript unsafe
     "$1.isPropagationStopped()"
     js_isPropagationStopped :: SyntheticEvent -> Bool
 
+isPropagationStopped :: SyntheticEvent -> Bool
+isPropagationStopped = js_isPropagationStopped
+
 -- | Every `SyntheticEvent` can be parsed to an `Event`.
+-- 'Event' must only be used in the first part of 'eventHandler'.
 data Event = Event
     { bubbles :: Bool
     , cancelable :: Bool
@@ -131,10 +144,7 @@ data Event = Event
     , eventType :: JSString
     }
 
--- makeFields ''Event
-
--- | A pure version of 'GHCJS.Foreign.Internal.unsafeProperty with the arguments flipped.
--- since it's already marked unsafe, we might as well lie about possible side effects too.
+-- | unsafe to enable lazy parsing. See mkEventHandler
 foreign import javascript unsafe "$1[$2]"
   js_unsafeProperty :: JSVal -> JSString -> JSVal
 
@@ -176,6 +186,7 @@ data ModifierKey
     deriving (Show)
 
 -- | Mouse and Drag/Drop events
+-- 'MouseEvent' must only be used in the first part of 'eventHandler'.
 -- https://facebook.github.io/react/docs/events.html#mouse-events
 -- https://developer.mozilla.org/en-US/docs/Web/Events
 -- onClick (click) onContextMenu (contextmenu) onDoubleClick (dblclick)
@@ -200,6 +211,7 @@ data MouseEvent = MouseEvent
   , shiftKey :: Bool
   }
 
+-- | unsafe to enable lazy parsing. See mkEventHandler
 foreign import javascript unsafe
     "$1.getModifierState($2)"
     js_unsafeGetModifierState :: JSVal -> JSString -> JSVal

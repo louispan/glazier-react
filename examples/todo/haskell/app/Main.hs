@@ -7,6 +7,7 @@
 module Main (main) where
 
 import Control.Concurrent.STM
+import qualified Data.HashMap.Strict as M
 import Control.Lens
 import Control.Monad
 import Control.Monad.IO.Class
@@ -48,7 +49,7 @@ main = do
     -- blocked events are kept by the GHCJCSruntime.
     (output, input) <- liftIO . PC.spawn $ PC.unbounded
 
-    onIncrement <- syncCallback1 ContinueAsync $ R.mkEventHandler
+    onIncrement <- syncCallback1 ContinueAsync $ R.eventHandler
          (const ()) -- don't need any data from the event, just that it happened
          (void . atomically . PC.send output . const Increment)
 
@@ -56,14 +57,14 @@ main = do
     -- A hacky way is to create a Callback and assign it to a global.
     void $ js_globalListen "onIncrement" onIncrement
 
-    onDecrement <- syncCallback1 ContinueAsync $ R.mkEventHandler
+    onDecrement <- syncCallback1 ContinueAsync $ R.eventHandler
          (const ()) -- don't need any data from the event, just that it happened
          (void . atomically . PC.send output . const Decrement)
     void $ js_globalListen "onDecrement" onDecrement
 
     -- This useless event handler is to test that React.Component.setState is only called
     -- if the state actually changes.
-    onIgnore <- syncCallback1 ContinueAsync $ R.mkEventHandler
+    onIgnore <- syncCallback1 ContinueAsync $ R.eventHandler
          (const ()) -- don't need any data from the event, just that it happened
          (void . atomically . PC.send output . const Ignore)
     void $ js_globalListen "onIgnore" onIgnore
@@ -106,8 +107,8 @@ foreign import javascript unsafe
 _JSInt :: Prism' JSVal Int
 _JSInt = prism' toJSInt (nullableToMaybe . Nullable)
 
-counterWindow :: Applicative m => G.Window m R.ReactElement R.ReactElement
-counterWindow = review G._Window $ \a -> pure $ R.createElement "div" Nothing [a]
+counterWindow :: MonadIO io => G.Window io R.ReactElement R.ReactElement
+counterWindow = review G._Window $ \a -> liftIO $ R.createReactElement "div" M.empty [a]
 
 data CounterAction = Increment | Decrement | Ignore -- used to test that we don't re-render
     deriving (Show)
