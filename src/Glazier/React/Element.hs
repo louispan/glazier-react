@@ -1,33 +1,38 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ApplicativeDo #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies #-}
 
 -- | 'Lucid.HtmlT' inspired monad for creating 'ReactElement's
 module Glazier.React.Element
     ( ReactElement
     , unsafeCoerceReactElement
     , createReactElement
+    , stringReactElement
     , combineReactElements
+    , ReactMarkup(..)
+    , fromReactMarkup
+    , fromReactMarkups
+    , ReactMlT(..)
+    , ReactMl
     ) where
 
-import GHCJS.Marshal.Pure (PToJSVal(..))
-import GHCJS.Types (IsJSVal(..), JSString, JSVal, jsval, nullRef)
-import JavaScript.Array (JSArray, fromList)
-import JavaScript.Object (Object, create, unsafeSetProp)
 import Control.Applicative
-import Control.Arrow
-import qualified Control.Category as C
 import Control.Lens
 import qualified Control.Monad.Fail as Fail
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.Morph
 import Control.Monad.Reader
 import Control.Monad.State.Strict
-import Data.Profunctor
-import Data.Semigroup
-import Glazier.Class
-import Glazier.React.Internal (PureJSVal(..))
 import qualified Data.HashMap.Strict as M
+import GHCJS.Marshal.Pure (PToJSVal(..))
+import GHCJS.Types (IsJSVal, JSString, JSVal, jsval)
+import Glazier.React.Internal (PureJSVal(..))
+import JavaScript.Array (JSArray, fromList)
+import JavaScript.Object (Object, create, unsafeSetProp)
 
 -- FIXME: How to enable foreign ReactElements?
 newtype ReactElement = ReactElement JSVal
@@ -61,10 +66,19 @@ toJSProps m | otherwise = do
 
 -- | Create a react from a HashMap of properties
 createReactElement :: JSString -> M.HashMap JSString JSVal -> [ReactElement] -> IO ReactElement
-createReactElement name props xs = do
+createReactElement n props xs = do
     props' <- toJSProps props
-    js_createReactElement name (pToJSVal (PureJSVal <$> props')) (fromList $ jsval <$> xs)
+    js_createReactElement n (pToJSVal (PureJSVal <$> props')) (fromList $ jsval <$> xs)
 
+foreign import javascript unsafe
+    "$r = $1;"
+    js_stringReactElement :: JSString -> ReactElement
+
+-- | Not an IO action because JSString is immutable
+stringReactElement :: JSString -> ReactElement
+stringReactElement = js_stringReactElement
+
+-- | Wrap a list of ReactElements inside a 'div'
 foreign import javascript unsafe
     "$r = hgr$combineElements($1, $2);"
     js_combineElements :: JSVal -> JSArray -> IO ReactElement
@@ -76,49 +90,52 @@ combineReactElements props xs = do
     props' <- toJSProps props
     js_combineElements (pToJSVal (PureJSVal <$> props')) (fromList $ jsval <$> xs)
 
--- | The pure bits required to create a ReactElement
-data PureReactElement = PureReactElement
+-- | The parameters required to create a ReactElement
+data ReactMarkup = ReactString JSString | ReactAtom
     { name :: JSString
-    , props :: M.HashMap JSString JSVal
-    , children :: [PureReactElement]
+    , properties :: M.HashMap JSString JSVal
+    , children :: [ReactMarkup]
     }
 
--- -- | Create 'ReactElement's from a ReactElementParam
--- mkReactElement :: PureReactElement -> IO (ReactElement)
--- mkReactElement (PureReactElement n p xs) = do
---     xs' <- sequenceA $ mkReactElement <$> xs
---     createElement' n p xs'
+-- | Create 'ReactElement's from a 'ReactAtom'
+fromReactMarkup :: ReactMarkup -> IO (ReactElement)
+fromReactMarkup (ReactAtom n p xs) = do
+    xs' <- sequenceA $ fromReactMarkup <$> xs
+    createReactElement n p xs'
 
--- -- | Create a single 'ReactELement' from [ReactElementParam]
--- mkReactElements :: Maybe Object -> [PureReactElement] -> IO (ReactElement)
--- mkReactElements props xs = combineElements props <$> (sequenceA $ mkReactElement <$> xs)
+fromReactMarkup (ReactString str) = pure $ stringReactElement str
 
--- -- | Monadic generator of ReactMarkup
--- -- This is the low-level way to run the ReactElement transformer,
--- -- finally returning the parts to create a list of PureReactElement.
--- -- It is a CPS-style WriterT (ie a StateT) of a function that outputs [PureReactElement]
--- -- You can use 'runStateT' with an initial state of 'mempty'.
--- newtype ReactMarkupT m a = ReactMarkupT
---     { runReactMarkupT :: StateT (M.HashMap JSString JSVal -> [PureReactElement]) m a
---     } deriving ( MonadState (M.HashMap JSString JSVal -> [PureReactElement])
---                , Monad
---                , Applicative
---                , Functor
---                , Fail.MonadFail
---                , Alternative
---                , MonadPlus
---                , MonadFix
---                , MonadIO
---                )
+-- | Create a single 'ReactElement' from '[ReactMark]'
+fromReactMarkups :: M.HashMap JSString JSVal -> [ReactMarkup] -> IO (ReactElement)
+fromReactMarkups props xs = do
+    xs' <- sequenceA $ fromReactMarkup <$> xs
+    combineReactElements props xs'
 
--- type ReactMarkup = ReactMarkupT Identity
+-- | Monadic generator of ReactActom.
+-- It is a CPS-style WriterT (ie a StateT) to build up a function
+-- build up a computations to generate a '[ReactAtom]'.
+-- You can use 'runStateT' with an initial state of 'mempty'.
+newtype ReactMlT m a = ReactMlT
+    { runReactMarkupT :: StateT (M.HashMap JSString JSVal -> [ReactMarkup]) m a
+    } deriving ( MonadState (M.HashMap JSString JSVal -> [ReactMarkup])
+               , Monad
+               , Applicative
+               , Functor
+               , Fail.MonadFail
+               , Alternative
+               , MonadPlus
+               , MonadFix
+               , MonadIO
+               , MFunctor
+               )
 
--- makeWrapped ''ReactMarkupT
+type ReactMl = ReactMlT Identity
+
+makeWrapped ''ReactMlT
 
 -- wack :: String -> JSVal
 -- wack =
 
-    
 -- -- -- | Build the React markup. Analogous to @execState@.
 -- execReactMarkupT
 --     :: Monad m

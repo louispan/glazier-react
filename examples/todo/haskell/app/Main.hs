@@ -24,13 +24,11 @@ import GHCJS.Foreign.Callback
     )
 import GHCJS.Nullable (Nullable(..), nullableToMaybe)
 import GHCJS.Prim (toJSInt)
-import GHCJS.Types (JSString, JSVal, jsval, nullRef)
+import GHCJS.Types (JSString, JSVal, jsval)
 import qualified Glazier as G
 import qualified Glazier.Pipes.Strict as GP
 import qualified Glazier.React.Element as R
 import qualified Glazier.React.Event as R
-import JavaScript.Array (fromList)
-import JavaScript.Object (Object)
 import qualified Pipes as P
 import qualified Pipes.Concurrent as PC
 import qualified Pipes.Lift as PL
@@ -39,11 +37,6 @@ import qualified Pipes.Prelude as PP
 -- | 'main' is used to create React classes and setup callbacks to be used externally by the browser.
 main :: IO ()
 main = do
-    -- cb <- syncCallback1 ContinueAsync $ R.mkEventHandler
-    --     (fmap (R.eventType . R.parseEvent) . R.castSyntheticEvent)
-    --     (void . sequenceA . fmap T.putStrLn)
-    -- void $ js_globalAssignCallback "cb" cb
-
     -- Create a 'Pipes.Concurrent' mailbox for receiving actions from html events.
     -- NB. using 'PC.bounded 1' also works without deadlocks, but doesn't save memory
     -- blocked events are kept by the GHCJCSruntime.
