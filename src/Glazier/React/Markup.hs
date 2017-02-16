@@ -13,6 +13,7 @@ module Glazier.React.Markup
     , fromReactMarkups
     , ReactMlT(..)
     , ReactMl
+    , fromReactElement
     , txt
     , leaf
     , branch
@@ -32,7 +33,7 @@ import GHCJS.Types (JSString, JSVal)
 import Glazier.React.Element
 
 -- | The parameters required to create a ReactElement
-data ReactMarkup = ReactText JSString | ReactAtom
+data ReactMarkup =  ReactElem ReactElement | ReactText JSString |ReactAtom
     { name :: JSString
     , properties :: M.HashMap JSString JSVal
     , children :: [ReactMarkup]
@@ -45,6 +46,8 @@ fromReactMarkup (ReactAtom n p xs) = do
     createReactElement n p xs'
 
 fromReactMarkup (ReactText str) = pure $ textReactElement str
+
+fromReactMarkup (ReactElem e) = pure e
 
 -- | Create a single 'ReactElement' from '[ReactMark]'
 fromReactMarkups :: [ReactMarkup] -> IO (ReactElement)
@@ -80,6 +83,10 @@ instance (Semigroup a, Monad m) => Semigroup (ReactMlT m a) where
 instance (Monoid a, Monad m) => Monoid (ReactMlT m a) where
     mempty = pure mempty
     mappend = liftA2 mappend
+
+-- | To use an exisitng ReactElement
+fromReactElement :: Applicative m => ReactElement -> ReactMlT m ()
+fromReactElement e = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` ReactElem e)
 
 -- | For text content
 txt :: Applicative m => JSString -> ReactMlT m ()
