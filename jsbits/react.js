@@ -26,7 +26,7 @@ function hgr$createClass(isPure, name, renderCb, defaultProps, state, propTypes)
 }
 
 // Convert a list of ReactElements into a single ReactElement
-function hgr$combineElements(props, elements) {
+function hgr$combineElements(elements) {
     if (elements && elements.constructor === Array) {
         if (elements.length === 0) {
             return null;
@@ -35,7 +35,7 @@ function hgr$combineElements(props, elements) {
             return elements[0];
         }
         else {
-            return React.createElement('div', props, elements);
+            return React.createElement('div', null, elements);
         }
     }
     return null;

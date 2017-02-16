@@ -30,7 +30,7 @@ import Control.DeepSeq
 import Data.JSString (JSString, pack)
 import GHCJS.Foreign (fromJSBool)
 import GHCJS.Marshal.Pure (PFromJSVal(..), PToJSVal(..))
-import GHCJS.Types (IsJSVal, JSString, JSVal, jsval)
+import GHCJS.Types (IsJSVal, JSVal, jsval)
 import JavaScript.Cast (Cast(..))
 
 -- | The object that dispatched the event.

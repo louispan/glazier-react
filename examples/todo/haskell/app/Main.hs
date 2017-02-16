@@ -133,7 +133,10 @@ notifyStateChanged' = traverse_ notifyStateChanged
 interpretCommandsPipe :: (MonadState JSVal io, MonadIO io) => P.Pipe (Maybe StateChangedCommand) () io ()
 interpretCommandsPipe = PP.mapM notifyStateChanged'
 
-gadgetProducer :: (MFunctor t, MonadState JSVal (t STM), MonadTrans t, MonadIO io) => PC.Input CounterAction -> P.Producer' (Maybe StateChangedCommand) (t io) ()
+gadgetProducer
+    :: (MFunctor t, MonadState JSVal (t STM), MonadTrans t, MonadIO io)
+    => PC.Input CounterAction
+    -> P.Producer' (Maybe StateChangedCommand) (t io) ()
 gadgetProducer input = hoist (hoist (liftIO . atomically)) (GP.gadgetToProducer input counterGadget')
 
 gadgetEffect :: MonadIO io => JSVal -> PC.Input CounterAction -> P.Effect io JSVal

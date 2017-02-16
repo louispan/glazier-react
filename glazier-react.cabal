@@ -22,9 +22,11 @@ library
                        Glazier.React.Element
                        Glazier.React.DOM
                        Glazier.React.Internal
+                       Glazier.React.Markup
   build-depends:       base >= 4.7 && < 5
-                     , deepseq
-                     , glazier
+                     , deepseq >= 1.4 && < 1.5
+                     , dlist >= 0.8 && < 0.9
+                     , glazier >= 0.8 && < 1
                      , lens >= 4 && < 5
                      , mmorph >= 1 && < 2
                      , mtl >= 2 && < 3
@@ -43,19 +45,19 @@ executable glazier-react-todo
   js-sources:          examples/todo/haskell/jsbits/global.js
   ghc-options:         -Wall -threaded -rtsopts -with-rtsopts=-N
   cpp-options:         -DGHCJS_BROWSER
-  build-depends:       base
-                     , ghcjs-prim
-                     , glazier
-                     , glazier-pipes
+  build-depends:       base >= 4.7 && < 5
+                     , ghcjs-prim >= 0.1 && < 0.2
+                     , glazier >= 0.8 && < 1
+                     , glazier-pipes >= 0.1.4 && < 0.2
                      , glazier-react
-                     , lens
-                     , mmorph
-                     , mtl
-                     , pipes
-                     , pipes-concurrency
-                     , stm
-                     , transformers
-                     , text
+                     , lens >= 4 && < 5
+                     , mmorph >= 1 && < 2
+                     , mtl >= 2 && < 3
+                     , pipes >= 4 && < 5
+                     , pipes-concurrency >= 2 && < 3
+                     , stm >= 2.4 && < 3
+                     , transformers >= 0.4 && < 0.6
+                     , text >= 1.2 && < 1.3
                      , unordered-containers >= 0.2.7 && < 0.3
   default-language:    Haskell2010
   if impl(ghcjs)
