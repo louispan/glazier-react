@@ -23,6 +23,8 @@ stack-build:
 
 $(GHCJS_OUT)/all.js: stack-build
 
+$(GHCJS_OUT)/all.js.externs: stack-build
+
 # add a nodeJS module wrapper http://edsko.net/2015/02/14/atom-haskell/
 # Don't output to src as babel looks in that directory for js files to transpile.
 # Babel will freeze trying to transpile ghcjs output.
@@ -30,7 +32,7 @@ $(GHCJS_OUT)/all.js: stack-build
 # "ERROR - Closure dependency methods(goog.provide, goog.require, etc)
 # must be called at file scope. "
 # This step also removes the dummy calls to goog.provide and goog.require.
-build/todo.js: $(GHCJS_OUT)/all.js
+build/todo.js: $(GHCJS_OUT)/all.js $(GHCJS_OUT)/all.js.externs
 	mkdir -p build
 	cat haskell/jsexports/exports.header \
 		<(sed -e '/goog.provide.*/d;/goog.require.*/d' $(GHCJS_OUT)/all.js) \

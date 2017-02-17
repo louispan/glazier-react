@@ -26,6 +26,7 @@ import GHCJS.Foreign.Callback
 import GHCJS.Nullable (Nullable(..), nullableToMaybe)
 import GHCJS.Prim (toJSInt)
 import GHCJS.Types (JSString, JSVal, jsval)
+import qualified Data.JSString as S
 import qualified Glazier as G
 import qualified Glazier.React.Element as R
 import qualified Glazier.React.Markup as R
@@ -35,6 +36,7 @@ import qualified Pipes.Concurrent as PC
 import qualified Pipes.Lift as PL
 import qualified Pipes.Prelude as PP
 import qualified Pipes.Misc as PM
+import qualified Todo as TD
 
 -- | 'main' is used to create React classes and setup callbacks to be used externally by the browser.
 main :: IO ()
@@ -67,9 +69,10 @@ main = do
     -- Setup the render callback
     -- render <- syncCallback1' (view G._WindowT' (jsval <$> counterWindow) . R.unsafeCoerceReactElement)
     render <- syncCallback1' $ \a -> do
-        let s = R.unsafeCoerceReactElement a
-        es <- view G._WindowT' (sequenceA [counterWindow, counterWindow'']) s
-        jsval <$> R.combineReactElements es
+        let s = R.unsafeCoerceElement a
+        x <- view G._WindowT' counterWindow s
+        ys <- view G._WindowT' (R.renderedWindow TD.todoWindow) (TD.Model "hello world!")
+        jsval <$> R.mkCombinedElements (x : ys)
     void $ js_globalListen "render" render
 
     -- trigger a render now that the render callback is initialized
@@ -108,17 +111,8 @@ _JSInt = prism' toJSInt (nullableToMaybe . Nullable)
 
 -- | Example of using 'ReactElement' directly
 counterWindow :: MonadIO io => G.WindowT R.ReactElement io R.ReactElement
-counterWindow = review G._WindowT $ \a -> liftIO $ R.createReactElement "div" M.empty [a]
-
--- | Example of using 'R.ReactMlt' transformer
-counterWindow' :: Monad m => G.WindowT R.ReactElement (R.ReactMlT m) ()
-counterWindow' = review G._WindowT $ \content ->
-    R.branch "div" M.empty $ do
-        (R.fromReactElement content)
-        (R.fromReactElement content)
-
-counterWindow'' :: MonadIO io => G.WindowT R.ReactElement io R.ReactElement
-counterWindow'' = G.belowWindowT (R.toReactElement .) counterWindow'
+counterWindow = review G._WindowT $ \a ->
+    liftIO $ R.mkBranchElement "div" (M.singleton "key" (R.strProp "counter")) [a]
 
 data CounterAction = Increment | Decrement | Ignore -- used to test that we don't re-render
     deriving (Show)
