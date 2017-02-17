@@ -13,6 +13,7 @@ module Glazier.React.Markup
     , fromReactMarkups
     , ReactMlT(..)
     , ReactMl
+    , toReactElement
     , fromReactElement
     , txt
     , leaf
@@ -27,40 +28,39 @@ import Control.Monad.Morph
 import Control.Monad.Reader
 import Control.Monad.State.Strict
 import qualified Data.DList as D
-import qualified Data.HashMap.Strict as M
 import Data.Semigroup
-import GHCJS.Types (JSString, JSVal)
-import Glazier.React.Element
+import GHCJS.Types (JSString)
+import qualified Glazier.React.Element as R
 
 -- | The parameters required to create a ReactElement
-data ReactMarkup =  ReactElem ReactElement | ReactText JSString |ReactAtom
+data ReactMarkup =  ReactElem R.ReactElement | ReactText JSString | ReactAtom
     { name :: JSString
-    , properties :: M.HashMap JSString JSVal
+    , properties :: R.Properties
     , children :: [ReactMarkup]
     }
 
 -- | Create 'ReactElement's from a 'ReactAtom'
-fromReactMarkup :: ReactMarkup -> IO (ReactElement)
+fromReactMarkup :: ReactMarkup -> IO (R.ReactElement)
 fromReactMarkup (ReactAtom n p xs) = do
     xs' <- sequenceA $ fromReactMarkup <$> xs
-    createReactElement n p xs'
+    R.createReactElement n p xs'
 
-fromReactMarkup (ReactText str) = pure $ textReactElement str
+fromReactMarkup (ReactText str) = pure $ R.textReactElement str
 
 fromReactMarkup (ReactElem e) = pure e
 
 -- | Create a single 'ReactElement' from '[ReactMark]'
-fromReactMarkups :: [ReactMarkup] -> IO (ReactElement)
+fromReactMarkups :: [ReactMarkup] -> IO (R.ReactElement)
 fromReactMarkups xs = do
     xs' <- sequenceA $ fromReactMarkup <$> xs
-    combineReactElements xs'
+    R.combineReactElements xs'
 
 -- | Monadic generator of ReactActom.
 -- It is a CPS-style WriterT (ie a StateT) to build up a function
 -- build up a computations to generate a '[ReactAtom]'.
 -- You can use 'runStateT' with an initial state of 'mempty'.
 newtype ReactMlT m a = ReactMlT
-    { runReactMarkupT :: StateT (D.DList ReactMarkup) m a
+    { runReactMlT :: StateT (D.DList ReactMarkup) m a
     } deriving ( MonadState (D.DList ReactMarkup)
                , Monad
                , Applicative
@@ -84,8 +84,13 @@ instance (Monoid a, Monad m) => Monoid (ReactMlT m a) where
     mempty = pure mempty
     mappend = liftA2 mappend
 
+toReactElement :: MonadIO io => ReactMlT io a -> io (R.ReactElement)
+toReactElement m = do
+    xs <- execStateT (runReactMlT m) mempty
+    liftIO $ fromReactMarkups (D.toList xs)
+
 -- | To use an exisitng ReactElement
-fromReactElement :: Applicative m => ReactElement -> ReactMlT m ()
+fromReactElement :: Applicative m => R.ReactElement -> ReactMlT m ()
 fromReactElement e = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` ReactElem e)
 
 -- | For text content
@@ -93,11 +98,11 @@ txt :: Applicative m => JSString -> ReactMlT m ()
 txt n = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` ReactText n)
 
 -- | For the contentless elements: eg 'br_'
-leaf :: Applicative m => JSString -> Properties -> ReactMlT m ()
+leaf :: Applicative m => JSString -> R.Properties -> ReactMlT m ()
 leaf n props = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` ReactAtom n props [])
 
 -- | For the contentful elements: eg 'div_'
-branch :: Functor m => JSString -> Properties -> ReactMlT m a -> ReactMlT m a
+branch :: Functor m => JSString -> R.Properties -> ReactMlT m a -> ReactMlT m a
 branch n props (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
     (a, childs') <- childs mempty
     pure (a, xs `D.snoc` ReactAtom n props (D.toList childs'))

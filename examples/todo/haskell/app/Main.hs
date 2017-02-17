@@ -1,3 +1,4 @@
+{-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -26,13 +27,14 @@ import GHCJS.Nullable (Nullable(..), nullableToMaybe)
 import GHCJS.Prim (toJSInt)
 import GHCJS.Types (JSString, JSVal, jsval)
 import qualified Glazier as G
-import qualified Glazier.Pipes.Strict as GP
 import qualified Glazier.React.Element as R
+import qualified Glazier.React.Markup as R
 import qualified Glazier.React.Event as R
 import qualified Pipes as P
 import qualified Pipes.Concurrent as PC
 import qualified Pipes.Lift as PL
 import qualified Pipes.Prelude as PP
+import qualified Pipes.Misc as PM
 
 -- | 'main' is used to create React classes and setup callbacks to be used externally by the browser.
 main :: IO ()
@@ -63,7 +65,11 @@ main = do
     void $ js_globalListen "onIgnore" onIgnore
 
     -- Setup the render callback
-    render <- syncCallback1' (view G._Window' (jsval <$> counterWindow) . R.unsafeCoerceReactElement)
+    -- render <- syncCallback1' (view G._WindowT' (jsval <$> counterWindow) . R.unsafeCoerceReactElement)
+    render <- syncCallback1' $ \a -> do
+        let s = R.unsafeCoerceReactElement a
+        es <- view G._WindowT' (sequenceA [counterWindow, counterWindow'']) s
+        jsval <$> R.combineReactElements es
     void $ js_globalListen "render" render
 
     -- trigger a render now that the render callback is initialized
@@ -100,15 +106,26 @@ foreign import javascript unsafe
 _JSInt :: Prism' JSVal Int
 _JSInt = prism' toJSInt (nullableToMaybe . Nullable)
 
-counterWindow :: MonadIO io => G.Window io R.ReactElement R.ReactElement
-counterWindow = review G._Window $ \a -> liftIO $ R.createReactElement "div" M.empty [a]
+-- | Example of using 'ReactElement' directly
+counterWindow :: MonadIO io => G.WindowT R.ReactElement io R.ReactElement
+counterWindow = review G._WindowT $ \a -> liftIO $ R.createReactElement "div" M.empty [a]
+
+-- | Example of using 'R.ReactMlt' transformer
+counterWindow' :: Monad m => G.WindowT R.ReactElement (R.ReactMlT m) ()
+counterWindow' = review G._WindowT $ \content ->
+    R.branch "div" M.empty $ do
+        (R.fromReactElement content)
+        (R.fromReactElement content)
+
+counterWindow'' :: MonadIO io => G.WindowT R.ReactElement io R.ReactElement
+counterWindow'' = G.belowWindowT (R.toReactElement .) counterWindow'
 
 data CounterAction = Increment | Decrement | Ignore -- used to test that we don't re-render
     deriving (Show)
 
 -- | A simple gadget using Haskell Int as the state
-counterGadget :: Applicative m => G.Gadget Int m CounterAction (Maybe StateChangedCommand)
-counterGadget = review G._Gadget $ \a s -> case a of
+counterGadget :: Applicative m => G.GadgetT CounterAction Int m (Maybe StateChangedCommand)
+counterGadget = review G._GadgetT $ \a s -> case a of
     Increment -> pure (Just StateChanged, s + 1)
     Decrement -> pure (Just StateChanged, s - 1)
     Ignore -> pure (Nothing, s)
@@ -116,7 +133,7 @@ counterGadget = review G._Gadget $ \a s -> case a of
 -- | Implant the Haskell state into JSVal
 -- This is so that React can use shallow comparison of JSVal to avoid re-rendering
 -- if state has not changed
-counterGadget' :: Monad m => G.Gadget JSVal m CounterAction (Maybe StateChangedCommand)
+counterGadget' :: Monad m => G.GadgetT CounterAction JSVal m (Maybe StateChangedCommand)
 counterGadget' = getFirst <$> (G.implant _JSInt (First <$> counterGadget))
 
 -- | If state changed, then run the notifyListeners IO action
@@ -137,7 +154,7 @@ gadgetProducer
     :: (MFunctor t, MonadState JSVal (t STM), MonadTrans t, MonadIO io)
     => PC.Input CounterAction
     -> P.Producer' (Maybe StateChangedCommand) (t io) ()
-gadgetProducer input = hoist (hoist (liftIO . atomically)) (GP.gadgetToProducer input counterGadget')
+gadgetProducer input = hoist (hoist (liftIO . atomically)) (PM.rsProducer input (G.runGadgetT counterGadget'))
 
 gadgetEffect :: MonadIO io => JSVal -> PC.Input CounterAction -> P.Effect io JSVal
 gadgetEffect s input = PL.execStateP s $ gadgetProducer input P.>-> interpretCommandsPipe P.>-> PP.drain

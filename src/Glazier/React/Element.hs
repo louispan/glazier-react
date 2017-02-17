@@ -40,6 +40,7 @@ unsafeCoerceReactElement :: JSVal -> ReactElement
 unsafeCoerceReactElement = ReactElement
 
 -- | Create a JS Object from a HashMap
+-- TODO: Is is possible/more efficient to do this inline? eg {a: 1, b: 2}
 toJSProps :: M.HashMap JSString JSVal -> IO (Maybe Object)
 toJSProps m | M.null m = pure Nothing
 toJSProps m | otherwise = do

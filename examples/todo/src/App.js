@@ -37,7 +37,7 @@ class App extends Component {
     }
 
     renderHaskell() {
-        return combineElements(null, registry.shout('render', this.state.count));
+        return combineElements(registry.shout('render', this.state.count));
     }
 
     render() {
