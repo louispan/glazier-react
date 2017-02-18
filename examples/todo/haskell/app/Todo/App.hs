@@ -1,6 +1,7 @@
 {-# LANGUAGE MonomorphismRestriction #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Todo.App where
 
@@ -12,6 +13,10 @@ import qualified Todo.Model as TD
 import Control.Monad.Trans.Class
 import Control.Monad.Reader
 import Control.Lens
+
+data TodoAction = TodoInputAction TD.InputAction
+
+makeClassyPrisms ''TodoAction
 
 appWindow :: Monad m => G.WindowT TD.Model (R.ReactMlT m) ()
 appWindow = do
@@ -25,3 +30,7 @@ appWindow = do
 
 todoInputWindow' :: Monad m => G.WindowT TD.Model (R.ReactMlT m) ()
 todoInputWindow' = G.implant TD._todoInput TD.todoInputWindow
+
+
+todoInputGadget' :: MonadIO io => G.GadgetT TodoAction TD.InputModel io ()
+todoInputGadget' = G.dispatch _TodoInputAction TD.todoInputGadget

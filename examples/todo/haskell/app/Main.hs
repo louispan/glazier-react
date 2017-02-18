@@ -115,6 +115,8 @@ counterWindow :: MonadIO io => G.WindowT R.ReactElement io R.ReactElement
 counterWindow = review G._WindowT $ \a ->
     liftIO $ R.mkBranchElement "div" (M.singleton "key" (R.strProp "counter")) [a]
 
+data MainAction = CounterAction CounterAction | TodoAction TD.TodoAction
+
 data CounterAction = Increment | Decrement | Ignore -- used to test that we don't re-render
     deriving (Show)
 

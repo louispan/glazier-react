@@ -13,6 +13,7 @@ module Glazier.React.Event
   , SyntheticEvent
   , castSyntheticEvent
   , eventHandler
+  , eventHandlerIO
   , Event(..)
   , preventDefault
   , isDefaultPrevented
@@ -98,7 +99,12 @@ castSyntheticEvent _ | otherwise = Nothing
 -- where a synchronous thread might be converted to an asynchronous thread if a "black hole" is encountered.
 -- See https://github.com/ghcjs/ghcjs-base/blob/master/GHCJS/Concurrent.hs
 eventHandler :: NFData a => (evt -> a) -> (a -> b) -> (evt -> b)
-eventHandler f g evt = g $!! f evt
+eventHandler goStrict goLazy evt = goLazy $!! goStrict evt
+
+eventHandlerIO :: NFData a => (evt -> IO a) -> (a -> IO b) -> (evt -> IO b)
+eventHandlerIO goStrict goLazy evt = do
+    r <- goStrict evt
+    goLazy $!! r
 
 foreign import javascript unsafe
     "$1.preventDefault()"
