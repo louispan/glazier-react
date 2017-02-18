@@ -23,6 +23,7 @@ library
                        Glazier.React.DOM
                        Glazier.React.Internal
                        Glazier.React.Markup
+                       Glazier.React.Util
   build-depends:       base >= 4.7 && < 5
                      , deepseq >= 1.4 && < 1.5
                      , dlist >= 0.8 && < 0.9
@@ -43,8 +44,8 @@ library
 executable glazier-react-todo
   hs-source-dirs:      examples/todo/haskell/app
   other-modules:       Todo
-                       Todo.Model
                        Todo.App
+                       Todo.Command
                        Todo.Input
   main-is:             Main.hs
   js-sources:          examples/todo/haskell/jsbits/global.js

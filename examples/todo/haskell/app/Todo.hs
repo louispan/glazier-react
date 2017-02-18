@@ -1,9 +1,9 @@
 module Todo
-    ( module Todo.Model
-    , module Todo.App
+    ( module Todo.App
+    , module Todo.Command
     , module Todo.Input
     ) where
 
 import Todo.App
+import Todo.Command
 import Todo.Input
-import Todo.Model

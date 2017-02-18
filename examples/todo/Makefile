@@ -6,7 +6,10 @@ GHCJS_OUT:=$(INSTALL_ROOT)/bin/glazier-react-todo.jsexe
 
 all: install
 
-install: build/todo.js build/todo.min.js
+# install: build/todo.js build/todo.min.js
+# 	npm install
+
+install: build/todo.js
 	npm install
 
 clean:

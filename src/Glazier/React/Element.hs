@@ -10,7 +10,6 @@ module Glazier.React.Element
     , textElement
     , mkCombinedElements
     , Properties
-    , strProp
     ) where
 
 import qualified Data.HashMap.Strict as M
@@ -36,7 +35,7 @@ foreign import javascript unsafe
 
 foreign import javascript unsafe
     "$r = React.createElement($1, $2);"
-    js_mkLeafElement :: JSString -> JSVal -> IO ReactElement
+    js_mkLeafElement :: JSVal -> JSVal -> IO ReactElement
 
 
 -- | Unfortunately, ReactJS did not export an easy way to check if something is a ReactElement,
@@ -58,10 +57,6 @@ toJSProps m | otherwise = do
                     M.foldlWithKey' (\action k v -> action >> unsafeSetProp (textToJSString k) v obj) (pure ()) m
                     pure (Just obj)
 
--- | Helper method to assist type inference
-strProp :: JSString -> JSVal
-strProp = jsval
-
 -- | Create a react element (with children) from a HashMap of properties
 mkBranchElement :: JSString -> Properties -> [ReactElement] -> IO ReactElement
 mkBranchElement n props xs = do
@@ -69,7 +64,7 @@ mkBranchElement n props xs = do
     js_mkBranchElement n (pToJSVal (PureJSVal <$> props')) (fromList $ jsval <$> xs)
 
 -- | Create a react element (with no children) from a HashMap of properties
-mkLeafElement :: JSString -> Properties -> IO ReactElement
+mkLeafElement :: JSVal -> Properties -> IO ReactElement
 mkLeafElement n props = do
     props' <- toJSProps props
     js_mkLeafElement n (pToJSVal (PureJSVal <$> props'))

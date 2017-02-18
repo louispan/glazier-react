@@ -8,35 +8,24 @@
 module Main (main) where
 
 import Control.Concurrent.STM
-import qualified Data.HashMap.Strict as M
 import Control.Lens
 import Control.Monad
 import Control.Monad.IO.Class
-import Control.Monad.Morph
 import Control.Monad.State.Strict
 import Data.Foldable
 import Data.Monoid
-import GHCJS.Foreign.Callback
-    ( Callback
-    , OnBlocked(..)
-    , releaseCallback
-    , syncCallback1
-    , syncCallback1'
-    )
-import GHCJS.Nullable (Nullable(..), nullableToMaybe)
-import GHCJS.Prim (toJSInt)
-import GHCJS.Types (JSString, JSVal, jsval)
-import qualified Data.JSString as S
+import qualified GHCJS.Foreign.Callback as J
+import qualified GHCJS.Prim as J
+import qualified GHCJS.Types as J
 import qualified Glazier as G
 import qualified Glazier.React.Element as R
 import qualified Glazier.React.Markup as R
-import qualified Glazier.React.Event as R
 import qualified Pipes as P
 import qualified Pipes.Concurrent as PC
 import qualified Pipes.Lift as PL
 import qualified Pipes.Prelude as PP
-import qualified Pipes.Misc as PM
 import qualified Todo as TD
+import Control.Concurrent.MVar
 
 -- | 'main' is used to create React classes and setup callbacks to be used externally by the browser.
 main :: IO ()
@@ -46,112 +35,62 @@ main = do
     -- blocked events are kept by the GHCJCSruntime.
     (output, input) <- liftIO . PC.spawn $ PC.unbounded
 
-    onIncrement <- syncCallback1 ContinueAsync $ R.eventHandler
-         (const ()) -- don't need any data from the event, just that it happened
-         (void . atomically . PC.send output . const Increment)
-
     -- It is not trivial to call arbitrary Haskell functions from Javascript
-    -- A hacky way is to create a Callback and assign it to a global.
-    void $ js_globalListen "onIncrement" onIncrement
+    -- A hacky way is to create a Callback and assign it to a global registry.
+    -- Input onChange callback
+    onInputChanged <- J.syncCallback1 J.ContinueAsync $ \evt -> do
+         action <- TD.appInputOnChangedHandler evt
+         void $ atomically $ PC.send output action
 
-    onDecrement <- syncCallback1 ContinueAsync $ R.eventHandler
-         (const ()) -- don't need any data from the event, just that it happened
-         (void . atomically . PC.send output . const Decrement)
-    void $ js_globalListen "onDecrement" onDecrement
+    let initialState = TD.AppModel (TD.InputModel "input" "hello world!" onInputChanged)
 
-    -- This useless event handler is to test that React.Component.setState is only called
-    -- if the state actually changes.
-    onIgnore <- syncCallback1 ContinueAsync $ R.eventHandler
-         (const ()) -- don't need any data from the event, just that it happened
-         (void . atomically . PC.send output . const Ignore)
-    void $ js_globalListen "onIgnore" onIgnore
+    currentState <- newMVar initialState
 
     -- Setup the render callback
     -- render <- syncCallback1' (view G._WindowT' (jsval <$> counterWindow) . R.unsafeCoerceReactElement)
-    render <- syncCallback1' $ \a -> do
-        let s = R.unsafeCoerceElement a
-        x <- view G._WindowT' counterWindow s
-        ys <- view G._WindowT' (R.renderedWindow TD.appWindow)
-            (TD.Model (TD.InputModel "input" "hello world!"))
-        jsval <$> R.mkCombinedElements (x : ys)
-    void $ js_globalListen "render" render
+    render <- J.syncCallback1' $ \_ -> do
+        s <- readMVar currentState
+        xs <- view G._WindowT' (R.renderedWindow TD.appWindow) s
+        J.jsval <$> R.mkCombinedElements xs
+    void $ js_globalListen "renderHaskell" render
 
     -- trigger a render now that the render callback is initialized
-    let initialState = (review _JSInt 0)
-    js_globalShout "counterState" initialState
+    js_globalShout "forceRender" J.nullRef
 
     -- Run the gadget effect which reads actions from 'Pipes.Concurrent.Input'
     -- and notifies html React of any state changes.
     -- runEffect will only stop if input is finished (which in this example never does).
-    s <- P.runEffect $ gadgetEffect initialState input
+    void . P.runEffect $ appEffect currentState input
 
     -- Cleanup
     -- We actually never get here because in this example runEffect never quits
     -- but in other apps, gadgetEffect might be quit-able (MaybeT)
     -- so let's add the cleanup code here to be explicit.
-    releaseCallback onIncrement
-    releaseCallback onDecrement
-    releaseCallback onIgnore
-    releaseCallback render
-    js_printFinalState s
+    J.releaseCallback onInputChanged
+    J.releaseCallback render
 
 foreign import javascript unsafe
   "hgr$todo$registry['listen']($1, $2);"
-  js_globalListen :: JSString -> Callback a -> IO ()
+  js_globalListen :: J.JSString -> J.Callback a -> IO ()
 
 foreign import javascript unsafe
   "hgr$todo$registry['shout']($1, $2);"
-  js_globalShout :: JSString -> JSVal -> IO ()
-
-foreign import javascript unsafe
-  "console.log('Final state', $1);"
-  js_printFinalState :: JSVal -> IO ()
-
-_JSInt :: Prism' JSVal Int
-_JSInt = prism' toJSInt (nullableToMaybe . Nullable)
-
--- | Example of using 'ReactElement' directly
-counterWindow :: MonadIO io => G.WindowT R.ReactElement io R.ReactElement
-counterWindow = review G._WindowT $ \a ->
-    liftIO $ R.mkBranchElement "div" (M.singleton "key" (R.strProp "counter")) [a]
-
-data MainAction = CounterAction CounterAction | TodoAction TD.TodoAction
-
-data CounterAction = Increment | Decrement | Ignore -- used to test that we don't re-render
-    deriving (Show)
-
--- | A simple gadget using Haskell Int as the state
-counterGadget :: Applicative m => G.GadgetT CounterAction Int m (Maybe StateChangedCommand)
-counterGadget = review G._GadgetT $ \a s -> case a of
-    Increment -> pure (Just StateChanged, s + 1)
-    Decrement -> pure (Just StateChanged, s - 1)
-    Ignore -> pure (Nothing, s)
-
--- | Implant the Haskell state into JSVal
--- This is so that React can use shallow comparison of JSVal to avoid re-rendering
--- if state has not changed
-counterGadget' :: Monad m => G.GadgetT CounterAction JSVal m (Maybe StateChangedCommand)
-counterGadget' = getFirst <$> (G.implant _JSInt (First <$> counterGadget))
+  js_globalShout :: J.JSString -> J.JSVal -> IO ()
 
 -- | If state changed, then run the notifyListeners IO action
-data StateChangedCommand = StateChanged
-
-notifyStateChanged :: (MonadIO io, MonadState JSVal io) => StateChangedCommand -> io ()
-notifyStateChanged StateChanged = do
+interpretCommand :: (MonadIO io, MonadState TD.AppModel io) => MVar TD.AppModel -> TD.Command -> io ()
+interpretCommand stateMVar TD.StateChangedCommand = do
     s <- get
-    liftIO $ js_globalShout "counterState" s
+    liftIO $ swapMVar stateMVar s -- ^ so that the render thread can get the latest thread
+    liftIO $ js_globalShout "forceRender" J.nullRef -- ^ tell React to call render
 
-notifyStateChanged' :: (Foldable t, MonadState JSVal io, MonadIO io) => t StateChangedCommand -> io ()
-notifyStateChanged' = traverse_ notifyStateChanged
+interpretCommands :: (Foldable t, MonadState TD.AppModel io, MonadIO io) => MVar TD.AppModel -> t TD.Command -> io ()
+interpretCommands stateMVar = traverse_ (interpretCommand stateMVar)
 
-interpretCommandsPipe :: (MonadState JSVal io, MonadIO io) => P.Pipe (Maybe StateChangedCommand) () io ()
-interpretCommandsPipe = PP.mapM notifyStateChanged'
+interpretCommandsPipe :: (MonadState TD.AppModel io, MonadIO io) => MVar TD.AppModel -> P.Pipe (First TD.Command) () io ()
+interpretCommandsPipe stateMVar = PP.mapM (interpretCommands stateMVar)
 
-gadgetProducer
-    :: (MFunctor t, MonadState JSVal (t STM), MonadTrans t, MonadIO io)
-    => PC.Input CounterAction
-    -> P.Producer' (Maybe StateChangedCommand) (t io) ()
-gadgetProducer input = hoist (hoist (liftIO . atomically)) (PM.rsProducer input (G.runGadgetT counterGadget'))
-
-gadgetEffect :: MonadIO io => JSVal -> PC.Input CounterAction -> P.Effect io JSVal
-gadgetEffect s input = PL.execStateP s $ gadgetProducer input P.>-> interpretCommandsPipe P.>-> PP.drain
+appEffect :: MonadIO io => MVar TD.AppModel -> PC.Input TD.AppAction -> P.Effect io TD.AppModel
+appEffect stateMVar input = do
+    s <- liftIO $ readMVar stateMVar
+    PL.execStateP s $ TD.appProducer input P.>-> interpretCommandsPipe stateMVar P.>-> PP.drain
