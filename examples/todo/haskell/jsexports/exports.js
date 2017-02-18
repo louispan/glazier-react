@@ -1,2 +1,2 @@
 global["registry"] = hgr$todo$registry;
-global["combineElements"] = hgr$combineElements;
+global["mkCombinedElements"] = hgr$mkCombinedElements;

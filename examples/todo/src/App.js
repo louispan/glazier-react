@@ -1,7 +1,7 @@
 import React, {Component} from 'react';
 import logo from './logo.svg';
 import './App.css';
-import {registry, combineElements} from '../build/todo.min';
+import {registry, mkCombinedElements} from '../build/todo.min';
 
 class App extends Component {
 
@@ -37,10 +37,10 @@ class App extends Component {
     }
 
     renderHaskell() {
-        return combineElements(registry.shout('render', this.state.count));
+        return mkCombinedElements(registry.shout('render', this.state.count));
     }
 
-    render() {
+    render_old() {
         return (
             <div className="App">
                 <div className="App-header">
@@ -65,6 +65,8 @@ class App extends Component {
             </div>
         );
     }
-}
+    render() {
+        return mkCombinedElements(registry.shout('render', this.state.count));
+    }}
 
 export default App;

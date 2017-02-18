@@ -84,7 +84,7 @@ textElement = js_textElement
 
 -- | Wrap a list of ReactElements inside a 'div'
 foreign import javascript unsafe
-    "$r = hgr$combineElements($1);"
+    "$r = hgr$mkCombinedElements($1);"
     js_mkCombinedElements :: JSArray -> IO ReactElement
 
 -- | React only allows a single top most element.

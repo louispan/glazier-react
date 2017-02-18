@@ -6,7 +6,7 @@
 // defaultProps: { ... }
 // state: { ... }
 // Using React.createClass for now since not all browsers support ES6 classes
-function hgr$createClass(isPure, name, renderCb, defaultProps, state, propTypes) {
+function hgr$mkClass(isPure, name, renderCb, defaultProps, state, propTypes) {
     const specs = { 'displayName': name }
     specs['render'] = (renderCb) ? renderCb : function() { return null; };
     if (propTypes) {
@@ -26,7 +26,7 @@ function hgr$createClass(isPure, name, renderCb, defaultProps, state, propTypes)
 }
 
 // Convert a list of ReactElements into a single ReactElement
-function hgr$combineElements(elements) {
+function hgr$mkCombinedElements(elements) {
     if (elements && elements.constructor === Array) {
         if (elements.length === 0) {
             return null;

@@ -71,7 +71,8 @@ main = do
     render <- syncCallback1' $ \a -> do
         let s = R.unsafeCoerceElement a
         x <- view G._WindowT' counterWindow s
-        ys <- view G._WindowT' (R.renderedWindow TD.todoWindow) (TD.Model "hello world!")
+        ys <- view G._WindowT' (R.renderedWindow TD.appWindow)
+            (TD.Model (TD.InputModel "input" "hello world!"))
         jsval <$> R.mkCombinedElements (x : ys)
     void $ js_globalListen "render" render
 

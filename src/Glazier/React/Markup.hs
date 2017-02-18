@@ -20,6 +20,8 @@ module Glazier.React.Markup
     , txt
     , leaf
     , branch
+    -- From React.Element
+    , R.strProp
     ) where
 
 import Control.Applicative

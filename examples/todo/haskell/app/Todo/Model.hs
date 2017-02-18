@@ -1,11 +1,16 @@
 {-# LANGUAGE TemplateHaskell #-}
-module Todo.Model where
+
+module Todo.Model
+    ( HasModel(..)
+    , Model(..)
+    , module TD
+    ) where
 
 import Control.Lens
-import GHCJS.Types (JSString)
+import Todo.Input as TD
 
 data Model = Model
-    { todoInput :: JSString
+    { todoInput :: TD.InputModel
     }
 
 makeClassy_ ''Model
