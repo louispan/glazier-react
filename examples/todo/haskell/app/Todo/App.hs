@@ -19,6 +19,7 @@ module Todo.App
     , toggleCompleteAllFirer
     , inputChangeFirer
     , inputSubmitFirer
+    , releaseCallbacks
     , producer
     ) where
 
@@ -31,6 +32,7 @@ import Control.Monad.Trans.Maybe
 import qualified Data.DList as D
 import qualified Data.HashMap.Strict as M
 import qualified Data.Map.Strict as Map
+import Data.Semigroup
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
@@ -42,9 +44,8 @@ import qualified Pipes.Concurrent as PC
 import qualified Pipes.Misc as PM
 import qualified Todo.Input as TD.Input
 import qualified Todo.Todo as TD.Todo
-import Data.Semigroup
 
-type TodoKey = (Int, J.JSString)
+type TodoKey = Int
 
 type TodosCommand' = (TodoKey, TD.Todo.Command)
 
@@ -54,12 +55,15 @@ type TodosModel' = Map.Map TodoKey TD.Todo.Model
 
 data Command
     = StateChangedCommand
+    | RunCommand (IO ())
     | InputCommand TD.Input.Command
     | TodosCommand TodosCommand'
 
 data Action
     = ToggleCompleteAllAction
     | DestroyTodoAction TodoKey
+    | ReleaseCallbacksAction
+    | NewTodoAction J.JSString
     | InputAction TD.Input.Action
     | TodosAction TodosAction'
 
@@ -68,11 +72,16 @@ makeClassyPrisms ''Action
 data Model = Model
     { todoInput :: TD.Input.Model
     , seqNum :: Int
-    , todos :: TodosModel'
+    , todoModels :: TodosModel'
     , fireToggleCompleteAll :: J.Callback (J.JSVal -> IO ())
+    , onReleaseCallbacks :: Maybe (IO ())
     }
 
 makeClassy_ ''Model
+
+releaseCallbacks :: Model -> IO ()
+releaseCallbacks s =
+    J.releaseCallback (fireToggleCompleteAll s)
 
 hasActiveTodos :: TodosModel' -> Bool
 hasActiveTodos = null . filter (not . TD.Todo.completed) . fmap snd . Map.toList
@@ -85,6 +94,9 @@ inputChangeFirer v = (review _InputAction) <$> TD.Input.changeFirer v
 
 inputSubmitFirer :: J.JSVal -> MaybeT IO Action
 inputSubmitFirer v = (review _InputAction) <$> TD.Input.submitFirer v
+
+todoToggleCompleteFirer :: Applicative m => TodoKey -> J.JSVal -> m Action
+todoToggleCompleteFirer k v = (\a -> TodosAction (k, a)) <$> TD.Todo.toggleCompleteFirer v
 
 window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
 window = do
@@ -99,8 +111,8 @@ window = do
 
 mainWindow :: Monad m => G.WindowT Model (R.ReactMlT m) ()
 mainWindow = do
-    todos' <- view _todos
-    if (null todos')
+    todos <- view _todoModels
+    if (null todos)
         then pure ()
         else do
         s <- ask
@@ -109,7 +121,7 @@ mainWindow = do
             R.leaf (E.strval "input") (M.fromList
                         [ ("className", E.strval "toggle-all")
                         , ("type", E.strval "checkbox")
-                        , ("checked", J.pToJSVal . not . hasActiveTodos $ todos')
+                        , ("checked", J.pToJSVal . not . hasActiveTodos $ todos)
                         , ("onChange", J.jsval $ fireToggleCompleteAll s)
                         ])
             view G._WindowT todoListWindow s
@@ -117,7 +129,7 @@ mainWindow = do
 todoListWindow :: Monad m => G.WindowT Model (R.ReactMlT m) ()
 todoListWindow = do
     lift $ R.branch "ul" (M.singleton "className" (E.strval "todo-list")) $ do
-        pure ()
+        pure () --FIXME:
 
 gadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
 gadget = appGadget
@@ -129,11 +141,40 @@ appGadget = do
     a <- ask
     case a of
         ToggleCompleteAllAction -> do
-            _todos %= toggleCompleteAll
+            _todoModels %= toggleCompleteAll
             pure $ D.singleton StateChangedCommand
         DestroyTodoAction k -> do
-            _todos %= Map.delete k
-            pure $ D.singleton StateChangedCommand
+            -- queue up callbacks to release before deleting
+            ts <- use _todoModels
+            ret <- runMaybeT $ do
+                todoModel <- MaybeT $ pure $ Map.lookup k ts
+                -- actions <- liftIO $ TD.Todo.releaseCallbacks todoModel
+                -- prevActions <- MaybeT $ use _onReleaseCallbacks
+                -- lift $ _onReleaseCallbacks .= (prevActions *> actions)
+                -- lift $ _todoModels %= Map.delete k
+                pure $ D.singleton StateChangedCommand
+            maybe (pure mempty) pure ret
+        ReleaseCallbacksAction -> do
+            -- Called callbacks that have been released will generate an exception
+            -- So make this into an action is evaluated after re-rendering
+            -- to ensure callbacks wont get called.
+            ret <- runMaybeT $ do
+                actions <- MaybeT $ use _onReleaseCallbacks
+                lift $ _onReleaseCallbacks .= Nothing
+                pure $ D.singleton $ RunCommand actions
+            maybe (pure mempty) pure ret
+
+        NewTodoAction str -> do
+            n <- use _seqNum
+            _seqNum %= (+ 1)
+            -- _todos %= Map.insert (n, uuid')
+            --     (TD.Todo.Model
+            --         uuid'
+            --         J.empty
+            --         false
+            --         Nothing
+            --         )
+            pure mempty
         -- delegate to other gadgets
         InputAction _ -> pure mempty
         TodosAction _ -> pure mempty
@@ -172,7 +213,7 @@ todosGadget = do
          _ -> False
 
 todosGadget' :: Monad m => G.GadgetT Action Model m (D.DList Command)
-todosGadget' = fmap TodosCommand <$> G.implant _todos (G.dispatch _TodosAction todosGadget)
+todosGadget' = fmap TodosCommand <$> G.implant _todoModels (G.dispatch _TodosAction todosGadget)
 
 producer
     :: (MFunctor t, MonadState Model (t STM), MonadTrans t, MonadIO io)

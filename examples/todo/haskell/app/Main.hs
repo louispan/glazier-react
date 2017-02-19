@@ -57,6 +57,7 @@ main = do
             0
             mempty
             toggleCompleteAllFirer'
+            Nothing
 
     -- Make a MVar so render can get the latest state
     currentState <- newMVar initialState
@@ -66,6 +67,7 @@ main = do
     doRender <- J.syncCallback1' $ \_ -> do
         s <- readMVar currentState
         xs <- view G._WindowT' (R.renderedWindow TD.App.window) s
+        liftIO $ void $ atomically $ PC.send output TD.App.ReleaseCallbacksAction -- FIXME: not quite long enough
         J.jsval <$> R.mkCombinedElements xs
     void $ js_globalListen "renderHaskell" doRender
 
@@ -112,10 +114,12 @@ forceRender stateMVar = do
 interpretCommand :: (MonadIO io, MonadState TD.App.Model io) => MVar TD.App.Model -> PC.Output TD.App.Action -> TD.App.Command -> io ()
 interpretCommand stateMVar _ TD.App.StateChangedCommand = forceRender stateMVar
 
+interpretCommand stateMVar _ (TD.App.RunCommand actions) = liftIO $ actions
+
 interpretCommand stateMVar _ (TD.App.InputCommand (TD.Input.StateChangedCommand)) = forceRender stateMVar
 
-interpretCommand _ _ (TD.App.InputCommand (TD.Input.SubmitCommand str)) =
-    liftIO $ putStrLn $ "TODO entered: " ++ (J.unpack str)
+interpretCommand _ output (TD.App.InputCommand (TD.Input.SubmitCommand str)) =
+    liftIO $ void $ atomically $ PC.send output (TD.App.NewTodoAction str)
 
 interpretCommand stateMVar _ (TD.App.TodosCommand (_, TD.Todo.StateChangedCommand)) = forceRender stateMVar
 
@@ -138,9 +142,9 @@ interpretCommandsPipe stateMVar output = PP.mapM go
          TD.App.TodosCommand (_, TD.Todo.StateChangedCommand) -> True
          _ -> False
      go cmds = do
-         -- Run only one of the state changed command last
          let (changes, cmds') = partition isStateChangedCmd (D.toList cmds)
          interpretCommands stateMVar output cmds'
+         -- Run only one of the state changed
          interpretCommands stateMVar output (foldMap (First . Just) changes)
 
 appEffect :: MonadIO io => MVar TD.App.Model -> PC.Output TD.App.Action -> PC.Input TD.App.Action -> P.Effect io TD.App.Model

@@ -28,6 +28,11 @@ data Model = Model
 
 makeClassy_ ''Model
 
+releaseCallbacks :: Model -> IO ()
+releaseCallbacks s = do
+    J.releaseCallback (fireChange s)
+    J.releaseCallback (fireSubmit s)
+
 window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
 window = do
     s <- ask

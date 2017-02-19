@@ -25,6 +25,7 @@ class App extends React.Component {
 
     render() {
         return mkCombinedElements(registry.shout('renderHaskell', null));
-    }}
+    }
+}
 
 export default App;
