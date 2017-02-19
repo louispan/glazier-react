@@ -12,9 +12,9 @@ module Todo.App
     , HasModel(..)
     , window
     , gadget
-    , toggleAllHandler
-    , inputChangeHandler
-    , inputKeyDownHandler
+    , toggleCompleteAllFirer
+    , inputChangeFirer
+    , inputSubmitFirer
     , producer
     ) where
 
@@ -40,28 +40,28 @@ import qualified Todo.Todo as TD.Todo
 import Data.Semigroup
 
 -- | If state changed, then run the notifyListeners IO action
-data Command = StateChangedCommand | TodoEnteredCommand J.JSString
+data Command = StateChangedCommand | TodoSubmittedCommand J.JSString
 
-data Action = ToggleAllAction | InputAction TD.Input.Action
+data Action = ToggleCompleteAllAction | InputAction TD.Input.Action
 
 makeClassyPrisms ''Action
 
 data Model = Model
     { todoInput :: TD.Input.Model
     , todos :: [TD.Todo.Model]
-    , onToggleAllHandler :: J.Callback (J.JSVal -> IO ())
+    , fireToggleCompleteAll :: J.Callback (J.JSVal -> IO ())
     }
 
 makeClassy_ ''Model
 
-toggleAllHandler :: Applicative m => J.JSVal -> m Action
-toggleAllHandler = const $ pure ToggleAllAction
+toggleCompleteAllFirer :: Applicative m => J.JSVal -> m Action
+toggleCompleteAllFirer = const $ pure ToggleCompleteAllAction
 
-inputChangeHandler :: J.JSVal -> MaybeT IO Action
-inputChangeHandler v = (review _InputAction) <$> TD.Input.changeHandler v
+inputChangeFirer :: J.JSVal -> MaybeT IO Action
+inputChangeFirer v = (review _InputAction) <$> TD.Input.changeFirer v
 
-inputKeyDownHandler :: J.JSVal -> MaybeT IO Action
-inputKeyDownHandler v = (review _InputAction) <$> TD.Input.keyDownHandler v
+inputSubmitFirer :: J.JSVal -> MaybeT IO Action
+inputSubmitFirer v = (review _InputAction) <$> TD.Input.submitFirer v
 
 window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
 window = do
@@ -81,14 +81,20 @@ mainWindow = do
         then pure ()
         else do
         s <- ask
-        lift $ R.branch "section" (M.singleton "className" (E.strval "main")) $
+        lift $ R.branch "section" (M.singleton "className" (E.strval "main")) $ do
             -- This is the complete all checkbox
             R.leaf (E.strval "input") (M.fromList
                         [ ("className", E.strval "toggle-all")
                         , ("type", E.strval "checkbox")
-                        , ("checked", J.pToJSVal (not (hasActiveTodos todos')))
-                        , ("onChange", J.jsval (s ^. _onToggleAllHandler))
+                        , ("checked", J.pToJSVal . not . hasActiveTodos $ todos')
+                        , ("onChange", J.jsval $ fireToggleCompleteAll s)
                         ])
+            view G._WindowT todoListWindow s
+
+todoListWindow :: Monad m => G.WindowT Model (R.ReactMlT m) ()
+todoListWindow = do
+    lift $ R.branch "ul" (M.singleton "className" (E.strval "todo-list")) $ do
+        pure ()
 
 hasActiveTodos :: [TD.Todo.Model] -> Bool
 hasActiveTodos = null . filter (not . TD.Todo.completed)
@@ -100,13 +106,13 @@ appGadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
 appGadget = do
     a <- ask
     case a of
-        ToggleAllAction -> do
+        ToggleCompleteAllAction -> do
             _todos %= go
             pure $ D.singleton StateChangedCommand
         _ -> pure mempty -- ^ delegate to other gadgets
   where
     go :: [TD.Todo.Model] -> [TD.Todo.Model]
-    go xs = fmap (go' (hasActiveTodos xs)) xs
+    go xs = fmap (go' $ hasActiveTodos xs) xs
     go' :: Bool -> TD.Todo.Model -> TD.Todo.Model
     go' b s = s & TD.Todo._completed .~ b
 
@@ -118,7 +124,7 @@ inputGadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
 inputGadget = fmap go <$> G.implant _todoInput (G.dispatch _InputAction TD.Input.gadget)
   where
     go TD.Input.StateChangedCommand = StateChangedCommand
-    go (TD.Input.EnteredCommand str) = TodoEnteredCommand str
+    go (TD.Input.SubmittedCommand str) = TodoSubmittedCommand str
 
 producer
     :: (MFunctor t, MonadState Model (t STM), MonadTrans t, MonadIO io)

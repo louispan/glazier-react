@@ -1,74 +1,121 @@
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Todo.Todo where
 
 import Control.Applicative as A
 import Control.Lens
+import Control.Monad.Reader
+import Control.Monad.Trans.Maybe
+import qualified Data.DList as D
 import qualified Data.HashMap.Strict as M
-import qualified GHCJS.Types as J
-import qualified GHCJS.Foreign.Callback as J
-import qualified GHCJS.Marshal.Pure as J
-import qualified GHCJS.Marshal as J
 import qualified Data.JSString as J
+import Data.Maybe
+import qualified GHCJS.Foreign.Callback as J
+import qualified GHCJS.Marshal as J
+import qualified GHCJS.Marshal.Pure as J
+import qualified GHCJS.Nullable as J
+import qualified GHCJS.Types as J
 import qualified Glazier as G
 import qualified Glazier.React.Event as R
 import qualified Glazier.React.Markup as R
 import qualified Glazier.React.Util as E
-import Control.Monad.Reader
-import Control.Monad.Trans.Maybe
-import qualified Data.DList as D
+
+data Action
+    = ToggleCompleteAction
+    | EditAction
+    | DestroyAction
+    | CancelEditAction
+    | SubmitAction
+    | ChangeAction J.JSString
+
+makeClassyPrisms ''Action
 
 data Model = Model
-    { id :: J.JSString
+    { uid :: J.JSString
     , value :: J.JSString
     , completed :: Bool
+    , editText :: Maybe J.JSString
+    , fireToggleComplete :: J.Callback (J.JSVal -> IO ())
+    , fireEdit :: J.Callback (J.JSVal -> IO ())
+    , fireDestroy :: J.Callback (J.JSVal -> IO ())
+    , fireCancelEdit :: J.Callback (J.JSVal -> IO ())
+    , fireChange :: J.Callback (J.JSVal -> IO ())
+    , handleKeyDown :: J.Callback (J.JSVal -> IO ())
     }
 
 makeClassy_ ''Model
 
--- window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
--- window = do
---     s <- ask
---     lift $ R.leaf (E.strval "input") (M.fromList
---                     [ ("key", E.strval (s ^. _key))
---                     , ("className", E.strval "new-todo")
---                     , ("placeholder", E.strval "What needs to be done?")
---                     , ("value", J.jsval (s ^. _value))
---                     , ("autoFocus", J.pToJSVal True)
---                     , ("onChange", J.jsval (s ^. _onChangeHandler))
---                     , ("onKeyDown", J.jsval (s ^. _onKeyDownHandler))
---                     ])
+classNames :: [(J.JSString, Bool)] -> J.JSVal
+classNames = J.jsval . J.unwords . fmap fst . filter snd
 
--- data Action = ChangedAction J.JSString | EnteredAction
+window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
+window = do
+    s <- ask
+    lift $ R.branch "li" (M.singleton "className" (cns s)) $ do
+        R.branch "div" (M.singleton "className" (E.strval "view")) $ do
+            R.leaf (E.strval "input") (M.fromList
+                                      [ ("className", E.strval "toggle")
+                                      , ("type", E.strval "checkbox")
+                                      , ("checked", J.pToJSVal $ completed s)
+                                      , ("onChange", J.jsval $ fireToggleComplete s)
+                                      ])
+            R.branch "label" (M.singleton "onDoubleClick" (J.jsval $ fireEdit s)) (R.txt $ value s)
+            R.leaf (E.strval "button") (M.fromList
+                                      [ ("className", E.strval "destroy")
+                                      , ("onClick", J.jsval $ fireDestroy s)
+                                      ])
+        R.leaf (E.strval "input") (M.fromList
+                                  [ ("className", E.strval "edit")
+                                  , ("value", J.pToJSVal (editText s))
+                                  , ("checked", J.pToJSVal $ completed s)
+                                  , ("onBlur", J.jsval $ fireCancelEdit s)
+                                  , ("onChange", J.jsval $ fireChange s)
+                                  , ("onKeyDown", J.jsval $ handleKeyDown s)
+                                  ])
+  where
+    cns s = classNames [("completed", completed s), ("editing", isJust (editText s))]
 
--- onChange :: J.JSVal -> MaybeT IO Action
--- onChange = R.eventHandlerM goStrict goLazy
---     where
---       goStrict :: J.JSVal -> MaybeT IO J.JSString
---       goStrict evt = do
---           evt' <- MaybeT $ pure $ R.castSyntheticEvent evt
---           -- target is the "input" DOM
---           input <- lift $ pure . J.jsval . R.target . R.parseEvent $ evt'
---           v <- lift $ E.getProperty "value" input
---           MaybeT $ J.fromJSVal v
+toggleCompleteFirer :: Applicative m => J.JSVal -> m Action
+toggleCompleteFirer = const $ pure ToggleCompleteAction
 
---       goLazy :: J.JSString -> MaybeT IO Action
---       goLazy = pure . ChangedAction
+editFirer :: Applicative m => J.JSVal -> m Action
+editFirer = const $ pure EditAction
 
--- onKeyDown :: J.JSVal -> MaybeT IO Action
--- onKeyDown = R.eventHandlerM goStrict goLazy
---     where
---       goStrict :: J.JSVal -> MaybeT IO Int
---       goStrict evt = do
---           evt' <- MaybeT $ pure $ R.castSyntheticEvent evt
---           evt'' <- MaybeT $ pure $ R.parseKeyboardEvent evt'
---           pure $ R.keyCode evt''
+destroyFirer :: Applicative m => J.JSVal -> m Action
+destroyFirer = const $ pure DestroyAction
 
---       goLazy :: Int -> MaybeT IO Action
---       goLazy keyCode = if keyCode == 13 -- FIXME: ENTER_KEY
---                        then pure EnteredAction
---                        else A.empty
+cancelEditFirer :: Applicative m => J.JSVal -> m Action
+cancelEditFirer = const $ pure CancelEditAction
+
+changeFirer :: J.JSVal -> MaybeT IO Action
+changeFirer = R.eventHandlerM goStrict goLazy
+    where
+      goStrict :: J.JSVal -> MaybeT IO J.JSString
+      goStrict evt = do
+          evt' <- MaybeT $ pure $ R.castSyntheticEvent evt
+          -- target is the "input" DOM
+          input <- lift $ pure . J.jsval . R.target . R.parseEvent $ evt'
+          v <- lift $ E.getProperty "value" input
+          MaybeT $ J.fromJSVal v
+
+      goLazy :: J.JSString -> MaybeT IO Action
+      goLazy = pure . ChangeAction
+
+keyDownHandler :: J.JSVal -> MaybeT IO Action
+keyDownHandler = R.eventHandlerM goStrict goLazy
+    where
+      goStrict :: J.JSVal -> MaybeT IO Int
+      goStrict evt = do
+          evt' <- MaybeT $ pure $ R.castSyntheticEvent evt
+          evt'' <- MaybeT $ pure $ R.parseKeyboardEvent evt'
+          pure $ R.keyCode evt''
+
+      goLazy :: Int -> MaybeT IO Action
+      goLazy keyCode = case keyCode of
+                           13 -> pure SubmitAction -- FIXME: ENTER_KEY
+                           27 -> pure CancelEditAction -- FIXME: ESCAPE_KEY
+                           _ -> A.empty
 
 -- data Command = StateChangedCommand | EnteredCommand J.JSString
 

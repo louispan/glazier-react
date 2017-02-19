@@ -42,19 +42,19 @@ main = do
 
     -- It is not trivial to call arbitrary Haskell functions from Javascript
     -- A hacky way is to create a Callback and assign it to a global registry.
-    inputChangeHandler' <- mkActionCallback output TD.App.inputChangeHandler
-    inputKeyDownHandler' <- mkActionCallback output TD.App.inputKeyDownHandler
-    toggleAllHandler' <- mkActionCallback output TD.App.toggleAllHandler
+    inputChangeFirer' <- mkActionCallback output TD.App.inputChangeFirer
+    inputSubmitFirer' <- mkActionCallback output TD.App.inputSubmitFirer
+    toggleCompleteAllFirer' <- mkActionCallback output TD.App.toggleCompleteAllFirer
 
     -- TODO: How to make sure the correct handlers are passed into the correct place?
     let initialState = TD.App.Model
             (TD.Input.Model
                  "input"
                  "hello world!"
-                 inputChangeHandler'
-                 inputKeyDownHandler')
+                 inputChangeFirer'
+                 inputSubmitFirer')
             mempty
-            toggleAllHandler'
+            toggleCompleteAllFirer'
 
     -- Make a MVar so render can get the latest state
     currentState <- newMVar initialState
@@ -79,9 +79,9 @@ main = do
     -- We actually never get here because in this example runEffect never quits
     -- but in other apps, gadgetEffect might be quit-able (eg with MaybeT)
     -- so let's add the cleanup code here to be explicit.
-    J.releaseCallback inputChangeHandler'
-    J.releaseCallback inputKeyDownHandler'
-    J.releaseCallback toggleAllHandler'
+    J.releaseCallback inputChangeFirer'
+    J.releaseCallback inputSubmitFirer'
+    J.releaseCallback toggleCompleteAllFirer'
 
 foreign import javascript unsafe
   "hgr$todo$registry['listen']($1, $2);"
@@ -107,7 +107,7 @@ interpretCommand stateMVar TD.App.StateChangedCommand = do
     liftIO . void $ swapMVar stateMVar s -- ^ so that the render callback can use the latest state
     liftIO $ js_globalShout "forceRender" J.nullRef -- ^ tell React to call render
 
-interpretCommand _ (TD.App.TodoEnteredCommand str) = do
+interpretCommand _ (TD.App.TodoSubmittedCommand str) = do
     liftIO $ putStrLn $ "TODO entered: " ++ (J.unpack str)
 
 interpretCommands
