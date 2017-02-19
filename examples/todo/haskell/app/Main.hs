@@ -26,8 +26,11 @@ import qualified Pipes as P
 import qualified Pipes.Concurrent as PC
 import qualified Pipes.Lift as PL
 import qualified Pipes.Prelude as PP
-import qualified Todo as TD
+import qualified Todo.App as TD
+import qualified Todo.Input as TD.Input
 import Control.Concurrent.MVar
+import qualified Data.DList as D
+import Data.List
 
 -- | 'main' is used to create React classes and setup callbacks to be used externally by the browser.
 main :: IO ()
@@ -47,7 +50,7 @@ main = do
          action <- TD.appInputOnKeyDown evt
          lift $ void $ atomically $ PC.send output action
 
-    let initialState = TD.AppModel (TD.InputModel
+    let initialState = TD.AppModel (TD.Input.InputModel
                                     "input"
                                     "hello world!"
                                     doAppInputOnChange
@@ -88,22 +91,33 @@ foreign import javascript unsafe
   "hgr$todo$registry['shout']($1, $2);"
   js_globalShout :: J.JSString -> J.JSVal -> IO ()
 
--- | If state changed, then run the notifyListeners IO action
-interpretCommand :: (MonadIO io, MonadState TD.AppModel io) => MVar TD.AppModel -> TD.Command -> io ()
-interpretCommand stateMVar TD.StateChangedCommand = do
+interpretCommand :: (MonadIO io, MonadState TD.AppModel io) => MVar TD.AppModel -> TD.AppCommand -> io ()
+interpretCommand stateMVar TD.AppStateChangedCommand = do
     s <- get
-    liftIO . void $ swapMVar stateMVar s -- ^ so that the render thread can get the latest thread
+    liftIO . void $ swapMVar stateMVar s -- ^ so that the render callback can use the latest state
     liftIO $ js_globalShout "forceRender" J.nullRef -- ^ tell React to call render
+
+interpretCommand _ (TD.AppTodoEnteredCommand str) = do
+    liftIO $ putStrLn $ "TODO entered: " ++ (J.unpack str)
 
 interpretCommands
     :: (Foldable t, MonadState TD.AppModel io, MonadIO io)
-    => MVar TD.AppModel -> t TD.Command -> io ()
+    => MVar TD.AppModel -> t TD.AppCommand -> io ()
 interpretCommands stateMVar = traverse_ (interpretCommand stateMVar)
 
 interpretCommandsPipe
     :: (MonadState TD.AppModel io, MonadIO io)
-    => MVar TD.AppModel -> P.Pipe (First TD.Command) () io ()
-interpretCommandsPipe stateMVar = PP.mapM (interpretCommands stateMVar)
+    => MVar TD.AppModel -> P.Pipe (D.DList TD.AppCommand) () io ()
+interpretCommandsPipe stateMVar = PP.mapM go
+   where
+     isStateChangedCmd cmd = case cmd of
+         TD.AppStateChangedCommand -> True
+         _ -> False
+     go cmds = do
+         -- Run only one of the state changed command last
+         let (changes, cmds') = partition isStateChangedCmd (D.toList cmds)
+         interpretCommands stateMVar cmds'
+         interpretCommands stateMVar (foldMap (First . Just) changes)
 
 appEffect :: MonadIO io => MVar TD.AppModel -> PC.Input TD.AppAction -> P.Effect io TD.AppModel
 appEffect stateMVar input = do

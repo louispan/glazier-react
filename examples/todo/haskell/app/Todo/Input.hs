@@ -17,8 +17,7 @@ import qualified Glazier.React.Markup as R
 import qualified Glazier.React.Util as E
 import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
-import Todo.Command as TD
-import Data.Monoid
+import qualified Data.DList as D
 
 data InputModel = InputModel
     { key :: J.JSString
@@ -47,7 +46,7 @@ inputWindow = do
                     , ("onKeyDown", J.jsval (s ^. _onKeyDown))
                     ])
 
-data InputAction = InputChanged J.JSString | InputEntered
+data InputAction = InputChangedAction J.JSString | InputEnteredAction
 
 inputOnChange :: J.JSVal -> MaybeT IO InputAction
 inputOnChange = R.eventHandlerM goStrict goLazy
@@ -61,7 +60,7 @@ inputOnChange = R.eventHandlerM goStrict goLazy
           MaybeT $ J.fromJSVal v
 
       goLazy :: J.JSString -> MaybeT IO InputAction
-      goLazy = pure . InputChanged
+      goLazy = pure . InputChangedAction
 
 inputOnKeyDown :: J.JSVal -> MaybeT IO InputAction
 inputOnKeyDown = R.eventHandlerM goStrict goLazy
@@ -74,18 +73,20 @@ inputOnKeyDown = R.eventHandlerM goStrict goLazy
 
       goLazy :: Int -> MaybeT IO InputAction
       goLazy keyCode = if keyCode == 13 -- FIXME: ENTER_KEY
-                       then pure InputEntered
+                       then pure InputEnteredAction
                        else A.empty
 
-inputGadget :: Monad m => G.GadgetT InputAction InputModel m (First Command)
+data InputCommand = InputStateChangedCommand | InputEnteredCommand J.JSString
+
+inputGadget :: Monad m => G.GadgetT InputAction InputModel m (D.DList InputCommand)
 inputGadget = do
     a <- ask
     case a of
-        InputChanged str -> do
+        InputChangedAction str -> do
             _value .= str
-            pure $ First $ Just TD.StateChangedCommand
-        InputEntered -> do
+            pure $ D.singleton InputStateChangedCommand
+        InputEnteredAction -> do
             -- trim the text
             _value %= J.strip
-            -- FIXME: to do fire new todo item action
-            pure $ First $ Just TD.StateChangedCommand
+            v <- use _value
+            pure (D.fromList [InputEnteredCommand v, InputStateChangedCommand])

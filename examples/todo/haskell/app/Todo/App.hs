@@ -13,7 +13,6 @@ import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Maybe
 import qualified Data.HashMap.Strict as M
-import Data.Monoid
 import qualified GHCJS.Types as J
 import qualified Glazier as G
 import qualified Glazier.React.Markup as R
@@ -22,7 +21,10 @@ import qualified Pipes as P
 import qualified Pipes.Concurrent as PC
 import qualified Pipes.Misc as PM
 import qualified Todo.Input as TD.Input
-import qualified Todo.Command as TD
+import qualified Data.DList as D
+
+-- | If state changed, then run the notifyListeners IO action
+data AppCommand = AppStateChangedCommand | AppTodoEnteredCommand J.JSString
 
 data AppAction = AppInputAction TD.Input.InputAction
 
@@ -47,8 +49,11 @@ appWindow = do
 appInputWindow :: Monad m => G.WindowT AppModel (R.ReactMlT m) ()
 appInputWindow = G.implant _todoInput TD.Input.inputWindow
 
-appGadget :: Monad m => G.GadgetT AppAction AppModel m (First TD.Command)
-appGadget = G.implant _todoInput (G.dispatch _AppInputAction TD.Input.inputGadget)
+appGadget :: Monad m => G.GadgetT AppAction AppModel m (D.DList AppCommand)
+appGadget = fmap go <$> G.implant _todoInput (G.dispatch _AppInputAction TD.Input.inputGadget)
+  where
+    go TD.Input.InputStateChangedCommand = AppStateChangedCommand
+    go (TD.Input.InputEnteredCommand str) = AppTodoEnteredCommand str
 
 appInputOnChange :: J.JSVal -> MaybeT IO AppAction
 appInputOnChange v = (review _AppInputAction) <$> TD.Input.inputOnChange v
@@ -59,5 +64,5 @@ appInputOnKeyDown v = (review _AppInputAction) <$> TD.Input.inputOnKeyDown v
 appProducer
     :: (MFunctor t, MonadState AppModel (t STM), MonadTrans t, MonadIO io)
     => PC.Input AppAction
-    -> P.Producer' (First TD.Command) (t io) ()
+    -> P.Producer' (D.DList AppCommand) (t io) ()
 appProducer input = hoist (hoist (liftIO . atomically)) (PM.rsProducer input (G.runGadgetT appGadget))
