@@ -37,18 +37,13 @@ main :: IO ()
 main = do
     -- Create a 'Pipes.Concurrent' mailbox for receiving actions from html events.
     -- NB. using 'PC.bounded 1' also works without deadlocks, but doesn't save memory
-    -- blocked events are kept by the GHCJCSruntime.
+    -- blocked events are kept by the GHCJCS runtime.
     (output, input) <- liftIO . PC.spawn $ PC.unbounded
 
     -- It is not trivial to call arbitrary Haskell functions from Javascript
     -- A hacky way is to create a Callback and assign it to a global registry.
-    -- Input onChange callback
-    doAppInputOnChange <- J.syncCallback1 J.ContinueAsync $ \evt -> void $ runMaybeT $ do
-         action <- TD.App.inputOnChange evt
-         lift $ void $ atomically $ PC.send output action
-    doAppInputOnKeyDown <- J.syncCallback1 J.ContinueAsync $ \evt -> void $ runMaybeT $ do
-         action <- TD.App.inputOnKeyDown evt
-         lift $ void $ atomically $ PC.send output action
+    doAppInputOnChange <- mkActionCallback output TD.App.inputOnChange
+    doAppInputOnKeyDown <- mkActionCallback output TD.App.inputOnKeyDown
 
     let initialState = TD.App.Model (TD.Input.Model
                                     "input"
@@ -90,6 +85,16 @@ foreign import javascript unsafe
 foreign import javascript unsafe
   "hgr$todo$registry['shout']($1, $2);"
   js_globalShout :: J.JSString -> J.JSVal -> IO ()
+
+mkActionCallback
+    :: PC.Output TD.App.Action
+    -> (J.JSVal -> MaybeT IO TD.App.Action)
+    -> IO (J.Callback (J.JSVal -> IO ()))
+mkActionCallback output handler =
+    J.syncCallback1 J.ContinueAsync $ \evt ->
+        void $ runMaybeT $ do
+            action <- handler evt
+            lift $ void $ atomically $ PC.send output action
 
 interpretCommand :: (MonadIO io, MonadState TD.App.Model io) => MVar TD.App.Model -> TD.App.Command -> io ()
 interpretCommand stateMVar TD.App.StateChangedCommand = do
