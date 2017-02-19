@@ -14,7 +14,6 @@ import Data.Maybe
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Marshal as J
 import qualified GHCJS.Marshal.Pure as J
-import qualified GHCJS.Nullable as J
 import qualified GHCJS.Types as J
 import qualified Glazier as G
 import qualified Glazier.React.Event as R
@@ -23,7 +22,7 @@ import qualified Glazier.React.Util as E
 
 data Action
     = ToggleCompleteAction
-    | EditAction
+    | StartEditAction
     | DestroyAction
     | CancelEditAction
     | SubmitAction
@@ -37,7 +36,7 @@ data Model = Model
     , completed :: Bool
     , editText :: Maybe J.JSString
     , fireToggleComplete :: J.Callback (J.JSVal -> IO ())
-    , fireEdit :: J.Callback (J.JSVal -> IO ())
+    , fireStartEdit :: J.Callback (J.JSVal -> IO ())
     , fireDestroy :: J.Callback (J.JSVal -> IO ())
     , fireCancelEdit :: J.Callback (J.JSVal -> IO ())
     , fireChange :: J.Callback (J.JSVal -> IO ())
@@ -60,7 +59,7 @@ window = do
                                       , ("checked", J.pToJSVal $ completed s)
                                       , ("onChange", J.jsval $ fireToggleComplete s)
                                       ])
-            R.branch "label" (M.singleton "onDoubleClick" (J.jsval $ fireEdit s)) (R.txt $ value s)
+            R.branch "label" (M.singleton "onDoubleClick" (J.jsval $ fireStartEdit s)) (R.txt $ value s)
             R.leaf (E.strval "button") (M.fromList
                                       [ ("className", E.strval "destroy")
                                       , ("onClick", J.jsval $ fireDestroy s)
@@ -79,8 +78,8 @@ window = do
 toggleCompleteFirer :: Applicative m => J.JSVal -> m Action
 toggleCompleteFirer = const $ pure ToggleCompleteAction
 
-editFirer :: Applicative m => J.JSVal -> m Action
-editFirer = const $ pure EditAction
+startEditFirer :: Applicative m => J.JSVal -> m Action
+startEditFirer = const $ pure StartEditAction
 
 destroyFirer :: Applicative m => J.JSVal -> m Action
 destroyFirer = const $ pure DestroyAction
@@ -117,17 +116,23 @@ keyDownHandler = R.eventHandlerM goStrict goLazy
                            27 -> pure CancelEditAction -- FIXME: ESCAPE_KEY
                            _ -> A.empty
 
--- data Command = StateChangedCommand | EnteredCommand J.JSString
+data Command = StateChangedCommand | SubmitCommand J.JSString | DestroyCommand
 
--- gadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
--- gadget = do
---     a <- ask
---     case a of
---         ChangedAction str -> do
---             _value .= str
---             pure $ D.singleton StateChangedCommand
---         EnteredAction -> do
---             -- trim the text
---             _value %= J.strip
---             v <- use _value
---             pure (D.fromList [EnteredCommand v, StateChangedCommand])
+gadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
+gadget = do
+    a <- ask
+    case a of
+        ToggleCompleteAction -> do
+            _completed %= not
+            pure $ D.singleton StateChangedCommand
+        StartEditAction -> pure mempty
+        DestroyAction -> pure $ D.singleton DestroyCommand
+        CancelEditAction -> pure mempty
+        ChangeAction str -> do
+            _value .= str
+            pure $ D.singleton StateChangedCommand
+        SubmitAction -> do
+            -- trim the text
+            _value %= J.strip
+            v <- use _value
+            pure (D.fromList [SubmitCommand v, StateChangedCommand])

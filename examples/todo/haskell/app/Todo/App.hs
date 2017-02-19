@@ -41,7 +41,7 @@ import qualified Todo.Todo as TD.Todo
 import Data.Semigroup
 
 -- | If state changed, then run the notifyListeners IO action
-data Command = StateChangedCommand | TodoSubmittedCommand J.JSString
+data Command = StateChangedCommand | TodoSubmitCommand J.JSString
 
 data Action = ToggleCompleteAllAction | InputAction TD.Input.Action
 
@@ -132,7 +132,7 @@ inputGadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
 inputGadget = fmap go <$> G.implant _todoInput (G.dispatch _InputAction TD.Input.gadget)
   where
     go TD.Input.StateChangedCommand = StateChangedCommand
-    go (TD.Input.SubmittedCommand str) = TodoSubmittedCommand str
+    go (TD.Input.SubmitCommand str) = TodoSubmitCommand str
 
 producer
     :: (MFunctor t, MonadState Model (t STM), MonadTrans t, MonadIO io)

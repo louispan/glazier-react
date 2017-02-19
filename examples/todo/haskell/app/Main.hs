@@ -108,7 +108,7 @@ interpretCommand stateMVar TD.App.StateChangedCommand = do
     liftIO . void $ swapMVar stateMVar s -- ^ so that the render callback can use the latest state
     liftIO $ js_globalShout "forceRender" J.nullRef -- ^ tell React to call render
 
-interpretCommand _ (TD.App.TodoSubmittedCommand str) = do
+interpretCommand _ (TD.App.TodoSubmitCommand str) = do
     liftIO $ putStrLn $ "TODO entered: " ++ (J.unpack str)
 
 interpretCommands

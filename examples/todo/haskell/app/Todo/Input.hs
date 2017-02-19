@@ -71,7 +71,7 @@ submitFirer = R.eventHandlerM goStrict goLazy
                        then pure SubmitAction
                        else A.empty
 
-data Command = StateChangedCommand | SubmittedCommand J.JSString
+data Command = StateChangedCommand | SubmitCommand J.JSString
 
 gadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
 gadget = do
@@ -84,4 +84,4 @@ gadget = do
             -- trim the text
             _value %= J.strip
             v <- use _value
-            pure (D.fromList [SubmittedCommand v, StateChangedCommand])
+            pure (D.fromList [SubmitCommand v, StateChangedCommand])
