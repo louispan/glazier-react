@@ -12,11 +12,14 @@ import Control.Lens
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.State.Strict
+import Control.Monad.Trans.Maybe
 import Data.Foldable
 import Data.Monoid
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Prim as J
 import qualified GHCJS.Types as J
+import qualified GHCJS.Marshal.Pure as J
+import qualified Data.JSString as J
 import qualified Glazier as G
 import qualified Glazier.React.Element as R
 import qualified Glazier.React.Markup as R
@@ -38,12 +41,13 @@ main = do
     -- It is not trivial to call arbitrary Haskell functions from Javascript
     -- A hacky way is to create a Callback and assign it to a global registry.
     -- Input onChange callback
-    onInputChanged <- J.syncCallback1 J.ContinueAsync $ \evt -> do
+    onInputChanged <- J.syncCallback1 J.ContinueAsync $ \evt -> void $ runMaybeT $ do
          action <- TD.appInputOnChangedHandler evt
-         void $ atomically $ PC.send output action
+         lift $ void $ atomically $ PC.send output action
 
     let initialState = TD.AppModel (TD.InputModel "input" "hello world!" onInputChanged)
 
+    -- Make a MVar so render can get the latest state
     currentState <- newMVar initialState
 
     -- Setup the render callback
@@ -64,7 +68,7 @@ main = do
 
     -- Cleanup
     -- We actually never get here because in this example runEffect never quits
-    -- but in other apps, gadgetEffect might be quit-able (MaybeT)
+    -- but in other apps, gadgetEffect might be quit-able (eg with MaybeT)
     -- so let's add the cleanup code here to be explicit.
     J.releaseCallback onInputChanged
     J.releaseCallback render
@@ -81,13 +85,17 @@ foreign import javascript unsafe
 interpretCommand :: (MonadIO io, MonadState TD.AppModel io) => MVar TD.AppModel -> TD.Command -> io ()
 interpretCommand stateMVar TD.StateChangedCommand = do
     s <- get
-    liftIO $ swapMVar stateMVar s -- ^ so that the render thread can get the latest thread
+    liftIO . void $ swapMVar stateMVar s -- ^ so that the render thread can get the latest thread
     liftIO $ js_globalShout "forceRender" J.nullRef -- ^ tell React to call render
 
-interpretCommands :: (Foldable t, MonadState TD.AppModel io, MonadIO io) => MVar TD.AppModel -> t TD.Command -> io ()
+interpretCommands
+    :: (Foldable t, MonadState TD.AppModel io, MonadIO io)
+    => MVar TD.AppModel -> t TD.Command -> io ()
 interpretCommands stateMVar = traverse_ (interpretCommand stateMVar)
 
-interpretCommandsPipe :: (MonadState TD.AppModel io, MonadIO io) => MVar TD.AppModel -> P.Pipe (First TD.Command) () io ()
+interpretCommandsPipe
+    :: (MonadState TD.AppModel io, MonadIO io)
+    => MVar TD.AppModel -> P.Pipe (First TD.Command) () io ()
 interpretCommandsPipe stateMVar = PP.mapM (interpretCommands stateMVar)
 
 appEffect :: MonadIO io => MVar TD.AppModel -> PC.Input TD.AppAction -> P.Effect io TD.AppModel

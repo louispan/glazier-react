@@ -13,7 +13,7 @@ module Glazier.React.Event
   , SyntheticEvent
   , castSyntheticEvent
   , eventHandler
-  , eventHandlerIO
+  , eventHandlerM
   , Event(..)
   , preventDefault
   , isDefaultPrevented
@@ -101,8 +101,10 @@ castSyntheticEvent _ | otherwise = Nothing
 eventHandler :: NFData a => (evt -> a) -> (a -> b) -> (evt -> b)
 eventHandler goStrict goLazy evt = goLazy $!! goStrict evt
 
-eventHandlerIO :: NFData a => (evt -> IO a) -> (a -> IO b) -> (evt -> IO b)
-eventHandlerIO goStrict goLazy evt = do
+-- | a monadic version of eventHandler
+-- The monad's effects must not block!
+eventHandlerM :: (Monad m, NFData a) => (evt -> m a) -> (a -> m b) -> (evt -> m b)
+eventHandlerM goStrict goLazy evt = do
     r <- goStrict evt
     goLazy $!! r
 
@@ -150,7 +152,7 @@ data Event = Event
     , eventType :: JSString
     }
 
--- | unsafe to enable lazy parsing. See mkEventHandler
+-- | unsafe and non-IO to enable lazy parsing. See mkEventHandler
 foreign import javascript unsafe "$1[$2]"
   js_unsafeProperty :: JSVal -> JSString -> JSVal
 

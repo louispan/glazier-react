@@ -1,10 +1,8 @@
-import React, {Component} from 'react';
-import logo from './logo.svg';
-import './App.css';
+import React from 'react';
 // import {registry, mkCombinedElements} from '../build/todo.min';
 import {registry, mkCombinedElements} from '../build/todo';
 
-class App extends Component {
+class App extends React.Component {
 
     constructor(props) {
         super(props);
