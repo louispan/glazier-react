@@ -18,7 +18,6 @@ import Data.Monoid
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Prim as J
 import qualified GHCJS.Types as J
-import qualified GHCJS.Marshal.Pure as J
 import qualified Data.JSString as J
 import qualified Glazier as G
 import qualified Glazier.React.Element as R
@@ -41,22 +40,30 @@ main = do
     -- It is not trivial to call arbitrary Haskell functions from Javascript
     -- A hacky way is to create a Callback and assign it to a global registry.
     -- Input onChange callback
-    onInputChanged <- J.syncCallback1 J.ContinueAsync $ \evt -> void $ runMaybeT $ do
-         action <- TD.appInputOnChangedHandler evt
+    doAppInputOnChange <- J.syncCallback1 J.ContinueAsync $ \evt -> void $ runMaybeT $ do
+         action <- TD.appInputOnChange evt
+         lift $ void $ atomically $ PC.send output action
+    doAppInputOnKeyDown <- J.syncCallback1 J.ContinueAsync $ \evt -> void $ runMaybeT $ do
+         action <- TD.appInputOnKeyDown evt
          lift $ void $ atomically $ PC.send output action
 
-    let initialState = TD.AppModel (TD.InputModel "input" "hello world!" onInputChanged)
+    let initialState = TD.AppModel (TD.InputModel
+                                    "input"
+                                    "hello world!"
+                                    doAppInputOnChange
+                                    doAppInputOnKeyDown
+                                   )
 
     -- Make a MVar so render can get the latest state
     currentState <- newMVar initialState
 
     -- Setup the render callback
     -- render <- syncCallback1' (view G._WindowT' (jsval <$> counterWindow) . R.unsafeCoerceReactElement)
-    render <- J.syncCallback1' $ \_ -> do
+    doRender <- J.syncCallback1' $ \_ -> do
         s <- readMVar currentState
         xs <- view G._WindowT' (R.renderedWindow TD.appWindow) s
         J.jsval <$> R.mkCombinedElements xs
-    void $ js_globalListen "renderHaskell" render
+    void $ js_globalListen "renderHaskell" doRender
 
     -- trigger a render now that the render callback is initialized
     js_globalShout "forceRender" J.nullRef
@@ -70,8 +77,8 @@ main = do
     -- We actually never get here because in this example runEffect never quits
     -- but in other apps, gadgetEffect might be quit-able (eg with MaybeT)
     -- so let's add the cleanup code here to be explicit.
-    J.releaseCallback onInputChanged
-    J.releaseCallback render
+    J.releaseCallback doAppInputOnChange
+    J.releaseCallback doRender
 
 foreign import javascript unsafe
   "hgr$todo$registry['listen']($1, $2);"

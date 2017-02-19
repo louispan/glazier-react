@@ -3,12 +3,14 @@
 
 module Todo.Input where
 
+import Control.Applicative as A
 import Control.Lens
 import qualified Data.HashMap.Strict as M
 import qualified GHCJS.Types as J
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Marshal as J
+import qualified Data.JSString as J
 import qualified Glazier as G
 import qualified Glazier.React.Event as R
 import qualified Glazier.React.Markup as R
@@ -22,6 +24,7 @@ data InputModel = InputModel
     { key :: J.JSString
     , value :: J.JSString
     , onChange :: J.Callback (J.JSVal -> IO ())
+    , onKeyDown :: J.Callback (J.JSVal -> IO ())
     }
 
 makeClassy_ ''InputModel
@@ -39,14 +42,15 @@ inputWindow = do
                     , ("className", E.strval ("new-todo"))
                     , ("placeholder", E.strval ("What needs to be done?"))
                     , ("value", J.jsval (s ^. _value))
-                    , ("onChange", J.jsval (s ^. _onChange))
                     , ("autoFocus", J.pToJSVal True)
+                    , ("onChange", J.jsval (s ^. _onChange))
+                    , ("onKeyDown", J.jsval (s ^. _onKeyDown))
                     ])
 
-data InputAction = OnChange J.JSString
+data InputAction = InputChanged J.JSString | InputEntered
 
-onChangeHandler :: J.JSVal -> MaybeT IO InputAction
-onChangeHandler = R.eventHandlerM goStrict goLazy
+inputOnChange :: J.JSVal -> MaybeT IO InputAction
+inputOnChange = R.eventHandlerM goStrict goLazy
     where
       goStrict :: J.JSVal -> MaybeT IO J.JSString
       goStrict evt = do
@@ -57,18 +61,31 @@ onChangeHandler = R.eventHandlerM goStrict goLazy
           MaybeT $ J.fromJSVal v
 
       goLazy :: J.JSString -> MaybeT IO InputAction
-      goLazy = pure . OnChange
+      goLazy = pure . InputChanged
+
+inputOnKeyDown :: J.JSVal -> MaybeT IO InputAction
+inputOnKeyDown = R.eventHandlerM goStrict goLazy
+    where
+      goStrict :: J.JSVal -> MaybeT IO Int
+      goStrict evt = do
+          evt' <- MaybeT $ pure $ R.castSyntheticEvent evt
+          evt'' <- MaybeT $ pure $ R.parseKeyboardEvent evt'
+          pure $ R.keyCode evt''
+
+      goLazy :: Int -> MaybeT IO InputAction
+      goLazy keyCode = if keyCode == 13 -- FIXME: ENTER_KEY
+                       then pure InputEntered
+                       else A.empty
 
 inputGadget :: Monad m => G.GadgetT InputAction InputModel m (First Command)
 inputGadget = do
     a <- ask
     case a of
-        OnChange str -> do
+        InputChanged str -> do
             _value .= str
             pure $ First $ Just TD.StateChangedCommand
-        _ -> pure $ First Nothing
-
-
--- todoEventHandler'
--- wack :: Event -> InputAction
--- wack :: Event -> TodoInputAction
+        InputEntered -> do
+            -- trim the text
+            _value %= J.strip
+            -- FIXME: to do fire new todo item action
+            pure $ First $ Just TD.StateChangedCommand

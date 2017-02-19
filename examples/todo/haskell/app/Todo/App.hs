@@ -11,7 +11,6 @@ import Control.Lens
 import Control.Monad.Morph
 import Control.Monad.Reader
 import Control.Monad.State.Strict
-import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
 import qualified Data.HashMap.Strict as M
 import Data.Monoid
@@ -51,8 +50,11 @@ appInputWindow = G.implant _todoInput TD.Input.inputWindow
 appGadget :: Monad m => G.GadgetT AppAction AppModel m (First TD.Command)
 appGadget = G.implant _todoInput (G.dispatch _AppInputAction TD.Input.inputGadget)
 
-appInputOnChangedHandler :: J.JSVal -> MaybeT IO AppAction
-appInputOnChangedHandler v = (review _AppInputAction) <$> TD.Input.onChangeHandler v
+appInputOnChange :: J.JSVal -> MaybeT IO AppAction
+appInputOnChange v = (review _AppInputAction) <$> TD.Input.inputOnChange v
+
+appInputOnKeyDown :: J.JSVal -> MaybeT IO AppAction
+appInputOnKeyDown v = (review _AppInputAction) <$> TD.Input.inputOnKeyDown v
 
 appProducer
     :: (MFunctor t, MonadState AppModel (t STM), MonadTrans t, MonadIO io)

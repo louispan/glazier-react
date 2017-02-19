@@ -20,67 +20,67 @@ module Glazier.React.Event
   , stopPropagation
   , isPropagationStopped
   , parseEvent
-  , ModifierKey(..)
   , MouseEvent(..)
   , parseMouseEvent
+  , KeyboardEvent(..)
+  , parseKeyboardEvent
   )
 where
 
--- import Control.Lens
 import Control.DeepSeq
-import Data.JSString (JSString, pack)
-import GHCJS.Foreign (fromJSBool)
-import GHCJS.Marshal.Pure (PFromJSVal(..), PToJSVal(..))
-import GHCJS.Types (IsJSVal, JSVal, jsval)
-import JavaScript.Cast (Cast(..))
+import qualified Data.JSString as J
+import qualified GHCJS.Foreign as J
+import qualified GHCJS.Marshal.Pure as J
+import qualified GHCJS.Types as J
+import qualified JavaScript.Cast as J
 
 -- | The object that dispatched the event.
 -- https://developer.mozilla.org/en-US/docs/Web/API/Event/target
-newtype DOMEventTarget = DOMEventTarget JSVal
+newtype DOMEventTarget = DOMEventTarget J.JSVal
 
-instance IsJSVal DOMEventTarget
-instance PToJSVal DOMEventTarget where
-    pToJSVal = jsval
+instance J.IsJSVal DOMEventTarget
+instance J.PToJSVal DOMEventTarget where
+    pToJSVal = J.jsval
 
-instance Cast DOMEventTarget where
+instance J.Cast DOMEventTarget where
     unsafeWrap = DOMEventTarget
     instanceRef _ = js_DOMEventTarget
 
 foreign import javascript unsafe
     "EventTarget"
-    js_DOMEventTarget :: JSVal
+    js_DOMEventTarget :: J.JSVal
 
 -- | The native event
 -- https://developer.mozilla.org/en-US/docs/Web/API/Event
-newtype DOMEvent = DOMEvent JSVal
+newtype DOMEvent = DOMEvent J.JSVal
 
-instance IsJSVal DOMEvent
-instance PToJSVal DOMEvent where
-    pToJSVal = jsval
+instance J.IsJSVal DOMEvent
+instance J.PToJSVal DOMEvent where
+    pToJSVal = J.jsval
 
-instance Cast DOMEvent where
+instance J.Cast DOMEvent where
     unsafeWrap = DOMEvent
     instanceRef _ = js_DOMEvent
 
 foreign import javascript unsafe
     "Event"
-    js_DOMEvent :: JSVal
+    js_DOMEvent :: J.JSVal
 
 -- | Every event in React is a synthetic event, a cross-browser wrapper around the native event.
 -- 'SyntheticEvent' must only be used in the first part of 'eventHandler'.
-newtype SyntheticEvent = SyntheticEvent JSVal
+newtype SyntheticEvent = SyntheticEvent J.JSVal
 
-instance IsJSVal SyntheticEvent
-instance PToJSVal SyntheticEvent where
-    pToJSVal = jsval
+instance J.IsJSVal SyntheticEvent
+instance J.PToJSVal SyntheticEvent where
+    pToJSVal = J.jsval
 
 foreign import javascript unsafe
     "($1 && $1.nativeEvent && $1.nativeEvent instanceof Event)"
-    js_isSyntheticEvent :: JSVal -> Bool
+    js_isSyntheticEvent :: J.JSVal -> Bool
 
 -- | SyntheticEvent cannot be a Javascript.Cast
 -- See https://github.com/ghcjs/ghcjs-base/issues/86
-castSyntheticEvent :: JSVal -> Maybe SyntheticEvent
+castSyntheticEvent :: J.JSVal -> Maybe SyntheticEvent
 castSyntheticEvent a | js_isSyntheticEvent a = Just (SyntheticEvent a)
 castSyntheticEvent _ | otherwise = Nothing
 
@@ -149,17 +149,17 @@ data Event = Event
     , target :: DOMEventTarget
     , timestamp :: Int
     -- type is a reserved word, so prefix to eventType
-    , eventType :: JSString
+    , eventType :: J.JSString
     }
 
 -- | unsafe and non-IO to enable lazy parsing. See mkEventHandler
 foreign import javascript unsafe "$1[$2]"
-  js_unsafeProperty :: JSVal -> JSString -> JSVal
+  js_unsafeProperty :: J.JSVal -> J.JSString -> J.JSVal
 
-unsafeProperty :: PFromJSVal a => JSVal -> JSString -> a
-unsafeProperty v = pFromJSVal . js_unsafeProperty v
+unsafeProperty :: J.PFromJSVal a => J.JSVal -> J.JSString -> a
+unsafeProperty v = J.pFromJSVal . js_unsafeProperty v
 
--- | This should alway be safe to use (if given a valid SyntheticEvent).
+-- | This should alway be safe to use
 parseEvent :: SyntheticEvent -> Event
 parseEvent (SyntheticEvent evt) =
     Event
@@ -175,28 +175,12 @@ parseEvent (SyntheticEvent evt) =
     , eventType = unsafeProperty evt "type"
     }
 
--- | See https://www.w3.org/TR/DOM-Level-3-Events-key/#keys-modifier
-data ModifierKey
-    = Alt
-    | AltGraph
-    | CapsLock
-    | Control
-    | Fn
-    | FnLock
-    | Hyper
-    | Meta
-    | NumLock
-    | ScrollLock
-    | Shift
-    | Super
-    | Symbol
-    | SymbolLock
-    deriving (Show)
 
 -- | Mouse and Drag/Drop events
 -- 'MouseEvent' must only be used in the first part of 'eventHandler'.
 -- https://facebook.github.io/react/docs/events.html#mouse-events
 -- https://developer.mozilla.org/en-US/docs/Web/Events
+-- Event names (eventType)
 -- onClick (click) onContextMenu (contextmenu) onDoubleClick (dblclick)
 -- onDrag (drag) onDragEnd (dragend) onDragEnter (dragenter) onDragExit (dragexit)
 -- onDragLeave (dragleave) onDragOver (dragover) onDragStart (dragstart)
@@ -209,7 +193,7 @@ data MouseEvent = MouseEvent
   , clientX :: Int
   , clientY :: Int
   , ctrlKey :: Bool
-  , getModifierState :: ModifierKey -> Bool
+  , getModifierState :: J.JSString -> Bool
   , metaKey :: Bool
   , pageX :: Int
   , pageY :: Int
@@ -222,14 +206,15 @@ data MouseEvent = MouseEvent
 -- | unsafe to enable lazy parsing. See mkEventHandler
 foreign import javascript unsafe
     "$1.getModifierState($2)"
-    js_unsafeGetModifierState :: JSVal -> JSString -> JSVal
+    js_unsafeGetModifierState :: J.JSVal -> J.JSString -> J.JSVal
 
-unsafeGetModifierState :: JSVal -> ModifierKey -> Bool
-unsafeGetModifierState obj = fromJSBool . js_unsafeGetModifierState obj . pack . show
+-- | See https://www.w3.org/TR/DOM-Level-3-Events-key/#keys-modifier
+unsafeGetModifierState :: J.JSVal -> J.JSString -> Bool
+unsafeGetModifierState obj k = J.fromJSBool $ js_unsafeGetModifierState obj k
 
 foreign import javascript unsafe
     "($1 instanceof MouseEvent)"
-    js_isMouseEvent :: JSVal -> Bool
+    js_isMouseEvent :: J.JSVal -> Bool
 
 parseMouseEvent :: SyntheticEvent -> Maybe MouseEvent
 parseMouseEvent (SyntheticEvent evt) | js_isMouseEvent (js_unsafeProperty evt "nativeEvent") = Just $
@@ -250,3 +235,45 @@ parseMouseEvent (SyntheticEvent evt) | js_isMouseEvent (js_unsafeProperty evt "n
     , shiftKey = unsafeProperty evt "shiftKey"
     }
 parseMouseEvent _ | otherwise = Nothing
+
+-- | Keyboard events
+-- 'KeyboardEvent' must only be used in the first part of 'eventHandler'.
+-- https://facebook.github.io/react/docs/events.html#keyboard-events
+-- Event names (eventType)
+-- onKeyDown (keydown) onKeyPress (keypress) onKeyUp (keyyp)
+data KeyboardEvent = KeyboardEvent
+  { altKey :: Bool
+  , charCode ::Int
+  , ctrlKey :: Bool
+  , getModifierState :: J.JSString -> Bool
+  , key :: J.JSString
+  , keyCode :: Int
+  , locale :: J.JSString
+  , location ::Int
+  , metaKey :: Bool
+  , repeat :: Bool
+  , shiftkey :: Bool
+  , which :: Int
+  }
+
+foreign import javascript unsafe
+    "($1 instanceof KeyboardEvent)"
+    js_isKeyboardEvent :: J.JSVal -> Bool
+
+parseKeyboardEvent :: SyntheticEvent -> Maybe KeyboardEvent
+parseKeyboardEvent (SyntheticEvent evt) | js_isKeyboardEvent (js_unsafeProperty evt "nativeEvent") = Just $
+    KeyboardEvent
+    { altKey = unsafeProperty evt "altKey"
+    , charCode = unsafeProperty evt "charCode"
+    , ctrlKey = unsafeProperty evt "ctrlKey"
+    , getModifierState = unsafeGetModifierState evt
+    , key = unsafeProperty evt "key"
+    , keyCode = unsafeProperty evt "keyCode"
+    , locale = unsafeProperty evt "locale"
+    , location = unsafeProperty evt "location"
+    , metaKey = unsafeProperty evt "metaKey"
+    , repeat = unsafeProperty evt "repeat"
+    , shiftkey = unsafeProperty evt "shiftkey"
+    , which = unsafeProperty evt "which"
+    }
+parseKeyboardEvent _ | otherwise = Nothing
