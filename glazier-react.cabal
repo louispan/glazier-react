@@ -45,6 +45,7 @@ executable glazier-react-todo
   hs-source-dirs:      examples/todo/haskell/app
   other-modules:       Todo.App
                        Todo.Input
+                       Todo.Todo
   main-is:             Main.hs
   js-sources:          examples/todo/haskell/jsbits/global.js
   ghc-options:         -Wall -threaded -rtsopts -with-rtsopts=-N

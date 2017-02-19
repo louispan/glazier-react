@@ -7,18 +7,21 @@
 
 module Main (main) where
 
+import Control.Concurrent.MVar
 import Control.Concurrent.STM
 import Control.Lens
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Maybe
+import qualified Data.DList as D
 import Data.Foldable
+import qualified Data.JSString as J
+import Data.List
 import Data.Monoid
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Prim as J
 import qualified GHCJS.Types as J
-import qualified Data.JSString as J
 import qualified Glazier as G
 import qualified Glazier.React.Element as R
 import qualified Glazier.React.Markup as R
@@ -28,9 +31,6 @@ import qualified Pipes.Lift as PL
 import qualified Pipes.Prelude as PP
 import qualified Todo.App as TD.App
 import qualified Todo.Input as TD.Input
-import Control.Concurrent.MVar
-import qualified Data.DList as D
-import Data.List
 
 -- | 'main' is used to create React classes and setup callbacks to be used externally by the browser.
 main :: IO ()
@@ -42,15 +42,19 @@ main = do
 
     -- It is not trivial to call arbitrary Haskell functions from Javascript
     -- A hacky way is to create a Callback and assign it to a global registry.
-    doAppInputOnChange <- mkActionCallback output TD.App.inputOnChange
-    doAppInputOnKeyDown <- mkActionCallback output TD.App.inputOnKeyDown
+    inputChangeHandler' <- mkActionCallback output TD.App.inputChangeHandler
+    inputKeyDownHandler' <- mkActionCallback output TD.App.inputKeyDownHandler
+    toggleAllHandler' <- mkActionCallback output TD.App.toggleAllHandler
 
-    let initialState = TD.App.Model (TD.Input.Model
-                                    "input"
-                                    "hello world!"
-                                    doAppInputOnChange
-                                    doAppInputOnKeyDown
-                                   )
+    -- TODO: How to make sure the correct handlers are passed into the correct place?
+    let initialState = TD.App.Model
+            (TD.Input.Model
+                 "input"
+                 "hello world!"
+                 inputChangeHandler'
+                 inputKeyDownHandler')
+            mempty
+            toggleAllHandler'
 
     -- Make a MVar so render can get the latest state
     currentState <- newMVar initialState
@@ -75,8 +79,9 @@ main = do
     -- We actually never get here because in this example runEffect never quits
     -- but in other apps, gadgetEffect might be quit-able (eg with MaybeT)
     -- so let's add the cleanup code here to be explicit.
-    J.releaseCallback doAppInputOnChange
-    J.releaseCallback doRender
+    J.releaseCallback inputChangeHandler'
+    J.releaseCallback inputKeyDownHandler'
+    J.releaseCallback toggleAllHandler'
 
 foreign import javascript unsafe
   "hgr$todo$registry['listen']($1, $2);"

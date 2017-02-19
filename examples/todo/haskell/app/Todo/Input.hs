@@ -1,55 +1,50 @@
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Todo.Input where
 
 import Control.Applicative as A
 import Control.Lens
+import Control.Monad.Reader
+import Control.Monad.Trans.Maybe
+import qualified Data.DList as D
 import qualified Data.HashMap.Strict as M
-import qualified GHCJS.Types as J
-import qualified GHCJS.Foreign.Callback as J
-import qualified GHCJS.Marshal.Pure as J
-import qualified GHCJS.Marshal as J
 import qualified Data.JSString as J
+import qualified GHCJS.Foreign.Callback as J
+import qualified GHCJS.Marshal as J
+import qualified GHCJS.Marshal.Pure as J
+import qualified GHCJS.Types as J
 import qualified Glazier as G
 import qualified Glazier.React.Event as R
 import qualified Glazier.React.Markup as R
 import qualified Glazier.React.Util as E
-import Control.Monad.Reader
-import Control.Monad.Trans.Maybe
-import qualified Data.DList as D
 
 data Model = Model
-    { key :: J.JSString
+    { id :: J.JSString
     , value :: J.JSString
-    , onChangeHandler :: J.Callback (J.JSVal -> IO ())
-    , onKeyDownHandler :: J.Callback (J.JSVal -> IO ())
+    , onChange :: J.Callback (J.JSVal -> IO ())
+    , onKeyDown :: J.Callback (J.JSVal -> IO ())
     }
 
 makeClassy_ ''Model
-
--- | unsafe to enable lazy parsing. See mkEventHandler
-foreign import javascript unsafe
-  "console.log($1)"
-  js_trace :: J.JSVal -> IO ()
 
 window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
 window = do
     s <- ask
     lift $ R.leaf (E.strval "input") (M.fromList
-                    [ ("key", E.strval (s ^. _key))
+                    [ ("key", E.strval (s ^. _id))
                     , ("className", E.strval ("new-todo"))
                     , ("placeholder", E.strval ("What needs to be done?"))
                     , ("value", J.jsval (s ^. _value))
                     , ("autoFocus", J.pToJSVal True)
-                    , ("onChange", J.jsval (s ^. _onChangeHandler))
-                    , ("onKeyDown", J.jsval (s ^. _onKeyDownHandler))
+                    , ("onChange", J.jsval (s ^. _onChange))
+                    , ("onKeyDown", J.jsval (s ^. _onKeyDown))
                     ])
 
 data Action = ChangedAction J.JSString | EnteredAction
 
-onChange :: J.JSVal -> MaybeT IO Action
-onChange = R.eventHandlerM goStrict goLazy
+changeHandler :: J.JSVal -> MaybeT IO Action
+changeHandler = R.eventHandlerM goStrict goLazy
     where
       goStrict :: J.JSVal -> MaybeT IO J.JSString
       goStrict evt = do
@@ -62,8 +57,8 @@ onChange = R.eventHandlerM goStrict goLazy
       goLazy :: J.JSString -> MaybeT IO Action
       goLazy = pure . ChangedAction
 
-onKeyDown :: J.JSVal -> MaybeT IO Action
-onKeyDown = R.eventHandlerM goStrict goLazy
+keyDownHandler :: J.JSVal -> MaybeT IO Action
+keyDownHandler = R.eventHandlerM goStrict goLazy
     where
       goStrict :: J.JSVal -> MaybeT IO Int
       goStrict evt = do
