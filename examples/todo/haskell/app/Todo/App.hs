@@ -26,6 +26,7 @@ import Control.Monad.State.Strict
 import Control.Monad.Trans.Maybe
 import qualified Data.DList as D
 import qualified Data.HashMap.Strict as M
+import qualified Data.Map.Strict as Map
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
@@ -46,13 +47,23 @@ data Action = ToggleCompleteAllAction | InputAction TD.Input.Action
 
 makeClassyPrisms ''Action
 
+newtype TodoKey = TodoKey (Int, J.JSString)
+    deriving (Eq, Show)
+
+instance Ord TodoKey where
+    TodoKey (a, _) `compare` TodoKey (b, _) = a `compare` b
+
 data Model = Model
     { todoInput :: TD.Input.Model
-    , todos :: [TD.Todo.Model]
+    , seqNum :: Int
+    , todos :: Map.Map TodoKey TD.Todo.Model
     , fireToggleCompleteAll :: J.Callback (J.JSVal -> IO ())
     }
 
 makeClassy_ ''Model
+
+hasActiveTodos :: Map.Map TodoKey TD.Todo.Model -> Bool
+hasActiveTodos = null . filter (not . TD.Todo.completed) . fmap snd . Map.toList
 
 toggleCompleteAllFirer :: Applicative m => J.JSVal -> m Action
 toggleCompleteAllFirer = const $ pure ToggleCompleteAllAction
@@ -96,9 +107,6 @@ todoListWindow = do
     lift $ R.branch "ul" (M.singleton "className" (E.strval "todo-list")) $ do
         pure ()
 
-hasActiveTodos :: [TD.Todo.Model] -> Bool
-hasActiveTodos = null . filter (not . TD.Todo.completed)
-
 gadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
 gadget = appGadget <> inputGadget
 
@@ -111,7 +119,7 @@ appGadget = do
             pure $ D.singleton StateChangedCommand
         _ -> pure mempty -- ^ delegate to other gadgets
   where
-    go :: [TD.Todo.Model] -> [TD.Todo.Model]
+    go :: Map.Map TodoKey TD.Todo.Model -> Map.Map TodoKey TD.Todo.Model
     go xs = fmap (go' $ hasActiveTodos xs) xs
     go' :: Bool -> TD.Todo.Model -> TD.Todo.Model
     go' b s = s & TD.Todo._completed .~ b

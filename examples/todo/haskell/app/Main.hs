@@ -53,6 +53,7 @@ main = do
                  "hello world!"
                  inputChangeFirer'
                  inputSubmitFirer')
+            0
             mempty
             toggleCompleteAllFirer'
 
