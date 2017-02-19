@@ -26,7 +26,7 @@ import qualified Pipes as P
 import qualified Pipes.Concurrent as PC
 import qualified Pipes.Lift as PL
 import qualified Pipes.Prelude as PP
-import qualified Todo.App as TD
+import qualified Todo.App as TD.App
 import qualified Todo.Input as TD.Input
 import Control.Concurrent.MVar
 import qualified Data.DList as D
@@ -44,13 +44,13 @@ main = do
     -- A hacky way is to create a Callback and assign it to a global registry.
     -- Input onChange callback
     doAppInputOnChange <- J.syncCallback1 J.ContinueAsync $ \evt -> void $ runMaybeT $ do
-         action <- TD.appInputOnChange evt
+         action <- TD.App.inputOnChange evt
          lift $ void $ atomically $ PC.send output action
     doAppInputOnKeyDown <- J.syncCallback1 J.ContinueAsync $ \evt -> void $ runMaybeT $ do
-         action <- TD.appInputOnKeyDown evt
+         action <- TD.App.inputOnKeyDown evt
          lift $ void $ atomically $ PC.send output action
 
-    let initialState = TD.AppModel (TD.Input.InputModel
+    let initialState = TD.App.Model (TD.Input.Model
                                     "input"
                                     "hello world!"
                                     doAppInputOnChange
@@ -64,7 +64,7 @@ main = do
     -- render <- syncCallback1' (view G._WindowT' (jsval <$> counterWindow) . R.unsafeCoerceReactElement)
     doRender <- J.syncCallback1' $ \_ -> do
         s <- readMVar currentState
-        xs <- view G._WindowT' (R.renderedWindow TD.appWindow) s
+        xs <- view G._WindowT' (R.renderedWindow TD.App.window) s
         J.jsval <$> R.mkCombinedElements xs
     void $ js_globalListen "renderHaskell" doRender
 
@@ -91,27 +91,27 @@ foreign import javascript unsafe
   "hgr$todo$registry['shout']($1, $2);"
   js_globalShout :: J.JSString -> J.JSVal -> IO ()
 
-interpretCommand :: (MonadIO io, MonadState TD.AppModel io) => MVar TD.AppModel -> TD.AppCommand -> io ()
-interpretCommand stateMVar TD.AppStateChangedCommand = do
+interpretCommand :: (MonadIO io, MonadState TD.App.Model io) => MVar TD.App.Model -> TD.App.Command -> io ()
+interpretCommand stateMVar TD.App.StateChangedCommand = do
     s <- get
     liftIO . void $ swapMVar stateMVar s -- ^ so that the render callback can use the latest state
     liftIO $ js_globalShout "forceRender" J.nullRef -- ^ tell React to call render
 
-interpretCommand _ (TD.AppTodoEnteredCommand str) = do
+interpretCommand _ (TD.App.TodoEnteredCommand str) = do
     liftIO $ putStrLn $ "TODO entered: " ++ (J.unpack str)
 
 interpretCommands
-    :: (Foldable t, MonadState TD.AppModel io, MonadIO io)
-    => MVar TD.AppModel -> t TD.AppCommand -> io ()
+    :: (Foldable t, MonadState TD.App.Model io, MonadIO io)
+    => MVar TD.App.Model -> t TD.App.Command -> io ()
 interpretCommands stateMVar = traverse_ (interpretCommand stateMVar)
 
 interpretCommandsPipe
-    :: (MonadState TD.AppModel io, MonadIO io)
-    => MVar TD.AppModel -> P.Pipe (D.DList TD.AppCommand) () io ()
+    :: (MonadState TD.App.Model io, MonadIO io)
+    => MVar TD.App.Model -> P.Pipe (D.DList TD.App.Command) () io ()
 interpretCommandsPipe stateMVar = PP.mapM go
    where
      isStateChangedCmd cmd = case cmd of
-         TD.AppStateChangedCommand -> True
+         TD.App.StateChangedCommand -> True
          _ -> False
      go cmds = do
          -- Run only one of the state changed command last
@@ -119,7 +119,7 @@ interpretCommandsPipe stateMVar = PP.mapM go
          interpretCommands stateMVar cmds'
          interpretCommands stateMVar (foldMap (First . Just) changes)
 
-appEffect :: MonadIO io => MVar TD.AppModel -> PC.Input TD.AppAction -> P.Effect io TD.AppModel
+appEffect :: MonadIO io => MVar TD.App.Model -> PC.Input TD.App.Action -> P.Effect io TD.App.Model
 appEffect stateMVar input = do
     s <- liftIO $ readMVar stateMVar
-    PL.execStateP s $ TD.appProducer input P.>-> interpretCommandsPipe stateMVar P.>-> PP.drain
+    PL.execStateP s $ TD.App.producer input P.>-> interpretCommandsPipe stateMVar P.>-> PP.drain

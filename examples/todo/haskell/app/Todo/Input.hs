@@ -19,22 +19,22 @@ import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
 import qualified Data.DList as D
 
-data InputModel = InputModel
+data Model = Model
     { key :: J.JSString
     , value :: J.JSString
-    , onChange :: J.Callback (J.JSVal -> IO ())
-    , onKeyDown :: J.Callback (J.JSVal -> IO ())
+    , onChangeHandler :: J.Callback (J.JSVal -> IO ())
+    , onKeyDownHandler :: J.Callback (J.JSVal -> IO ())
     }
 
-makeClassy_ ''InputModel
+makeClassy_ ''Model
 
 -- | unsafe to enable lazy parsing. See mkEventHandler
 foreign import javascript unsafe
   "console.log($1)"
   js_trace :: J.JSVal -> IO ()
 
-inputWindow :: Monad m => G.WindowT InputModel (R.ReactMlT m) ()
-inputWindow = do
+window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
+window = do
     s <- ask
     lift $ R.leaf (E.strval "input") (M.fromList
                     [ ("key", E.strval (s ^. _key))
@@ -42,14 +42,14 @@ inputWindow = do
                     , ("placeholder", E.strval ("What needs to be done?"))
                     , ("value", J.jsval (s ^. _value))
                     , ("autoFocus", J.pToJSVal True)
-                    , ("onChange", J.jsval (s ^. _onChange))
-                    , ("onKeyDown", J.jsval (s ^. _onKeyDown))
+                    , ("onChange", J.jsval (s ^. _onChangeHandler))
+                    , ("onKeyDown", J.jsval (s ^. _onKeyDownHandler))
                     ])
 
-data InputAction = InputChangedAction J.JSString | InputEnteredAction
+data Action = ChangedAction J.JSString | EnteredAction
 
-inputOnChange :: J.JSVal -> MaybeT IO InputAction
-inputOnChange = R.eventHandlerM goStrict goLazy
+onChange :: J.JSVal -> MaybeT IO Action
+onChange = R.eventHandlerM goStrict goLazy
     where
       goStrict :: J.JSVal -> MaybeT IO J.JSString
       goStrict evt = do
@@ -59,11 +59,11 @@ inputOnChange = R.eventHandlerM goStrict goLazy
           v <- lift $ E.getProperty "value" input
           MaybeT $ J.fromJSVal v
 
-      goLazy :: J.JSString -> MaybeT IO InputAction
-      goLazy = pure . InputChangedAction
+      goLazy :: J.JSString -> MaybeT IO Action
+      goLazy = pure . ChangedAction
 
-inputOnKeyDown :: J.JSVal -> MaybeT IO InputAction
-inputOnKeyDown = R.eventHandlerM goStrict goLazy
+onKeyDown :: J.JSVal -> MaybeT IO Action
+onKeyDown = R.eventHandlerM goStrict goLazy
     where
       goStrict :: J.JSVal -> MaybeT IO Int
       goStrict evt = do
@@ -71,22 +71,22 @@ inputOnKeyDown = R.eventHandlerM goStrict goLazy
           evt'' <- MaybeT $ pure $ R.parseKeyboardEvent evt'
           pure $ R.keyCode evt''
 
-      goLazy :: Int -> MaybeT IO InputAction
+      goLazy :: Int -> MaybeT IO Action
       goLazy keyCode = if keyCode == 13 -- FIXME: ENTER_KEY
-                       then pure InputEnteredAction
+                       then pure EnteredAction
                        else A.empty
 
-data InputCommand = InputStateChangedCommand | InputEnteredCommand J.JSString
+data Command = StateChangedCommand | EnteredCommand J.JSString
 
-inputGadget :: Monad m => G.GadgetT InputAction InputModel m (D.DList InputCommand)
-inputGadget = do
+gadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
+gadget = do
     a <- ask
     case a of
-        InputChangedAction str -> do
+        ChangedAction str -> do
             _value .= str
-            pure $ D.singleton InputStateChangedCommand
-        InputEnteredAction -> do
+            pure $ D.singleton StateChangedCommand
+        EnteredAction -> do
             -- trim the text
             _value %= J.strip
             v <- use _value
-            pure (D.fromList [InputEnteredCommand v, InputStateChangedCommand])
+            pure (D.fromList [EnteredCommand v, StateChangedCommand])

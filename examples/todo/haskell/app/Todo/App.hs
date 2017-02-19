@@ -24,45 +24,45 @@ import qualified Todo.Input as TD.Input
 import qualified Data.DList as D
 
 -- | If state changed, then run the notifyListeners IO action
-data AppCommand = AppStateChangedCommand | AppTodoEnteredCommand J.JSString
+data Command = StateChangedCommand | TodoEnteredCommand J.JSString
 
-data AppAction = AppInputAction TD.Input.InputAction
+data Action = InputAction TD.Input.Action
 
-makeClassyPrisms ''AppAction
+makeClassyPrisms ''Action
 
-data AppModel = AppModel
-    { todoInput :: TD.Input.InputModel
+data Model = Model
+    { todoInput :: TD.Input.Model
     }
 
-makeClassy_ ''AppModel
+makeClassy_ ''Model
 
-appWindow :: Monad m => G.WindowT AppModel (R.ReactMlT m) ()
-appWindow = do
+window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
+window = do
     s <- ask
     lift $ R.branch "header" (M.fromList
                        [ ("className", E.strval "header")
                        , ("key", E.strval "todo")
                        ]) $ do
         R.branch "h1" (M.singleton "key" (E.strval "heading")) (R.txt "todos")
-        view G._WindowT appInputWindow s
+        view G._WindowT inputWindow s
 
-appInputWindow :: Monad m => G.WindowT AppModel (R.ReactMlT m) ()
-appInputWindow = G.implant _todoInput TD.Input.inputWindow
+inputWindow :: Monad m => G.WindowT Model (R.ReactMlT m) ()
+inputWindow = G.implant _todoInput TD.Input.window
 
-appGadget :: Monad m => G.GadgetT AppAction AppModel m (D.DList AppCommand)
-appGadget = fmap go <$> G.implant _todoInput (G.dispatch _AppInputAction TD.Input.inputGadget)
+gadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
+gadget = fmap go <$> G.implant _todoInput (G.dispatch _InputAction TD.Input.gadget)
   where
-    go TD.Input.InputStateChangedCommand = AppStateChangedCommand
-    go (TD.Input.InputEnteredCommand str) = AppTodoEnteredCommand str
+    go TD.Input.StateChangedCommand = StateChangedCommand
+    go (TD.Input.EnteredCommand str) = TodoEnteredCommand str
 
-appInputOnChange :: J.JSVal -> MaybeT IO AppAction
-appInputOnChange v = (review _AppInputAction) <$> TD.Input.inputOnChange v
+inputOnChange :: J.JSVal -> MaybeT IO Action
+inputOnChange v = (review _InputAction) <$> TD.Input.onChange v
 
-appInputOnKeyDown :: J.JSVal -> MaybeT IO AppAction
-appInputOnKeyDown v = (review _AppInputAction) <$> TD.Input.inputOnKeyDown v
+inputOnKeyDown :: J.JSVal -> MaybeT IO Action
+inputOnKeyDown v = (review _InputAction) <$> TD.Input.onKeyDown v
 
-appProducer
-    :: (MFunctor t, MonadState AppModel (t STM), MonadTrans t, MonadIO io)
-    => PC.Input AppAction
-    -> P.Producer' (D.DList AppCommand) (t io) ()
-appProducer input = hoist (hoist (liftIO . atomically)) (PM.rsProducer input (G.runGadgetT appGadget))
+producer
+    :: (MFunctor t, MonadState Model (t STM), MonadTrans t, MonadIO io)
+    => PC.Input Action
+    -> P.Producer' (D.DList Command) (t io) ()
+producer input = hoist (hoist (liftIO . atomically)) (PM.rsProducer input (G.runGadgetT gadget))
