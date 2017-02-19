@@ -116,7 +116,7 @@ keyDownHandler = R.eventHandlerM goStrict goLazy
                            27 -> pure CancelEditAction -- FIXME: ESCAPE_KEY
                            _ -> A.empty
 
-data Command = StateChangedCommand | SubmitCommand J.JSString | DestroyCommand
+data Command = StateChangedCommand | DestroyCommand
 
 gadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
 gadget = do
@@ -134,5 +134,4 @@ gadget = do
         SubmitAction -> do
             -- trim the text
             _value %= J.strip
-            v <- use _value
-            pure (D.fromList [SubmitCommand v, StateChangedCommand])
+            pure $ D.singleton StateChangedCommand

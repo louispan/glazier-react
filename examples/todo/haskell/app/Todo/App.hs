@@ -5,7 +5,11 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Todo.App
-    ( Command(..)
+    ( TodoKey
+    , TodosCommand'
+    , TodosAction'
+    , TodosModel'
+    , Command(..)
     , Action(..)
     , AsAction(..)
     , Model(..)
@@ -40,29 +44,37 @@ import qualified Todo.Input as TD.Input
 import qualified Todo.Todo as TD.Todo
 import Data.Semigroup
 
--- | If state changed, then run the notifyListeners IO action
-data Command = StateChangedCommand | TodoSubmitCommand J.JSString
+type TodoKey = (Int, J.JSString)
 
-data Action = ToggleCompleteAllAction | InputAction TD.Input.Action
+type TodosCommand' = (TodoKey, TD.Todo.Command)
+
+type TodosAction' = (TodoKey, TD.Todo.Action)
+
+type TodosModel' = Map.Map TodoKey TD.Todo.Model
+
+data Command
+    = StateChangedCommand
+    | InputCommand TD.Input.Command
+    | TodosCommand TodosCommand'
+
+data Action
+    = ToggleCompleteAllAction
+    | DestroyTodoAction TodoKey
+    | InputAction TD.Input.Action
+    | TodosAction TodosAction'
 
 makeClassyPrisms ''Action
-
-newtype TodoKey = TodoKey (Int, J.JSString)
-    deriving (Eq, Show)
-
-instance Ord TodoKey where
-    TodoKey (a, _) `compare` TodoKey (b, _) = a `compare` b
 
 data Model = Model
     { todoInput :: TD.Input.Model
     , seqNum :: Int
-    , todos :: Map.Map TodoKey TD.Todo.Model
+    , todos :: TodosModel'
     , fireToggleCompleteAll :: J.Callback (J.JSVal -> IO ())
     }
 
 makeClassy_ ''Model
 
-hasActiveTodos :: Map.Map TodoKey TD.Todo.Model -> Bool
+hasActiveTodos :: TodosModel' -> Bool
 hasActiveTodos = null . filter (not . TD.Todo.completed) . fmap snd . Map.toList
 
 toggleCompleteAllFirer :: Applicative m => J.JSVal -> m Action
@@ -108,31 +120,59 @@ todoListWindow = do
         pure ()
 
 gadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
-gadget = appGadget <> inputGadget
+gadget = appGadget
+    <> inputGadget
+    <> todosGadget'
 
 appGadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
 appGadget = do
     a <- ask
     case a of
         ToggleCompleteAllAction -> do
-            _todos %= go
+            _todos %= toggleCompleteAll
             pure $ D.singleton StateChangedCommand
-        _ -> pure mempty -- ^ delegate to other gadgets
+        DestroyTodoAction k -> do
+            _todos %= Map.delete k
+            pure $ D.singleton StateChangedCommand
+        -- delegate to other gadgets
+        InputAction _ -> pure mempty
+        TodosAction _ -> pure mempty
   where
-    go :: Map.Map TodoKey TD.Todo.Model -> Map.Map TodoKey TD.Todo.Model
-    go xs = fmap (go' $ hasActiveTodos xs) xs
-    go' :: Bool -> TD.Todo.Model -> TD.Todo.Model
-    go' b s = s & TD.Todo._completed .~ b
+    toggleCompleteAll :: Map.Map TodoKey TD.Todo.Model -> Map.Map TodoKey TD.Todo.Model
+    toggleCompleteAll xs = fmap (toggleCompleteAll' $ hasActiveTodos xs) xs
+    toggleCompleteAll' :: Bool -> TD.Todo.Model -> TD.Todo.Model
+    toggleCompleteAll' b s = s & TD.Todo._completed .~ b
 
 
 inputWindow :: Monad m => G.WindowT Model (R.ReactMlT m) ()
 inputWindow = G.implant _todoInput TD.Input.window
 
 inputGadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
-inputGadget = fmap go <$> G.implant _todoInput (G.dispatch _InputAction TD.Input.gadget)
+inputGadget = fmap InputCommand <$> G.implant _todoInput (G.dispatch _InputAction TD.Input.gadget)
+
+todosGadget :: Monad m => G.GadgetT TodosAction' TodosModel' m (D.DList TodosCommand')
+todosGadget = do
+    -- expect a (key, action) pair
+    (k, a) <- ask
+    s <- get
+    case Map.lookup k s of
+        Nothing -> pure mempty
+        Just s' -> do
+            -- run the todo gadget logic
+            (cmds, s'') <- lift $ view G._GadgetT TD.Todo.gadget a s'
+            -- check if state need to be updated
+            if (not . null . filter isStateChangedCmd . D.toList $ cmds)
+               then put $ Map.insert k s'' s
+               else pure ()
+            -- annotate cmd with the key
+            pure $ (\cmd -> (k, cmd)) <$> cmds
   where
-    go TD.Input.StateChangedCommand = StateChangedCommand
-    go (TD.Input.SubmitCommand str) = TodoSubmitCommand str
+     isStateChangedCmd cmd = case cmd of
+         TD.Todo.StateChangedCommand -> True
+         _ -> False
+
+todosGadget' :: Monad m => G.GadgetT Action Model m (D.DList Command)
+todosGadget' = fmap TodosCommand <$> G.implant _todos (G.dispatch _TodosAction todosGadget)
 
 producer
     :: (MFunctor t, MonadState Model (t STM), MonadTrans t, MonadIO io)

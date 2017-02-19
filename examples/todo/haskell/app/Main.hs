@@ -31,6 +31,7 @@ import qualified Pipes.Lift as PL
 import qualified Pipes.Prelude as PP
 import qualified Todo.App as TD.App
 import qualified Todo.Input as TD.Input
+import qualified Todo.Todo as TD.Todo
 
 -- | 'main' is used to create React classes and setup callbacks to be used externally by the browser.
 main :: IO ()
@@ -74,7 +75,7 @@ main = do
     -- Run the gadget effect which reads actions from 'Pipes.Concurrent.Input'
     -- and notifies html React of any state changes.
     -- runEffect will only stop if input is finished (which in this example never does).
-    void . P.runEffect $ appEffect currentState input
+    void . P.runEffect $ appEffect currentState output input
 
     -- Cleanup
     -- We actually never get here because in this example runEffect never quits
@@ -102,35 +103,47 @@ mkActionCallback output handler =
             action <- handler evt
             lift $ void $ atomically $ PC.send output action
 
-interpretCommand :: (MonadIO io, MonadState TD.App.Model io) => MVar TD.App.Model -> TD.App.Command -> io ()
-interpretCommand stateMVar TD.App.StateChangedCommand = do
+forceRender :: (MonadIO io, MonadState TD.App.Model io) => MVar TD.App.Model -> io ()
+forceRender stateMVar = do
     s <- get
     liftIO . void $ swapMVar stateMVar s -- ^ so that the render callback can use the latest state
     liftIO $ js_globalShout "forceRender" J.nullRef -- ^ tell React to call render
 
-interpretCommand _ (TD.App.TodoSubmitCommand str) = do
+interpretCommand :: (MonadIO io, MonadState TD.App.Model io) => MVar TD.App.Model -> PC.Output TD.App.Action -> TD.App.Command -> io ()
+interpretCommand stateMVar _ TD.App.StateChangedCommand = forceRender stateMVar
+
+interpretCommand stateMVar _ (TD.App.InputCommand (TD.Input.StateChangedCommand)) = forceRender stateMVar
+
+interpretCommand _ _ (TD.App.InputCommand (TD.Input.SubmitCommand str)) =
     liftIO $ putStrLn $ "TODO entered: " ++ (J.unpack str)
+
+interpretCommand stateMVar _ (TD.App.TodosCommand (_, TD.Todo.StateChangedCommand)) = forceRender stateMVar
+
+interpretCommand _ output (TD.App.TodosCommand (k, TD.Todo.DestroyCommand)) =
+    liftIO $ void $ atomically $ PC.send output (TD.App.DestroyTodoAction k)
 
 interpretCommands
     :: (Foldable t, MonadState TD.App.Model io, MonadIO io)
-    => MVar TD.App.Model -> t TD.App.Command -> io ()
-interpretCommands stateMVar = traverse_ (interpretCommand stateMVar)
+    => MVar TD.App.Model -> PC.Output TD.App.Action -> t TD.App.Command -> io ()
+interpretCommands stateMVar output = traverse_ (interpretCommand stateMVar output)
 
 interpretCommandsPipe
     :: (MonadState TD.App.Model io, MonadIO io)
-    => MVar TD.App.Model -> P.Pipe (D.DList TD.App.Command) () io ()
-interpretCommandsPipe stateMVar = PP.mapM go
+    => MVar TD.App.Model -> PC.Output TD.App.Action -> P.Pipe (D.DList TD.App.Command) () io ()
+interpretCommandsPipe stateMVar output = PP.mapM go
    where
      isStateChangedCmd cmd = case cmd of
          TD.App.StateChangedCommand -> True
+         TD.App.InputCommand TD.Input.StateChangedCommand -> True
+         TD.App.TodosCommand (_, TD.Todo.StateChangedCommand) -> True
          _ -> False
      go cmds = do
          -- Run only one of the state changed command last
          let (changes, cmds') = partition isStateChangedCmd (D.toList cmds)
-         interpretCommands stateMVar cmds'
-         interpretCommands stateMVar (foldMap (First . Just) changes)
+         interpretCommands stateMVar output cmds'
+         interpretCommands stateMVar output (foldMap (First . Just) changes)
 
-appEffect :: MonadIO io => MVar TD.App.Model -> PC.Input TD.App.Action -> P.Effect io TD.App.Model
-appEffect stateMVar input = do
+appEffect :: MonadIO io => MVar TD.App.Model -> PC.Output TD.App.Action -> PC.Input TD.App.Action -> P.Effect io TD.App.Model
+appEffect stateMVar output input = do
     s <- liftIO $ readMVar stateMVar
-    PL.execStateP s $ TD.App.producer input P.>-> interpretCommandsPipe stateMVar P.>-> PP.drain
+    PL.execStateP s $ TD.App.producer input P.>-> interpretCommandsPipe stateMVar output P.>-> PP.drain
