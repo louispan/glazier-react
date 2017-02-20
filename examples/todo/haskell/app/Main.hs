@@ -20,11 +20,14 @@ import qualified Data.JSString as J
 import Data.List
 import Data.Monoid
 import qualified GHCJS.Foreign.Callback as J
+import qualified GHCJS.Marshal as J
+import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Prim as J
 import qualified GHCJS.Types as J
 import qualified Glazier as G
 import qualified Glazier.React.Element as R
 import qualified Glazier.React.Markup as R
+import qualified Glazier.React.Util as E
 import qualified Pipes as P
 import qualified Pipes.Concurrent as PC
 import qualified Pipes.Lift as PL
@@ -49,15 +52,15 @@ main = do
 
     -- TODO: How to make sure the correct handlers are passed into the correct place?
     let initialState = TD.App.Model
+            0
+            mempty
             (TD.Input.Model
                  "input"
                  "hello world!"
                  inputChangeFirer'
                  inputSubmitFirer')
-            0
             mempty
             toggleCompleteAllFirer'
-            Nothing
 
     -- Make a MVar so render can get the latest state
     currentState <- newMVar initialState
@@ -67,12 +70,17 @@ main = do
     doRender <- J.syncCallback1' $ \_ -> do
         s <- readMVar currentState
         xs <- view G._WindowT' (R.renderedWindow TD.App.window) s
-        liftIO $ void $ atomically $ PC.send output TD.App.ReleaseCallbacksAction -- FIXME: not quite long enough
         J.jsval <$> R.mkCombinedElements xs
     void $ js_globalListen "renderHaskell" doRender
 
+    -- Setup the callback garbage collection callback
+    doCleanup <- J.asyncCallback1 $ \seqNum -> void . runMaybeT $ do
+        seqNum' <- MaybeT $ J.fromJSVal seqNum
+        MaybeT $ guard <$> (atomically $ PC.send output (TD.App.ReleaseCallbacksAction seqNum'))
+    void $ js_globalListen "renderUpdated" doCleanup
+
     -- trigger a render now that the render callback is initialized
-    js_globalShout "forceRender" J.nullRef
+    js_globalShout "forceRender" (J.pToJSVal $ TD.App.seqNum initialState)
 
     -- Run the gadget effect which reads actions from 'Pipes.Concurrent.Input'
     -- and notifies html React of any state changes.
@@ -83,9 +91,11 @@ main = do
     -- We actually never get here because in this example runEffect never quits
     -- but in other apps, gadgetEffect might be quit-able (eg with MaybeT)
     -- so let's add the cleanup code here to be explicit.
-    J.releaseCallback inputChangeFirer'
+    J.releaseCallback doRender
+    J.releaseCallback doCleanup
     J.releaseCallback inputSubmitFirer'
     J.releaseCallback toggleCompleteAllFirer'
+    J.releaseCallback inputChangeFirer'
 
 foreign import javascript unsafe
   "hgr$todo$registry['listen']($1, $2);"
@@ -111,25 +121,10 @@ forceRender stateMVar = do
     liftIO . void $ swapMVar stateMVar s -- ^ so that the render callback can use the latest state
     liftIO $ js_globalShout "forceRender" J.nullRef -- ^ tell React to call render
 
-interpretCommand :: (MonadIO io, MonadState TD.App.Model io) => MVar TD.App.Model -> PC.Output TD.App.Action -> TD.App.Command -> io ()
-interpretCommand stateMVar _ TD.App.StateChangedCommand = forceRender stateMVar
-
-interpretCommand stateMVar _ (TD.App.RunCommand actions) = liftIO $ actions
-
-interpretCommand stateMVar _ (TD.App.InputCommand (TD.Input.StateChangedCommand)) = forceRender stateMVar
-
-interpretCommand _ output (TD.App.InputCommand (TD.Input.SubmitCommand str)) =
-    liftIO $ void $ atomically $ PC.send output (TD.App.NewTodoAction str)
-
-interpretCommand stateMVar _ (TD.App.TodosCommand (_, TD.Todo.StateChangedCommand)) = forceRender stateMVar
-
-interpretCommand _ output (TD.App.TodosCommand (k, TD.Todo.DestroyCommand)) =
-    liftIO $ void $ atomically $ PC.send output (TD.App.DestroyTodoAction k)
-
-interpretCommands
-    :: (Foldable t, MonadState TD.App.Model io, MonadIO io)
-    => MVar TD.App.Model -> PC.Output TD.App.Action -> t TD.App.Command -> io ()
-interpretCommands stateMVar output = traverse_ (interpretCommand stateMVar output)
+appEffect :: MonadIO io => MVar TD.App.Model -> PC.Output TD.App.Action -> PC.Input TD.App.Action -> P.Effect io TD.App.Model
+appEffect stateMVar output input = do
+    s <- liftIO $ readMVar stateMVar
+    PL.execStateP s $ TD.App.producer input P.>-> interpretCommandsPipe stateMVar output P.>-> PP.drain
 
 interpretCommandsPipe
     :: (MonadState TD.App.Model io, MonadIO io)
@@ -147,7 +142,29 @@ interpretCommandsPipe stateMVar output = PP.mapM go
          -- Run only one of the state changed
          interpretCommands stateMVar output (foldMap (First . Just) changes)
 
-appEffect :: MonadIO io => MVar TD.App.Model -> PC.Output TD.App.Action -> PC.Input TD.App.Action -> P.Effect io TD.App.Model
-appEffect stateMVar output input = do
-    s <- liftIO $ readMVar stateMVar
-    PL.execStateP s $ TD.App.producer input P.>-> interpretCommandsPipe stateMVar output P.>-> PP.drain
+interpretCommands
+    :: (Foldable t, MonadState TD.App.Model io, MonadIO io)
+    => MVar TD.App.Model -> PC.Output TD.App.Action -> t TD.App.Command -> io ()
+interpretCommands stateMVar output = traverse_ (interpretCommand stateMVar output)
+
+-- | Evaluate commands from gadgets here
+interpretCommand
+    :: (MonadIO io, MonadState TD.App.Model io)
+    => MVar TD.App.Model -> PC.Output TD.App.Action -> TD.App.Command -> io ()
+
+interpretCommand stateMVar _  TD.App.StateChangedCommand = forceRender stateMVar
+
+interpretCommand _ _         (TD.App.TrashGarbageCommand xs) =
+    liftIO $ void $ traverse go xs
+  where
+    go (E.Garbage a) = E.trash a
+
+interpretCommand stateMVar _ (TD.App.InputCommand (TD.Input.StateChangedCommand)) = forceRender stateMVar
+
+interpretCommand _ output    (TD.App.InputCommand (TD.Input.SubmitCommand str)) =
+    liftIO $ void $ atomically $ PC.send output (TD.App.NewTodoAction str)
+
+interpretCommand stateMVar _ (TD.App.TodosCommand (_, TD.Todo.StateChangedCommand)) = forceRender stateMVar
+
+interpretCommand _ output    (TD.App.TodosCommand (k, TD.Todo.DestroyCommand)) =
+    liftIO $ void $ atomically $ PC.send output (TD.App.DestroyTodoAction k)

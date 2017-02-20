@@ -8,23 +8,22 @@ class App extends React.Component {
         super(props);
 
         // This component is stateful so that React knows to re-render when the Haskell state has changed.
-        this.state = { seqNum: 0};
+        this.state = {};
 
         // Use the registry to be notified when a re-render is required.
         registry.listen(
             'forceRender',
-            // This function will ensure state is different
-            function(ignore){
-                this.setState(function(prevState, props) {
-                    return {
-                        seqNum: prevState.seqNum + 1
-                    };
-                })
+            function(newSeqNum){
+                this.setState({ seqNum: newSeqNum });
             }.bind(this));
     }
 
+    componentDidUpdate() {
+        registry.shout('renderUpdated', this.state['seqNum']);
+    }
+
     render() {
-        return mkCombinedElements(registry.shout('renderHaskell', null));
+        return mkCombinedElements(registry.shout('renderHaskell', this.state['seqNum']));
     }
 }
 

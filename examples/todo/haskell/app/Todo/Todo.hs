@@ -45,14 +45,15 @@ data Model = Model
 
 makeClassy_ ''Model
 
-releaseCallbacks :: Model -> IO ()
-releaseCallbacks s = do
-    J.releaseCallback (fireToggleComplete s)
-    J.releaseCallback (fireStartEdit s)
-    J.releaseCallback (fireDestroy s)
-    J.releaseCallback (fireCancelEdit s)
-    J.releaseCallback (fireChange s)
-    J.releaseCallback (handleKeyDown s)
+getGarbage :: Model -> [E.Garbage]
+getGarbage s =
+    [ E.scrap $ fireToggleComplete s
+    , E.scrap $ fireStartEdit s
+    , E.scrap $ fireDestroy s
+    , E.scrap $ fireCancelEdit s
+    , E.scrap $ fireChange s
+    , E.scrap $ handleKeyDown s
+    ]
 
 classNames :: [(J.JSString, Bool)] -> J.JSVal
 classNames = J.jsval . J.unwords . fmap fst . filter snd

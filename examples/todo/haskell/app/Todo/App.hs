@@ -19,7 +19,7 @@ module Todo.App
     , toggleCompleteAllFirer
     , inputChangeFirer
     , inputSubmitFirer
-    , releaseCallbacks
+    , getGarbage
     , producer
     ) where
 
@@ -55,14 +55,14 @@ type TodosModel' = Map.Map TodoKey TD.Todo.Model
 
 data Command
     = StateChangedCommand
-    | RunCommand (IO ())
+    | TrashGarbageCommand [E.Garbage]
     | InputCommand TD.Input.Command
     | TodosCommand TodosCommand'
 
 data Action
     = ToggleCompleteAllAction
     | DestroyTodoAction TodoKey
-    | ReleaseCallbacksAction
+    | ReleaseCallbacksAction Int
     | NewTodoAction J.JSString
     | InputAction TD.Input.Action
     | TodosAction TodosAction'
@@ -70,18 +70,17 @@ data Action
 makeClassyPrisms ''Action
 
 data Model = Model
-    { todoInput :: TD.Input.Model
-    , seqNum :: Int
+    { seqNum :: Int
+    , garbageDump :: Map.Map Int (D.DList E.Garbage)
+    , todoInput :: TD.Input.Model
     , todoModels :: TodosModel'
     , fireToggleCompleteAll :: J.Callback (J.JSVal -> IO ())
-    , onReleaseCallbacks :: Maybe (IO ())
     }
 
 makeClassy_ ''Model
 
-releaseCallbacks :: Model -> IO ()
-releaseCallbacks s =
-    J.releaseCallback (fireToggleCompleteAll s)
+getGarbage :: Model -> [E.Garbage]
+getGarbage s = [ E.scrap $ fireToggleCompleteAll s]
 
 hasActiveTodos :: TodosModel' -> Bool
 hasActiveTodos = null . filter (not . TD.Todo.completed) . fmap snd . Map.toList
@@ -143,26 +142,28 @@ appGadget = do
         ToggleCompleteAllAction -> do
             _todoModels %= toggleCompleteAll
             pure $ D.singleton StateChangedCommand
+
         DestroyTodoAction k -> do
             -- queue up callbacks to release before deleting
             ts <- use _todoModels
             ret <- runMaybeT $ do
                 todoModel <- MaybeT $ pure $ Map.lookup k ts
-                -- actions <- liftIO $ TD.Todo.releaseCallbacks todoModel
-                -- prevActions <- MaybeT $ use _onReleaseCallbacks
-                -- lift $ _onReleaseCallbacks .= (prevActions *> actions)
-                -- lift $ _todoModels %= Map.delete k
+                junk <- pure $ TD.Todo.getGarbage todoModel
+                seqNum' <- use _seqNum
+                _garbageDump %= (Map.alter (addGarbage (D.fromList junk)) seqNum')
+                _todoModels %= Map.delete k
                 pure $ D.singleton StateChangedCommand
             maybe (pure mempty) pure ret
-        ReleaseCallbacksAction -> do
+
+        ReleaseCallbacksAction seqNum -> do
             -- Called callbacks that have been released will generate an exception
             -- So make this into an action is evaluated after re-rendering
             -- to ensure callbacks wont get called.
-            ret <- runMaybeT $ do
-                actions <- MaybeT $ use _onReleaseCallbacks
-                lift $ _onReleaseCallbacks .= Nothing
-                pure $ D.singleton $ RunCommand actions
-            maybe (pure mempty) pure ret
+            -- All garbage with lower key than seqNum are safe to be released
+            dump <- use _garbageDump
+            let (garbage, leftover) = Map.partitionWithKey (\k _ -> k < seqNum) dump
+            _garbageDump .= leftover
+            pure $ D.singleton $ TrashGarbageCommand (D.toList . foldMap snd . Map.toList $ garbage)
 
         NewTodoAction str -> do
             n <- use _seqNum
@@ -175,10 +176,13 @@ appGadget = do
             --         Nothing
             --         )
             pure mempty
+
         -- delegate to other gadgets
         InputAction _ -> pure mempty
         TodosAction _ -> pure mempty
   where
+    addGarbage junk Nothing = Just junk
+    addGarbage junk (Just junk') = Just (junk' <> junk)
     toggleCompleteAll :: Map.Map TodoKey TD.Todo.Model -> Map.Map TodoKey TD.Todo.Model
     toggleCompleteAll xs = fmap (toggleCompleteAll' $ hasActiveTodos xs) xs
     toggleCompleteAll' :: Bool -> TD.Todo.Model -> TD.Todo.Model
