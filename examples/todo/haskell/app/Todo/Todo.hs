@@ -10,7 +10,6 @@ import Control.Monad.Trans.Maybe
 import qualified Data.DList as D
 import qualified Data.HashMap.Strict as M
 import qualified Data.JSString as J
-import Data.Maybe
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Marshal as J
 import qualified GHCJS.Marshal.Pure as J
@@ -34,7 +33,7 @@ data Model = Model
     { uid :: J.JSString
     , value :: J.JSString
     , completed :: Bool
-    , editText :: Maybe J.JSString
+    , editText :: J.JSString
     , fireToggleComplete :: J.Callback (J.JSVal -> IO ())
     , fireStartEdit :: J.Callback (J.JSVal -> IO ())
     , fireDestroy :: J.Callback (J.JSVal -> IO ())
@@ -61,29 +60,38 @@ classNames = J.jsval . J.unwords . fmap fst . filter snd
 window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
 window = do
     s <- ask
-    lift $ R.branch "li" (M.singleton "className" (cns s)) $ do
-        R.branch "div" (M.singleton "className" (E.strval "view")) $ do
+    lift $ R.branch "li" (M.fromList [ ("key", J.jsval $ uid s)
+                                     , ("className", cns s)
+                                     ]) $ do
+        R.branch "div" (M.fromList [ ("key", E.strval "view")
+                                   , ("className", E.strval "view")
+                                   ]) $ do
             R.leaf (E.strval "input") (M.fromList
-                                      [ ("className", E.strval "toggle")
+                                      [ ("key", E.strval "toggle")
+                                      , ("className", E.strval "toggle")
                                       , ("type", E.strval "checkbox")
                                       , ("checked", J.pToJSVal $ completed s)
                                       , ("onChange", J.jsval $ fireToggleComplete s)
                                       ])
-            R.branch "label" (M.singleton "onDoubleClick" (J.jsval $ fireStartEdit s)) (R.txt $ value s)
+            R.branch "label"  (M.fromList
+                                      [ ("key", E.strval "label")
+                                      , ("onDoubleClick", J.jsval $ fireStartEdit s)
+                                      ]) (R.txt $ value s)
             R.leaf (E.strval "button") (M.fromList
-                                      [ ("className", E.strval "destroy")
+                                      [ ("key", E.strval "destroy")
+                                      , ("className", E.strval "destroy")
                                       , ("onClick", J.jsval $ fireDestroy s)
                                       ])
         R.leaf (E.strval "input") (M.fromList
                                   [ ("className", E.strval "edit")
-                                  , ("value", J.pToJSVal (editText s))
+                                  , ("value", J.jsval $ editText s)
                                   , ("checked", J.pToJSVal $ completed s)
                                   , ("onBlur", J.jsval $ fireCancelEdit s)
                                   , ("onChange", J.jsval $ fireChange s)
                                   , ("onKeyDown", J.jsval $ handleKeyDown s)
                                   ])
   where
-    cns s = classNames [("completed", completed s), ("editing", isJust (editText s))]
+    cns s = classNames [("completed", completed s), ("editing", not . J.null $ editText s)]
 
 toggleCompleteFirer :: Applicative m => J.JSVal -> m Action
 toggleCompleteFirer = const $ pure ToggleCompleteAction
@@ -135,9 +143,9 @@ gadget = do
         ToggleCompleteAction -> do
             _completed %= not
             pure $ D.singleton StateChangedCommand
-        StartEditAction -> pure mempty
+        StartEditAction -> pure mempty -- FIXME:
         DestroyAction -> pure $ D.singleton DestroyCommand
-        CancelEditAction -> pure mempty
+        CancelEditAction -> pure mempty -- FIXME:
         ChangeAction str -> do
             _value .= str
             pure $ D.singleton StateChangedCommand

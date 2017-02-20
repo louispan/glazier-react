@@ -30,6 +30,7 @@ import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Maybe
 import qualified Data.DList as D
+import Data.Foldable
 import qualified Data.HashMap.Strict as M
 import qualified Data.Map.Strict as Map
 import Data.Semigroup
@@ -132,11 +133,12 @@ mainWindow = do
 
 todoListWindow :: Monad m => G.WindowT Model (R.ReactMlT m) ()
 todoListWindow = do
+    todos <- fmap snd . Map.toList <$> view _todosModel
     lift $ R.branch "ul"  (M.fromList
                         [ ("key", E.strval "todo-list")
                         , ("className", E.strval "todo-list")
                         ]) $ do
-        pure () --FIXME:
+        traverse_ (view G._WindowT TD.Todo.window) todos
 
 gadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
 gadget = appGadget

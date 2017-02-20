@@ -86,7 +86,6 @@ gadget = do
             _value .= str
             pure $ D.singleton StateChangedCommand
         SubmitAction -> do
-            -- trim the text
-            _value %= J.strip
-            v <- use _value
+            v <- J.strip <$> use _value
+            _value .= J.empty
             pure (D.fromList [SubmitCommand v, StateChangedCommand])

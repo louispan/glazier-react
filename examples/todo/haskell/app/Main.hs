@@ -55,8 +55,8 @@ main = do
             0
             mempty
             (TD.Input.Model
-                 "input"
-                 "hello world!"
+                 "inpu12341234St"
+                 J.empty
                  inputChangeFirer'
                  inputSubmitFirer')
             mempty
@@ -169,7 +169,7 @@ interpretCommand _ output    (TD.App.NewTodoSetupCommand n str) = do
             <$> (pure . J.pack . show $ n)
             <*> (pure str)
             <*> (pure False)
-            <*> (pure Nothing)
+            <*> (pure J.empty)
             <*> (mkActionCallback output (TD.App.mapTodoHandler n TD.Todo.toggleCompleteFirer))
             <*> (mkActionCallback output (TD.App.mapTodoHandler n TD.Todo.startEditFirer))
             <*> (mkActionCallback output (TD.App.mapTodoHandler n TD.Todo.destroyFirer))
