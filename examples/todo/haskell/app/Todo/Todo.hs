@@ -13,6 +13,7 @@ import qualified Data.JSString as J
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Marshal as J
 import qualified GHCJS.Marshal.Pure as J
+import qualified GHCJS.Nullable as J
 import qualified GHCJS.Types as J
 import qualified Glazier as G
 import qualified Glazier.React.Event as R
@@ -26,6 +27,7 @@ data Action
     | CancelEditAction
     | SubmitAction
     | ChangeAction J.JSString
+    | SetEditNodeAction J.JSVal
 
 makeClassyPrisms ''Action
 
@@ -34,6 +36,8 @@ data Model = Model
     , value :: J.JSString
     , completed :: Bool
     , editText :: J.JSString
+    , editNode :: J.JSVal
+    , fireSetEditNode :: J.Callback (J.JSVal -> IO ())
     , fireToggleComplete :: J.Callback (J.JSVal -> IO ())
     , fireStartEdit :: J.Callback (J.JSVal -> IO ())
     , fireDestroy :: J.Callback (J.JSVal -> IO ())
@@ -46,7 +50,8 @@ makeClassy_ ''Model
 
 getGarbage :: Model -> [E.Garbage]
 getGarbage s =
-    [ E.scrap $ fireToggleComplete s
+    [ E.scrap $ fireSetEditNode s
+    , E.scrap $ fireToggleComplete s
     , E.scrap $ fireStartEdit s
     , E.scrap $ fireDestroy s
     , E.scrap $ fireCancelEdit s
@@ -84,6 +89,7 @@ window = do
                                       ])
         R.leaf (E.strval "input") (M.fromList
                                   [ ("key", E.strval "todo-input")
+                                  , ("ref", J.jsval $ fireSetEditNode s)
                                   , ("className", E.strval "edit")
                                   , ("value", J.jsval $ editText s)
                                   , ("checked", J.pToJSVal $ completed s)
@@ -93,6 +99,13 @@ window = do
                                   ])
   where
     cns s = classNames [("completed", completed s), ("editing", not . J.null $ editText s)]
+
+foreign import javascript unsafe
+  "$r = function(huh) { console.log(huh); };"
+  js_wack :: J.JSVal
+
+setEditNodeFirer :: Monad m => J.JSVal -> m Action
+setEditNodeFirer v = pure $ SetEditNodeAction v
 
 toggleCompleteFirer :: Applicative m => J.JSVal -> m Action
 toggleCompleteFirer = const $ pure ToggleCompleteAction
@@ -135,7 +148,7 @@ keyDownHandler = R.eventHandlerM goStrict goLazy
                            27 -> pure CancelEditAction -- FIXME: ESCAPE_KEY
                            _ -> A.empty
 
-data Command = StateChangedCommand | DestroyCommand
+data Command = StateChangedCommand | DestroyCommand | StartEditCommand J.JSVal
 
 gadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
 gadget = do
@@ -144,9 +157,19 @@ gadget = do
         ToggleCompleteAction -> do
             _completed %= not
             pure $ D.singleton StateChangedCommand
-        StartEditAction -> pure mempty -- FIXME:
+        SetEditNodeAction v -> do
+            _editNode .= v
+            pure mempty
+        StartEditAction -> do
+            n <- use _editNode
+            ret <- runMaybeT $ do
+                n' <- MaybeT $ pure $ J.nullableToMaybe (J.Nullable n)
+                value' <- use _value
+                _editText .= value'
+                pure $ D.fromList [StartEditCommand n', StateChangedCommand]
+            maybe (pure mempty) pure ret
         DestroyAction -> pure $ D.singleton DestroyCommand
-        CancelEditAction -> pure mempty -- FIXME:
+        CancelEditAction -> pure mempty
         ChangeAction str -> do
             _value .= str
             pure $ D.singleton StateChangedCommand

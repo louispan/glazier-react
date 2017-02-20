@@ -171,6 +171,8 @@ interpretCommand _ output    (TD.App.NewTodoSetupCommand n str) = do
             <*> (pure str)
             <*> (pure False)
             <*> (pure J.empty)
+            <*> (pure J.nullRef)
+            <*> (mkActionCallback output (TD.App.mapTodoHandler n TD.Todo.setEditNodeFirer))
             <*> (mkActionCallback output (TD.App.mapTodoHandler n TD.Todo.toggleCompleteFirer))
             <*> (mkActionCallback output (TD.App.mapTodoHandler n TD.Todo.startEditFirer))
             <*> (mkActionCallback output (TD.App.mapTodoHandler n TD.Todo.destroyFirer))
@@ -183,3 +185,10 @@ interpretCommand stateMVar _ (TD.App.TodosCommand (_, TD.Todo.StateChangedComman
 
 interpretCommand _ output    (TD.App.TodosCommand (k, TD.Todo.DestroyCommand)) =
     liftIO $ void $ atomically $ PC.send output (TD.App.DestroyTodoAction k)
+
+interpretCommand _ _         (TD.App.TodosCommand (_, TD.Todo.StartEditCommand node)) =
+    liftIO $ js_focusNode node
+
+foreign import javascript unsafe
+  "if ($1) { $1.focus(); }"
+  js_focusNode :: J.JSVal -> IO ()

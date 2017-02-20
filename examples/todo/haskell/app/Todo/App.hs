@@ -46,8 +46,6 @@ import qualified Pipes.Misc as PM
 import qualified Todo.Input as TD.Input
 import qualified Todo.Todo as TD.Todo
 
-import System.IO.Unsafe
-
 type TodoKey = Int
 
 type TodosCommand' = (TodoKey, TD.Todo.Command)
@@ -152,7 +150,6 @@ appGadget = do
     case a of
         ToggleCompleteAllAction -> do
             _todosModel %= toggleCompleteAll
-            pure (unsafePerformIO (putStrLn "hi"))
             pure $ D.singleton StateChangedCommand
 
         DestroyTodoAction k -> do
@@ -215,16 +212,9 @@ todosGadget = do
         Just s' -> do
             -- run the todo gadget logic
             (cmds, s'') <- lift $ view G._GadgetT TD.Todo.gadget a s'
-            -- check if state need to be updated
-            if (not . null . filter isStateChangedCmd . D.toList $ cmds)
-               then put $ Map.insert k s'' s
-               else pure ()
+            put $ Map.insert k s'' s
             -- annotate cmd with the key
             pure $ (\cmd -> (k, cmd)) <$> cmds
-  where
-     isStateChangedCmd cmd = case cmd of
-         TD.Todo.StateChangedCommand -> True
-         _ -> False
 
 todosGadget' :: Monad m => G.GadgetT Action Model m (D.DList Command)
 todosGadget' = fmap TodosCommand <$> G.implant _todosModel (G.dispatch _TodosAction todosGadget)
