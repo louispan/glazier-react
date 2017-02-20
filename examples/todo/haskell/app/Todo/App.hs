@@ -45,6 +45,8 @@ import qualified Pipes.Misc as PM
 import qualified Todo.Input as TD.Input
 import qualified Todo.Todo as TD.Todo
 
+import System.IO.Unsafe
+
 type TodoKey = Int
 
 type TodosCommand' = (TodoKey, TD.Todo.Command)
@@ -85,7 +87,7 @@ getGarbage :: Model -> [E.Garbage]
 getGarbage s = [ E.scrap $ fireToggleCompleteAll s]
 
 hasActiveTodos :: TodosModel' -> Bool
-hasActiveTodos = null . filter (not . TD.Todo.completed) . fmap snd . Map.toList
+hasActiveTodos = not . null . filter (not . TD.Todo.completed) . fmap snd . Map.toList
 
 toggleCompleteAllFirer :: Applicative m => J.JSVal -> m Action
 toggleCompleteAllFirer = const $ pure ToggleCompleteAllAction
@@ -100,8 +102,8 @@ window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
 window = do
     s <- ask
     lift $ R.branch "header" (M.fromList
-                       [ ("className", E.strval "header")
-                       , ("key", E.strval "todo")
+                       [ ("key", E.strval "todo")
+                       , ("className", E.strval "header")
                        ]) $ do
         R.branch "h1" (M.singleton "key" (E.strval "heading")) (R.txt "todos")
         view G._WindowT inputWindow s
@@ -114,10 +116,14 @@ mainWindow = do
         then pure ()
         else do
         s <- ask
-        lift $ R.branch "section" (M.singleton "className" (E.strval "main")) $ do
+        lift $ R.branch "section" (M.fromList
+                        [ ("key", E.strval "main")
+                        , ("className", E.strval "main")
+                        ]) $ do
             -- This is the complete all checkbox
             R.leaf (E.strval "input") (M.fromList
-                        [ ("className", E.strval "toggle-all")
+                        [ ("key", E.strval "input")
+                        , ("className", E.strval "toggle-all")
                         , ("type", E.strval "checkbox")
                         , ("checked", J.pToJSVal . not . hasActiveTodos $ todos)
                         , ("onChange", J.jsval $ fireToggleCompleteAll s)
@@ -126,7 +132,10 @@ mainWindow = do
 
 todoListWindow :: Monad m => G.WindowT Model (R.ReactMlT m) ()
 todoListWindow = do
-    lift $ R.branch "ul" (M.singleton "className" (E.strval "todo-list")) $ do
+    lift $ R.branch "ul"  (M.fromList
+                        [ ("key", E.strval "todo-list")
+                        , ("className", E.strval "todo-list")
+                        ]) $ do
         pure () --FIXME:
 
 gadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
@@ -140,6 +149,7 @@ appGadget = do
     case a of
         ToggleCompleteAllAction -> do
             _todosModel %= toggleCompleteAll
+            pure (unsafePerformIO (putStrLn "hi"))
             pure $ D.singleton StateChangedCommand
 
         DestroyTodoAction k -> do
