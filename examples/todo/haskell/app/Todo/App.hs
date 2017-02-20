@@ -154,7 +154,7 @@ gadget = do
     a <- ask
     s <- get
     (cmds, s') <- lift $ (G.runGadgetT' gadget') a s
-    if (null . filter isRenderRequiredCommand $ D.toList cmds)
+    if (not . null . filter isRenderRequiredCommand $ D.toList cmds)
        then put $ s' & _renderSeqNum %~ (+ 1)
        else pure ()
     pure cmds

@@ -123,6 +123,8 @@ forceRender stateMVar = do
     s <- get
     liftIO . void $ swapMVar stateMVar s -- ^ so that the render callback can use the latest state
     let i = TD.App.renderSeqNum s
+    a <- use (TD.App._todoInput . TD.Input._value)
+    liftIO $ putStrLn (J.unpack a)
     liftIO $ js_globalShout "forceRender" (J.pToJSVal i) -- ^ tell React to call render
 
 appEffect
