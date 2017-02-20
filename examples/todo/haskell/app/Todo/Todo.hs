@@ -20,10 +20,16 @@ import qualified Glazier.React.Event as R
 import qualified Glazier.React.Markup as R
 import qualified Glazier.React.Util as E
 
+data Command
+    = RenderRequiredCommand
+    | DestroyCommand
+    | DelayedCommands (D.DList Command)
+    | FocusNodeCommand J.JSVal
+
 data Action
     = ToggleCompleteAction
     | StartEditAction
-    | FocusNodeAction J.JSVal
+    | CommandsAction (D.DList Command)
     | DestroyAction
     | CancelEditAction
     | SubmitAction
@@ -145,12 +151,12 @@ keyDownHandler = R.eventHandlerM goStrict goLazy
                            27 -> pure CancelEditAction -- FIXME: ESCAPE_KEY
                            _ -> A.empty
 
-data Command = RenderRequiredCommand | DestroyCommand | DelayActionCommand Action | FocusNodeCommand J.JSVal
-
 gadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
 gadget = do
     a <- ask
     case a of
+        CommandsAction cmds -> do
+            pure cmds
         ToggleCompleteAction -> do
             _completed %= not
             pure $ D.singleton RenderRequiredCommand
@@ -164,11 +170,8 @@ gadget = do
                 value' <- use _value
                 _editText .= value'
                 -- Need to delay focusing until after the next render
-                -- pure $ D.fromList [DelayActionCommand $ FocusNodeAction n', RenderRequiredCommand]
-                pure $ D.fromList [FocusNodeCommand n', RenderRequiredCommand]
+                pure $ D.fromList [DelayedCommands (D.singleton $ FocusNodeCommand n'), RenderRequiredCommand]
             maybe (pure mempty) pure ret
-        FocusNodeAction n -> do
-            pure $ D.singleton $ FocusNodeCommand n
         DestroyAction -> pure $ D.singleton DestroyCommand
         CancelEditAction -> do
             _editText .= J.empty

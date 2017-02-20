@@ -14,6 +14,7 @@ module Todo.App
     , AsAction(..)
     , Model(..)
     , HasModel(..)
+    , isRenderRequiredCommand
     , window
     , gadget
     , toggleCompleteAllFirer
@@ -64,7 +65,8 @@ data Command
 data Action
     = ToggleCompleteAllAction
     | DestroyTodoAction TodoKey
-    | ReleaseCallbacksAction Int
+    | RenderUpdatedAction Int
+    | DelayedCommands Int (D.DList Command)
     | NewTodoRequestAction J.JSString
     | NewTodoReadyAction Int TD.Todo.Model
     | InputAction TD.Input.Action
@@ -74,8 +76,10 @@ makeClassyPrisms ''Action
 
 data Model = Model
     { uid :: J.JSString
-    , seqNum :: Int
+    , renderSeqNum :: Int
+    , todoSeqNum :: Int
     , garbageDump :: Map.Map Int (D.DList E.Garbage)
+    , delayedCommands :: Map.Map Int (D.DList Command)
     , todoInput :: TD.Input.Model
     , todosModel :: TodosModel'
     , fireToggleCompleteAll :: J.Callback (J.JSVal -> IO ())
@@ -139,10 +143,28 @@ todoListWindow = do
                         ]) $ do
         traverse_ (view G._WindowT TD.Todo.window) todos
 
-gadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
-gadget = appGadget
+gadget' :: Monad m => G.GadgetT Action Model m (D.DList Command)
+gadget' = appGadget
     <> inputGadget
     <> todosGadget'
+
+-- | increment the renderSeq number if any RenderRequiredCommand are found
+gadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
+gadget = do
+    a <- ask
+    s <- get
+    (cmds, s') <- lift $ (G.runGadgetT' gadget') a s
+    if (null . filter isRenderRequiredCommand $ D.toList cmds)
+       then put $ s' & _renderSeqNum %~ (+ 1)
+       else pure ()
+    pure cmds
+
+isRenderRequiredCommand :: Command -> Bool
+isRenderRequiredCommand cmd = case cmd of
+     RenderRequiredCommand -> True
+     InputCommand TD.Input.RenderRequiredCommand -> True
+     TodosCommand (_, TD.Todo.RenderRequiredCommand) -> True
+     _ -> False
 
 appGadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
 appGadget = do
@@ -152,31 +174,42 @@ appGadget = do
             _todosModel %= toggleCompleteAll
             pure $ D.singleton RenderRequiredCommand
 
+        DelayedCommands i cmds -> do
+            _delayedCommands %= (Map.alter (addCommands cmds) i)
+            pure $ D.singleton RenderRequiredCommand
+
         DestroyTodoAction k -> do
-            -- queue up callbacks to release before deleting
+            -- queue up callbacks to be released after rerendering
             ts <- use _todosModel
             ret <- runMaybeT $ do
                 todoModel <- MaybeT $ pure $ Map.lookup k ts
                 junk <- pure $ TD.Todo.getGarbage todoModel
-                seqNum' <- use _seqNum
-                _garbageDump %= (Map.alter (addGarbage (D.fromList junk)) seqNum')
+                renderSeqNum' <- use _renderSeqNum
+                _garbageDump %= (Map.alter (addGarbage (D.fromList junk)) renderSeqNum')
                 _todosModel %= Map.delete k
                 pure $ D.singleton RenderRequiredCommand
             maybe (pure mempty) pure ret
 
-        ReleaseCallbacksAction n -> do
+        RenderUpdatedAction n -> do
             -- Called callbacks that have been released will generate an exception
             -- So make this into an action is evaluated after re-rendering
             -- to ensure callbacks wont get called.
             -- All garbage with lower key than seqNum are safe to be released
             dump <- use _garbageDump
-            let (garbage, leftover) = Map.partitionWithKey (\k _ -> k < n) dump
-            _garbageDump .= leftover
-            pure $ D.singleton $ TrashGarbageCommand (D.toList . foldMap snd . Map.toList $ garbage)
+            let (garbage, leftoverJunk) = Map.partitionWithKey (\k _ -> k < n) dump
+            _garbageDump .= leftoverJunk
+
+            -- Similarly run delayed commands that need to wait until a particular frame is rendered
+            -- Eg focusing after other rendering changes
+            cmds <- use _delayedCommands
+            let (cmds', leftoverCmds) = Map.partitionWithKey (\k _ -> k < n) cmds
+            _delayedCommands .= leftoverCmds
+
+            pure $ (foldMap snd . Map.toList $ cmds') `D.snoc` TrashGarbageCommand (D.toList . foldMap snd . Map.toList $ garbage)
 
         NewTodoRequestAction str -> do
-            n <- use _seqNum
-            _seqNum %= (+ 1)
+            n <- use _todoSeqNum
+            _todoSeqNum %= (+ 1)
             pure $ D.singleton $ NewTodoSetupCommand n str
 
         NewTodoReadyAction n s -> do
@@ -187,6 +220,9 @@ appGadget = do
         InputAction _ -> pure mempty
         TodosAction _ -> pure mempty
   where
+    addCommands cmds Nothing = Just cmds
+    addCommands cmds (Just cmds') = Just (cmds' <> cmds)
+
     addGarbage junk Nothing = Just junk
     addGarbage junk (Just junk') = Just (junk' <> junk)
 
