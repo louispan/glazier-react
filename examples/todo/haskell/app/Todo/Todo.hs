@@ -83,7 +83,8 @@ window = do
                                       , ("onClick", J.jsval $ fireDestroy s)
                                       ])
         R.leaf (E.strval "input") (M.fromList
-                                  [ ("className", E.strval "edit")
+                                  [ ("key", E.strval "todo-input")
+                                  , ("className", E.strval "edit")
                                   , ("value", J.jsval $ editText s)
                                   , ("checked", J.pToJSVal $ completed s)
                                   , ("onBlur", J.jsval $ fireCancelEdit s)

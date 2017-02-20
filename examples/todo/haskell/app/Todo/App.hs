@@ -75,7 +75,8 @@ data Action
 makeClassyPrisms ''Action
 
 data Model = Model
-    { seqNum :: Int
+    { uid :: J.JSString
+    , seqNum :: Int
     , garbageDump :: Map.Map Int (D.DList E.Garbage)
     , todoInput :: TD.Input.Model
     , todosModel :: TodosModel'
@@ -103,7 +104,7 @@ window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
 window = do
     s <- ask
     lift $ R.branch "header" (M.fromList
-                       [ ("key", E.strval "todo")
+                       [ ("key", J.jsval $ uid s)
                        , ("className", E.strval "header")
                        ]) $ do
         R.branch "h1" (M.singleton "key" (E.strval "heading")) (R.txt "todos")
@@ -123,7 +124,7 @@ mainWindow = do
                         ]) $ do
             -- This is the complete all checkbox
             R.leaf (E.strval "input") (M.fromList
-                        [ ("key", E.strval "input")
+                        [ ("key", E.strval "toggle-all")
                         , ("className", E.strval "toggle-all")
                         , ("type", E.strval "checkbox")
                         , ("checked", J.pToJSVal . not . hasActiveTodos $ todos)

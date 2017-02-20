@@ -88,4 +88,6 @@ gadget = do
         SubmitAction -> do
             v <- J.strip <$> use _value
             _value .= J.empty
-            pure (D.fromList [SubmitCommand v, StateChangedCommand])
+            if J.null v
+                then pure mempty
+                else pure (D.fromList [SubmitCommand v, StateChangedCommand])

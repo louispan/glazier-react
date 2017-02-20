@@ -52,10 +52,11 @@ main = do
 
     -- TODO: How to make sure the correct handlers are passed into the correct place?
     let initialState = TD.App.Model
+            "todos"
             0
             mempty
             (TD.Input.Model
-                 "inpu12341234St"
+                 "new-input"
                  J.empty
                  inputChangeFirer'
                  inputSubmitFirer')
