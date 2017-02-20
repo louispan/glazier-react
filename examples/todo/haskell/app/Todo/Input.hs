@@ -76,7 +76,7 @@ submitFirer = R.eventHandlerM goStrict goLazy
                        then pure SubmitAction
                        else A.empty
 
-data Command = StateChangedCommand | SubmitCommand J.JSString
+data Command = RenderRequiredCommand | SubmitCommand J.JSString
 
 gadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
 gadget = do
@@ -84,10 +84,10 @@ gadget = do
     case a of
         ChangeAction str -> do
             _value .= str
-            pure $ D.singleton StateChangedCommand
+            pure $ D.singleton RenderRequiredCommand
         SubmitAction -> do
             v <- J.strip <$> use _value
             _value .= J.empty
             if J.null v
                 then pure mempty
-                else pure (D.fromList [SubmitCommand v, StateChangedCommand])
+                else pure (D.fromList [SubmitCommand v, RenderRequiredCommand])

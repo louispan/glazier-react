@@ -75,9 +75,13 @@ main = do
     void $ js_globalListen "renderHaskell" doRender
 
     -- Setup the callback garbage collection callback
+    delayedActions <- newEmptyMVar
     doCleanup <- J.asyncCallback1 $ \seqNum -> void . runMaybeT $ do
         seqNum' <- MaybeT $ J.fromJSVal seqNum
-        MaybeT $ guard <$> (atomically $ PC.send output (TD.App.ReleaseCallbacksAction seqNum'))
+        MaybeT . fmap guard . atomically . PC.send output $ TD.App.ReleaseCallbacksAction seqNum'
+        -- also run delayed commands that are waiting until after the next render
+        xs <- D.toList <$> MaybeT (tryTakeMVar delayedActions)
+        traverse_ (MaybeT . fmap guard . atomically . PC.send output) xs
     void $ js_globalListen "renderUpdated" doCleanup
 
     -- trigger a render now that the render callback is initialized
@@ -86,7 +90,7 @@ main = do
     -- Run the gadget effect which reads actions from 'Pipes.Concurrent.Input'
     -- and notifies html React of any state changes.
     -- runEffect will only stop if input is finished (which in this example never does).
-    void . P.runEffect $ appEffect currentState output input
+    void . P.runEffect $ appEffect delayedActions currentState output input
 
     -- Cleanup
     -- We actually never get here because in this example runEffect never quits
@@ -122,50 +126,71 @@ forceRender stateMVar = do
     liftIO . void $ swapMVar stateMVar s -- ^ so that the render callback can use the latest state
     liftIO $ js_globalShout "forceRender" J.nullRef -- ^ tell React to call render
 
-appEffect :: MonadIO io => MVar TD.App.Model -> PC.Output TD.App.Action -> PC.Input TD.App.Action -> P.Effect io TD.App.Model
-appEffect stateMVar output input = do
+appEffect
+    :: MonadIO io
+    => MVar (D.DList TD.App.Action)
+    -> MVar TD.App.Model
+    -> PC.Output TD.App.Action
+    -> PC.Input TD.App.Action
+    -> P.Effect io TD.App.Model
+appEffect delayedActions stateMVar output input = do
     s <- liftIO $ readMVar stateMVar
-    PL.execStateP s $ TD.App.producer input P.>-> interpretCommandsPipe stateMVar output P.>-> PP.drain
+    PL.execStateP s $
+        TD.App.producer input P.>->
+        interpretCommandsPipe delayedActions stateMVar output P.>->
+        PP.drain
 
 interpretCommandsPipe
     :: (MonadState TD.App.Model io, MonadIO io)
-    => MVar TD.App.Model -> PC.Output TD.App.Action -> P.Pipe (D.DList TD.App.Command) () io ()
-interpretCommandsPipe stateMVar output = PP.mapM go
+    => MVar (D.DList TD.App.Action)
+    -> MVar TD.App.Model
+    -> PC.Output TD.App.Action
+    -> P.Pipe (D.DList TD.App.Command) () io ()
+interpretCommandsPipe delayedActions stateMVar output = PP.mapM go
    where
-     isStateChangedCmd cmd = case cmd of
-         TD.App.StateChangedCommand -> True
-         TD.App.InputCommand TD.Input.StateChangedCommand -> True
-         TD.App.TodosCommand (_, TD.Todo.StateChangedCommand) -> True
+     isRenderRequiredCmd cmd = case cmd of
+         TD.App.RenderRequiredCommand -> True
+         TD.App.InputCommand TD.Input.RenderRequiredCommand -> True
+         TD.App.TodosCommand (_, TD.Todo.RenderRequiredCommand) -> True
          _ -> False
      go cmds = do
-         let (changes, cmds') = partition isStateChangedCmd (D.toList cmds)
-         interpretCommands stateMVar output cmds'
+         let (changes, cmds') = partition isRenderRequiredCmd (D.toList cmds)
+         interpretCommands delayedActions stateMVar output cmds'
          -- Run only one of the state changed
-         interpretCommands stateMVar output (foldMap (First . Just) changes)
+         interpretCommands delayedActions stateMVar output (foldMap (First . Just) changes)
 
 interpretCommands
     :: (Foldable t, MonadState TD.App.Model io, MonadIO io)
-    => MVar TD.App.Model -> PC.Output TD.App.Action -> t TD.App.Command -> io ()
-interpretCommands stateMVar output = traverse_ (interpretCommand stateMVar output)
+    => MVar (D.DList TD.App.Action)
+    -> MVar TD.App.Model
+    -> PC.Output TD.App.Action
+    -> t TD.App.Command
+    -> io ()
+interpretCommands delayedActions stateMVar output =
+    traverse_ (interpretCommand delayedActions stateMVar output)
 
 -- | Evaluate commands from gadgets here
 interpretCommand
     :: (MonadIO io, MonadState TD.App.Model io)
-    => MVar TD.App.Model -> PC.Output TD.App.Action -> TD.App.Command -> io ()
+    => MVar (D.DList TD.App.Action)
+    -> MVar TD.App.Model
+    -> PC.Output TD.App.Action
+    -> TD.App.Command
+    -> io ()
 
-interpretCommand stateMVar _  TD.App.StateChangedCommand = forceRender stateMVar
+interpretCommand _ stateMVar _  TD.App.RenderRequiredCommand = forceRender stateMVar
 
-interpretCommand _ _         (TD.App.TrashGarbageCommand xs) =
+interpretCommand _ _ _         (TD.App.TrashGarbageCommand xs) =
     liftIO $ void $ traverse go xs
   where
     go (E.Garbage a) = E.trash a
 
-interpretCommand stateMVar _ (TD.App.InputCommand (TD.Input.StateChangedCommand)) = forceRender stateMVar
+interpretCommand _ stateMVar _ (TD.App.InputCommand (TD.Input.RenderRequiredCommand)) = forceRender stateMVar
 
-interpretCommand _ output    (TD.App.InputCommand (TD.Input.SubmitCommand str)) = do
+interpretCommand _ _ output    (TD.App.InputCommand (TD.Input.SubmitCommand str)) = do
     liftIO $ void $ atomically $ PC.send output (TD.App.NewTodoRequestAction str)
 
-interpretCommand _ output    (TD.App.NewTodoSetupCommand n str) = do
+interpretCommand _ _ output    (TD.App.NewTodoSetupCommand n str) = do
     model <- liftIO $ TD.Todo.Model
             <$> (pure . J.pack . show $ n)
             <*> (pure str)
@@ -181,14 +206,20 @@ interpretCommand _ output    (TD.App.NewTodoSetupCommand n str) = do
             <*> (mkActionCallback output (TD.App.mapTodoHandler n TD.Todo.keyDownHandler))
     liftIO $ void $ atomically $ PC.send output (TD.App.NewTodoReadyAction n model)
 
-interpretCommand stateMVar _ (TD.App.TodosCommand (_, TD.Todo.StateChangedCommand)) = forceRender stateMVar
+interpretCommand _ stateMVar _ (TD.App.TodosCommand (_, TD.Todo.RenderRequiredCommand)) = forceRender stateMVar
 
-interpretCommand _ output    (TD.App.TodosCommand (k, TD.Todo.DestroyCommand)) =
+interpretCommand _ _ output    (TD.App.TodosCommand (k, TD.Todo.DestroyCommand)) =
     liftIO $ void $ atomically $ PC.send output (TD.App.DestroyTodoAction k)
 
-interpretCommand _ _         (TD.App.TodosCommand (_, TD.Todo.StartEditCommand node)) =
+interpretCommand _ _ _         (TD.App.TodosCommand (_, TD.Todo.FocusNodeCommand node)) =
     liftIO $ js_focusNode node
 
+interpretCommand delayedActions _ _ (TD.App.TodosCommand (k, TD.Todo.DelayActionCommand x)) =
+    liftIO $ modifyMVar_ delayedActions go
+  where
+    go xs = pure (xs `D.snoc` (TD.App.TodosAction (k, x)))
+
+
 foreign import javascript unsafe
-  "if ($1) { $1.focus(); }"
+  "console.log($1); $1.focus(); "
   js_focusNode :: J.JSVal -> IO ()

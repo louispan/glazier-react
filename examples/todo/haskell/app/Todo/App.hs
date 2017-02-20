@@ -55,7 +55,7 @@ type TodosAction' = (TodoKey, TD.Todo.Action)
 type TodosModel' = Map.Map TodoKey TD.Todo.Model
 
 data Command
-    = StateChangedCommand
+    = RenderRequiredCommand
     | TrashGarbageCommand [E.Garbage]
     | NewTodoSetupCommand Int J.JSString
     | InputCommand TD.Input.Command
@@ -150,7 +150,7 @@ appGadget = do
     case a of
         ToggleCompleteAllAction -> do
             _todosModel %= toggleCompleteAll
-            pure $ D.singleton StateChangedCommand
+            pure $ D.singleton RenderRequiredCommand
 
         DestroyTodoAction k -> do
             -- queue up callbacks to release before deleting
@@ -161,7 +161,7 @@ appGadget = do
                 seqNum' <- use _seqNum
                 _garbageDump %= (Map.alter (addGarbage (D.fromList junk)) seqNum')
                 _todosModel %= Map.delete k
-                pure $ D.singleton StateChangedCommand
+                pure $ D.singleton RenderRequiredCommand
             maybe (pure mempty) pure ret
 
         ReleaseCallbacksAction n -> do
@@ -181,7 +181,7 @@ appGadget = do
 
         NewTodoReadyAction n s -> do
             _todosModel %= Map.insert n s
-            pure $ D.singleton StateChangedCommand
+            pure $ D.singleton RenderRequiredCommand
 
         -- these will be handled by monoidally appending other gadgets
         InputAction _ -> pure mempty

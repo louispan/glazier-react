@@ -23,6 +23,7 @@ import qualified Glazier.React.Util as E
 data Action
     = ToggleCompleteAction
     | StartEditAction
+    | FocusNodeAction J.JSVal
     | DestroyAction
     | CancelEditAction
     | SubmitAction
@@ -100,10 +101,6 @@ window = do
   where
     cns s = classNames [("completed", completed s), ("editing", not . J.null $ editText s)]
 
-foreign import javascript unsafe
-  "$r = function(huh) { console.log(huh); };"
-  js_wack :: J.JSVal
-
 setEditNodeFirer :: Monad m => J.JSVal -> m Action
 setEditNodeFirer v = pure $ SetEditNodeAction v
 
@@ -148,7 +145,7 @@ keyDownHandler = R.eventHandlerM goStrict goLazy
                            27 -> pure CancelEditAction -- FIXME: ESCAPE_KEY
                            _ -> A.empty
 
-data Command = StateChangedCommand | DestroyCommand | StartEditCommand J.JSVal
+data Command = RenderRequiredCommand | DestroyCommand | DelayActionCommand Action | FocusNodeCommand J.JSVal
 
 gadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
 gadget = do
@@ -156,7 +153,7 @@ gadget = do
     case a of
         ToggleCompleteAction -> do
             _completed %= not
-            pure $ D.singleton StateChangedCommand
+            pure $ D.singleton RenderRequiredCommand
         SetEditNodeAction v -> do
             _editNode .= v
             pure mempty
@@ -166,14 +163,22 @@ gadget = do
                 n' <- MaybeT $ pure $ J.nullableToMaybe (J.Nullable n)
                 value' <- use _value
                 _editText .= value'
-                pure $ D.fromList [StartEditCommand n', StateChangedCommand]
+                -- Need to delay focusing until after the next render
+                -- pure $ D.fromList [DelayActionCommand $ FocusNodeAction n', RenderRequiredCommand]
+                pure $ D.fromList [FocusNodeCommand n', RenderRequiredCommand]
             maybe (pure mempty) pure ret
+        FocusNodeAction n -> do
+            pure $ D.singleton $ FocusNodeCommand n
         DestroyAction -> pure $ D.singleton DestroyCommand
-        CancelEditAction -> pure mempty
+        CancelEditAction -> do
+            _editText .= J.empty
+            pure $ D.singleton RenderRequiredCommand
         ChangeAction str -> do
-            _value .= str
-            pure $ D.singleton StateChangedCommand
+            _editText .= str
+            pure $ D.singleton RenderRequiredCommand
         SubmitAction -> do
             -- trim the text
-            _value %= J.strip
-            pure $ D.singleton StateChangedCommand
+            v <- J.strip <$> use _editText
+            _value .= v
+            _editText .= J.empty
+            pure $ D.singleton RenderRequiredCommand
