@@ -17,8 +17,8 @@ module Todo.App
     , window
     , gadget
     , toggleCompleteAllFirer
-    , inputChangeFirer
-    , inputSubmitFirer
+    , mapInputHandler
+    , mapTodoHandler
     , getGarbage
     , producer
     ) where
@@ -56,6 +56,7 @@ type TodosModel' = Map.Map TodoKey TD.Todo.Model
 data Command
     = StateChangedCommand
     | TrashGarbageCommand [E.Garbage]
+    | NewTodoSetupCommand Int J.JSString
     | InputCommand TD.Input.Command
     | TodosCommand TodosCommand'
 
@@ -63,7 +64,8 @@ data Action
     = ToggleCompleteAllAction
     | DestroyTodoAction TodoKey
     | ReleaseCallbacksAction Int
-    | NewTodoAction J.JSString
+    | NewTodoRequestAction J.JSString
+    | NewTodoReadyAction Int TD.Todo.Model
     | InputAction TD.Input.Action
     | TodosAction TodosAction'
 
@@ -73,7 +75,7 @@ data Model = Model
     { seqNum :: Int
     , garbageDump :: Map.Map Int (D.DList E.Garbage)
     , todoInput :: TD.Input.Model
-    , todoModels :: TodosModel'
+    , todosModel :: TodosModel'
     , fireToggleCompleteAll :: J.Callback (J.JSVal -> IO ())
     }
 
@@ -88,14 +90,11 @@ hasActiveTodos = null . filter (not . TD.Todo.completed) . fmap snd . Map.toList
 toggleCompleteAllFirer :: Applicative m => J.JSVal -> m Action
 toggleCompleteAllFirer = const $ pure ToggleCompleteAllAction
 
-inputChangeFirer :: J.JSVal -> MaybeT IO Action
-inputChangeFirer v = (review _InputAction) <$> TD.Input.changeFirer v
+mapInputHandler :: (J.JSVal -> MaybeT IO TD.Input.Action) -> J.JSVal -> MaybeT IO Action
+mapInputHandler f v = (review _InputAction) <$> f v
 
-inputSubmitFirer :: J.JSVal -> MaybeT IO Action
-inputSubmitFirer v = (review _InputAction) <$> TD.Input.submitFirer v
-
-todoToggleCompleteFirer :: Applicative m => TodoKey -> J.JSVal -> m Action
-todoToggleCompleteFirer k v = (\a -> TodosAction (k, a)) <$> TD.Todo.toggleCompleteFirer v
+mapTodoHandler :: Applicative m => TodoKey -> (J.JSVal -> m TD.Todo.Action) -> J.JSVal -> m Action
+mapTodoHandler k f v = (\a -> TodosAction (k, a)) <$> f v
 
 window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
 window = do
@@ -110,7 +109,7 @@ window = do
 
 mainWindow :: Monad m => G.WindowT Model (R.ReactMlT m) ()
 mainWindow = do
-    todos <- view _todoModels
+    todos <- view _todosModel
     if (null todos)
         then pure ()
         else do
@@ -140,49 +139,47 @@ appGadget = do
     a <- ask
     case a of
         ToggleCompleteAllAction -> do
-            _todoModels %= toggleCompleteAll
+            _todosModel %= toggleCompleteAll
             pure $ D.singleton StateChangedCommand
 
         DestroyTodoAction k -> do
             -- queue up callbacks to release before deleting
-            ts <- use _todoModels
+            ts <- use _todosModel
             ret <- runMaybeT $ do
                 todoModel <- MaybeT $ pure $ Map.lookup k ts
                 junk <- pure $ TD.Todo.getGarbage todoModel
                 seqNum' <- use _seqNum
                 _garbageDump %= (Map.alter (addGarbage (D.fromList junk)) seqNum')
-                _todoModels %= Map.delete k
+                _todosModel %= Map.delete k
                 pure $ D.singleton StateChangedCommand
             maybe (pure mempty) pure ret
 
-        ReleaseCallbacksAction seqNum -> do
+        ReleaseCallbacksAction n -> do
             -- Called callbacks that have been released will generate an exception
             -- So make this into an action is evaluated after re-rendering
             -- to ensure callbacks wont get called.
             -- All garbage with lower key than seqNum are safe to be released
             dump <- use _garbageDump
-            let (garbage, leftover) = Map.partitionWithKey (\k _ -> k < seqNum) dump
+            let (garbage, leftover) = Map.partitionWithKey (\k _ -> k < n) dump
             _garbageDump .= leftover
             pure $ D.singleton $ TrashGarbageCommand (D.toList . foldMap snd . Map.toList $ garbage)
 
-        NewTodoAction str -> do
+        NewTodoRequestAction str -> do
             n <- use _seqNum
             _seqNum %= (+ 1)
-            -- _todos %= Map.insert (n, uuid')
-            --     (TD.Todo.Model
-            --         uuid'
-            --         J.empty
-            --         false
-            --         Nothing
-            --         )
-            pure mempty
+            pure $ D.singleton $ NewTodoSetupCommand n str
 
-        -- delegate to other gadgets
+        NewTodoReadyAction n s -> do
+            _todosModel %= Map.insert n s
+            pure $ D.singleton StateChangedCommand
+
+        -- these will be handled by monoidally appending other gadgets
         InputAction _ -> pure mempty
         TodosAction _ -> pure mempty
   where
     addGarbage junk Nothing = Just junk
     addGarbage junk (Just junk') = Just (junk' <> junk)
+
     toggleCompleteAll :: Map.Map TodoKey TD.Todo.Model -> Map.Map TodoKey TD.Todo.Model
     toggleCompleteAll xs = fmap (toggleCompleteAll' $ hasActiveTodos xs) xs
     toggleCompleteAll' :: Bool -> TD.Todo.Model -> TD.Todo.Model
@@ -217,7 +214,7 @@ todosGadget = do
          _ -> False
 
 todosGadget' :: Monad m => G.GadgetT Action Model m (D.DList Command)
-todosGadget' = fmap TodosCommand <$> G.implant _todoModels (G.dispatch _TodosAction todosGadget)
+todosGadget' = fmap TodosCommand <$> G.implant _todosModel (G.dispatch _TodosAction todosGadget)
 
 producer
     :: (MFunctor t, MonadState Model (t STM), MonadTrans t, MonadIO io)

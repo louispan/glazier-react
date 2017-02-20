@@ -46,8 +46,8 @@ main = do
 
     -- It is not trivial to call arbitrary Haskell functions from Javascript
     -- A hacky way is to create a Callback and assign it to a global registry.
-    inputChangeFirer' <- mkActionCallback output TD.App.inputChangeFirer
-    inputSubmitFirer' <- mkActionCallback output TD.App.inputSubmitFirer
+    inputChangeFirer' <- mkActionCallback output (TD.App.mapInputHandler TD.Input.changeFirer)
+    inputSubmitFirer' <- mkActionCallback output (TD.App.mapInputHandler TD.Input.submitFirer)
     toggleCompleteAllFirer' <- mkActionCallback output TD.App.toggleCompleteAllFirer
 
     -- TODO: How to make sure the correct handlers are passed into the correct place?
@@ -161,8 +161,22 @@ interpretCommand _ _         (TD.App.TrashGarbageCommand xs) =
 
 interpretCommand stateMVar _ (TD.App.InputCommand (TD.Input.StateChangedCommand)) = forceRender stateMVar
 
-interpretCommand _ output    (TD.App.InputCommand (TD.Input.SubmitCommand str)) =
-    liftIO $ void $ atomically $ PC.send output (TD.App.NewTodoAction str)
+interpretCommand _ output    (TD.App.InputCommand (TD.Input.SubmitCommand str)) = do
+    liftIO $ void $ atomically $ PC.send output (TD.App.NewTodoRequestAction str)
+
+interpretCommand _ output    (TD.App.NewTodoSetupCommand n str) = do
+    model <- liftIO $ TD.Todo.Model
+            <$> (pure . J.pack . show $ n)
+            <*> (pure str)
+            <*> (pure False)
+            <*> (pure Nothing)
+            <*> (mkActionCallback output (TD.App.mapTodoHandler n TD.Todo.toggleCompleteFirer))
+            <*> (mkActionCallback output (TD.App.mapTodoHandler n TD.Todo.startEditFirer))
+            <*> (mkActionCallback output (TD.App.mapTodoHandler n TD.Todo.destroyFirer))
+            <*> (mkActionCallback output (TD.App.mapTodoHandler n TD.Todo.cancelEditFirer))
+            <*> (mkActionCallback output (TD.App.mapTodoHandler n TD.Todo.changeFirer))
+            <*> (mkActionCallback output (TD.App.mapTodoHandler n TD.Todo.keyDownHandler))
+    liftIO $ void $ atomically $ PC.send output (TD.App.NewTodoReadyAction n model)
 
 interpretCommand stateMVar _ (TD.App.TodosCommand (_, TD.Todo.StateChangedCommand)) = forceRender stateMVar
 
