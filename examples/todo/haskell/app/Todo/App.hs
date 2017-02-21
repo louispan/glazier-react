@@ -143,21 +143,10 @@ todoListWindow = do
                         ]) $ do
         traverse_ (view G._WindowT TD.Todo.window) todos
 
-gadget' :: Monad m => G.GadgetT Action Model m (D.DList Command)
-gadget' = appGadget
+gadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
+gadget = appGadget
     <> inputGadget
     <> todosGadget'
-
--- | increment the renderSeq number if any RenderRequiredCommand are found
-gadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
-gadget = do
-    a <- ask
-    s <- get
-    (cmds, s') <- lift $ (G.runGadgetT' gadget') a s
-    if (not . null . filter isRenderRequiredCommand $ D.toList cmds)
-       then put $ s' & _renderSeqNum %~ (+ 1)
-       else pure ()
-    pure cmds
 
 isRenderRequiredCommand :: Command -> Bool
 isRenderRequiredCommand cmd = case cmd of

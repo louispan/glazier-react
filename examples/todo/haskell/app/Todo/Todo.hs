@@ -170,9 +170,12 @@ gadget = do
                 value' <- use _value
                 _editText .= value'
                 -- Need to delay focusing until after the next render
-                pure $ D.fromList [DelayedCommands (D.singleton $ FocusNodeCommand n'), RenderRequiredCommand]
+                pure $ D.fromList [ DelayedCommands (D.singleton $ FocusNodeCommand n')
+                                  , RenderRequiredCommand
+                                  ]
             maybe (pure mempty) pure ret
         DestroyAction -> pure $ D.singleton DestroyCommand
+
         CancelEditAction -> do
             _editText .= J.empty
             pure $ D.singleton RenderRequiredCommand

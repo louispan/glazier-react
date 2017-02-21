@@ -120,11 +120,11 @@ mkActionCallback output handler =
 
 forceRender :: (MonadIO io, MonadState TD.App.Model io) => MVar TD.App.Model -> io ()
 forceRender stateMVar = do
+    -- increment the sequence number if render is required
+    TD.App._renderSeqNum %= (+ 1)
     s <- get
-    liftIO . void $ swapMVar stateMVar s -- ^ so that the render callback can use the latest state
     let i = TD.App.renderSeqNum s
-    a <- use (TD.App._todoInput . TD.Input._value)
-    liftIO $ putStrLn (J.unpack a)
+    liftIO . void $ swapMVar stateMVar s -- ^ so that the render callback can use the latest state
     liftIO $ js_globalShout "forceRender" (J.pToJSVal i) -- ^ tell React to call render
 
 appEffect
@@ -212,5 +212,5 @@ interpretCommand _ output    (TD.App.TodosCommand (k, TD.Todo.DelayedCommands cm
     liftIO $ void $ atomically $ PC.send output (TD.App.DelayedCommands i cmds')
 
 foreign import javascript unsafe
-  "console.log($1); $1.focus(); "
+  "if ($1) { $1.focus(); }"
   js_focusNode :: J.JSVal -> IO ()

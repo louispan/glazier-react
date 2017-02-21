@@ -16,18 +16,15 @@ class App extends React.PureComponent {
         registry.listen(
             'forceRender',
             function(newSeqNum){
-                // console.log("forceRender", this.state);
                 this.setState({ seqNum: newSeqNum });
             }.bind(this));
     }
 
     componentDidUpdate() {
-        // console.log("renderUpdated", this.state);
         registry.shout('renderUpdated', this.state['seqNum']);
     }
 
     render() {
-        // console.log("render", this.state);
         return mkCombinedElements(registry.shout('renderHaskell', this.state['seqNum']));
     }
 }
