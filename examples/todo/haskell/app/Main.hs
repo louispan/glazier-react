@@ -12,6 +12,7 @@ import Control.Concurrent.STM
 import Control.Lens
 import Control.Monad
 import Control.Monad.IO.Class
+import Control.Monad.Morph
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Maybe
 import qualified Data.DList as D
@@ -136,9 +137,12 @@ appEffect
 appEffect stateMVar output input = do
     s <- liftIO $ readMVar stateMVar
     PL.execStateP s $
-        TD.App.producer input P.>->
+        producerIO input P.>->
         interpretCommandsPipe stateMVar output P.>->
         PP.drain
+
+producerIO :: MonadIO io => PC.Input TD.App.Action -> P.Producer' (D.DList TD.App.Command) (StateT TD.App.Model io) ()
+producerIO input = hoist (hoist (liftIO . atomically)) (TD.App.producer input)
 
 interpretCommandsPipe
     :: (MonadState TD.App.Model io, MonadIO io)

@@ -222,10 +222,10 @@ appGadget = do
 
 
 inputWindow :: Monad m => G.WindowT Model (R.ReactMlT m) ()
-inputWindow = G.implant _todoInput TD.Input.window
+inputWindow = magnify _todoInput TD.Input.window
 
 inputGadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
-inputGadget = fmap InputCommand <$> G.implant _todoInput (G.dispatch _InputAction TD.Input.gadget)
+inputGadget = fmap InputCommand <$> zoom _todoInput (magnify _InputAction TD.Input.gadget)
 
 todosGadget :: Monad m => G.GadgetT TodosAction' TodosModel' m (D.DList TodosCommand')
 todosGadget = do
@@ -242,10 +242,7 @@ todosGadget = do
             pure $ (\cmd -> (k, cmd)) <$> cmds
 
 todosGadget' :: Monad m => G.GadgetT Action Model m (D.DList Command)
-todosGadget' = fmap TodosCommand <$> G.implant _todosModel (G.dispatch _TodosAction todosGadget)
+todosGadget' = fmap TodosCommand <$> zoom _todosModel (magnify _TodosAction todosGadget)
 
-producer
-    :: (MFunctor t, MonadState Model (t STM), MonadTrans t, MonadIO io)
-    => PC.Input Action
-    -> P.Producer' (D.DList Command) (t io) ()
-producer input = hoist (hoist (liftIO . atomically)) (PM.rsProducer input (G.runGadgetT gadget))
+producer :: PC.Input Action -> P.Producer' (D.DList Command) (StateT Model STM) ()
+producer input = PM.execInput input (G.runGadgetT gadget)
