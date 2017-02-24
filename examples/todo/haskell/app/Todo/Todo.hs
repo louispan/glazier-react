@@ -1,7 +1,23 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Todo.Todo where
+-- TODO:
+-- * succint clean up maybe event handler
+-- * generics generate callback bits
+-- * callbaks garbage monoid?
+
+module Todo.Todo
+ ( Command(..)
+ , Action(..)
+ , AsAction(..)
+ , Callbacks(..)
+ , Model(..)
+ , HasModel(..)
+ , mkCallbacks
+ , getGarbage
+ , window
+ , gadget
+ ) where
 
 import Control.Applicative as A
 import Control.Lens
@@ -47,7 +63,6 @@ data Callbacks = Callbacks
     , fireChange :: J.Callback (J.JSVal -> IO ())
     , handleKeyDown :: J.Callback (J.JSVal -> IO ())
     }
-makeClassy_ ''Callbacks
 
 data Model = Model
     { uid :: J.JSString
@@ -55,7 +70,7 @@ data Model = Model
     , completed :: Bool
     , editText :: J.JSString
     , editNode :: J.JSVal
-    , handleWith :: Callbacks
+    , callbacks :: Callbacks
     }
 
 makeClassy_ ''Model
@@ -96,26 +111,26 @@ window = do
                                       , ("className", E.strval "toggle")
                                       , ("type", E.strval "checkbox")
                                       , ("checked", J.pToJSVal $ completed s)
-                                      , ("onChange", J.jsval $ s ^. _handleWith . _fireToggleComplete)
+                                      , ("onChange", J.jsval $ s ^. _callbacks . to fireToggleComplete)
                                       ])
             R.branch "label"  (M.fromList
                                       [ ("key", E.strval "label")
-                                      , ("onDoubleClick", J.jsval $ s ^. _handleWith . _fireStartEdit)
+                                      , ("onDoubleClick", J.jsval $ s ^. _callbacks . to fireStartEdit)
                                       ]) (R.txt $ value s)
             R.leaf (E.strval "button") (M.fromList
                                       [ ("key", E.strval "destroy")
                                       , ("className", E.strval "destroy")
-                                      , ("onClick", J.jsval $ s ^. _handleWith . _fireDestroy)
+                                      , ("onClick", J.jsval $ s ^. _callbacks . to fireDestroy)
                                       ])
         R.leaf (E.strval "input") (M.fromList
                                   [ ("key", E.strval "todo-input")
-                                  , ("ref", J.jsval $ s ^. _handleWith . _fireSetEditNode)
+                                  , ("ref", J.jsval $ s ^. _callbacks . to fireSetEditNode)
                                   , ("className", E.strval "edit")
                                   , ("value", J.jsval $ editText s)
                                   , ("checked", J.pToJSVal $ completed s)
-                                  , ("onBlur", J.jsval $ s ^. _handleWith . _fireCancelEdit)
-                                  , ("onChange", J.jsval $ s ^. _handleWith . _fireChange)
-                                  , ("onKeyDown", J.jsval $ s ^. _handleWith . _handleKeyDown)
+                                  , ("onBlur", J.jsval $ s ^. _callbacks . to fireCancelEdit)
+                                  , ("onChange", J.jsval $ s ^. _callbacks . to fireChange)
+                                  , ("onKeyDown", J.jsval $ s ^. _callbacks . to handleKeyDown)
                                   ])
   where
     cns s = E.classNames [("completed", completed s), ("editing", not . J.null $ editText s)]

@@ -186,9 +186,12 @@ interpretCommand stateMVar _ (TD.App.InputCommand (TD.Input.RenderRequiredComman
 interpretCommand _ output    (TD.App.InputCommand (TD.Input.SubmitCommand str)) = do
     liftIO $ void $ atomically $ PC.send output (TD.App.RequestNewTodoAction str)
 
-interpretCommand _ output    (TD.App.MakeCallbacksCommand f) = do
-    action <- liftIO $ f (mkActionCallback output)
-    liftIO $ void $ atomically $ PC.send output action
+interpretCommand stateMVar output    (TD.App.MakeCallbacksCommand f) = do
+    cmd <- liftIO $ f (mkActionCallback output)
+    interpretCommand stateMVar output cmd
+
+interpretCommand _ output    (TD.App.SendActionCommand a) = do
+    liftIO $ void $ atomically $ PC.send output a
 
 interpretCommand stateMVar _ (TD.App.TodosCommand (_, TD.Todo.RenderRequiredCommand)) = forceRender stateMVar
 
