@@ -58,7 +58,7 @@ type TodosModel' = Map.Map TodoKey TD.Todo.Model
 
 data Command
     = RenderRequiredCommand
-    | TrashGarbageCommand [E.Garbage]
+    | ScrapGarbageCommand E.Garbage
     | MakeCallbacksCommand (((J.JSVal -> MaybeT IO Action) -> IO (J.Callback (J.JSVal -> IO ()))) -> IO Command)
     | SendActionCommand Action
     | InputCommand TD.Input.Command
@@ -89,8 +89,8 @@ data Model = Model
 
 makeClassy_ ''Model
 
-getGarbage :: Model -> [E.Garbage]
-getGarbage s = [ E.scrap $ fireToggleCompleteAll s]
+getGarbage :: Model -> E.Garbage
+getGarbage s =  E.Trash $ fireToggleCompleteAll s
 
 hasActiveTodos :: TodosModel' -> Bool
 hasActiveTodos = not . null . filter (not . TD.Todo.completed) . fmap snd . Map.toList
@@ -176,7 +176,7 @@ appGadget = do
                 todoModel <- MaybeT $ pure $ Map.lookup k ts
                 junk <- pure $ TD.Todo.getGarbage (TD.Todo.callbacks todoModel)
                 renderSeqNum' <- use _renderSeqNum
-                _garbageDump %= (Map.alter (addGarbage (D.fromList junk)) renderSeqNum')
+                _garbageDump %= (Map.alter (addGarbage (D.singleton junk)) renderSeqNum')
                 _todosModel %= Map.delete k
                 pure $ D.singleton RenderRequiredCommand
             maybe (pure mempty) pure ret
@@ -196,7 +196,7 @@ appGadget = do
             let (cmds', leftoverCmds) = Map.partitionWithKey (\k _ -> k < n) cmds
             _delayedCommands .= leftoverCmds
 
-            pure $ (foldMap snd . Map.toList $ cmds') `D.snoc` TrashGarbageCommand (D.toList . foldMap snd . Map.toList $ garbage)
+            pure $ (foldMap snd . Map.toList $ cmds') `D.snoc` ScrapGarbageCommand (E.TrashPile . D.toList . foldMap snd . Map.toList $ garbage)
 
         RequestNewTodoAction str -> do
             n <- use _todoSeqNum

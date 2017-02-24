@@ -1,15 +1,17 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE GADTs #-}
 
 module Glazier.React.Util
     ( strval
     , getProperty
-    , Trash(..)
+    , Scrap(..)
     , Garbage(..)
-    , scrap
+    -- , scrap
     , classNames
     ) where
 
+import Data.Foldable
 import qualified GHCJS.Types as J
 import qualified GHCJS.Foreign.Callback as J
 import qualified Data.JSString as J
@@ -27,18 +29,20 @@ getProperty :: J.JSString -> J.JSVal -> IO J.JSVal
 getProperty _ x | J.isUndefined x || J.isNull x = pure x
 getProperty p x = js_unsafeGetProp p x
 
-
--- | Allows storing releasables in a heterogenous container
-class Trash a where
-    trash :: a -> IO ()
-
-data Garbage = forall a. Trash a => Garbage a
-
-scrap :: Trash a => a -> Garbage
-scrap = Garbage
-
-instance Trash (J.Callback a) where
-    trash = J.releaseCallback
-
 classNames :: [(J.JSString, Bool)] -> J.JSVal
 classNames = J.jsval . J.unwords . fmap fst . filter snd
+
+-- | Allows storing releasables in a heterogenous container
+class Scrap a where
+    scrap :: a -> IO ()
+
+data Garbage where
+    Trash :: forall a. Scrap a => a -> Garbage
+    TrashPile :: forall a. Scrap a => [a] -> Garbage
+
+instance Scrap (J.Callback a) where
+    scrap = J.releaseCallback
+
+instance Scrap Garbage where
+    scrap (Trash a) = scrap a
+    scrap (TrashPile as) = traverse_ scrap as

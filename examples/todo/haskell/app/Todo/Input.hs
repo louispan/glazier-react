@@ -28,9 +28,9 @@ data Model = Model
 
 makeClassy_ ''Model
 
-getGarbage :: Model -> [E.Garbage]
-getGarbage s = [ E.scrap $ fireChange s
-               , E.scrap $ fireSubmit s
+getGarbage :: Model -> E.Garbage
+getGarbage s = E.TrashPile [ E.Trash $ fireChange s
+               , E.Trash $ fireSubmit s
                ]
 
 window :: Monad m => G.WindowT Model (R.ReactMlT m) ()

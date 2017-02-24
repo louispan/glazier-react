@@ -176,10 +176,8 @@ interpretCommand
 
 interpretCommand stateMVar _  TD.App.RenderRequiredCommand = forceRender stateMVar
 
-interpretCommand _ _         (TD.App.TrashGarbageCommand xs) =
-    liftIO $ void $ traverse go xs
-  where
-    go (E.Garbage a) = E.trash a
+interpretCommand _ _         (TD.App.ScrapGarbageCommand x) =
+    liftIO $ E.scrap x
 
 interpretCommand stateMVar _ (TD.App.InputCommand (TD.Input.RenderRequiredCommand)) = forceRender stateMVar
 

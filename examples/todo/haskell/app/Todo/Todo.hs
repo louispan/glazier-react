@@ -2,7 +2,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 -- TODO:
--- * succint clean up maybe event handler
 -- * generics generate callback bits
 -- * callbaks garbage monoid?
 
@@ -86,15 +85,15 @@ mkCallbacks f =
     <*> (f changeFirer)
     <*> (f keyDownHandler)
 
-getGarbage :: Callbacks -> [E.Garbage]
-getGarbage s =
-    [ E.scrap $ fireSetEditNode s
-    , E.scrap $ fireToggleComplete s
-    , E.scrap $ fireStartEdit s
-    , E.scrap $ fireDestroy s
-    , E.scrap $ fireCancelEdit s
-    , E.scrap $ fireChange s
-    , E.scrap $ handleKeyDown s
+getGarbage :: Callbacks -> E.Garbage
+getGarbage s = E.TrashPile
+    [ E.Trash $ fireSetEditNode s
+    , E.Trash $ fireToggleComplete s
+    , E.Trash $ fireStartEdit s
+    , E.Trash $ fireDestroy s
+    , E.Trash $ fireCancelEdit s
+    , E.Trash $ fireChange s
+    , E.Trash $ handleKeyDown s
     ]
 
 window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
