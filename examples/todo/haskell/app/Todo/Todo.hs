@@ -38,13 +38,8 @@ data Action
 
 makeClassyPrisms ''Action
 
-data Model = Model
-    { uid :: J.JSString
-    , value :: J.JSString
-    , completed :: Bool
-    , editText :: J.JSString
-    , editNode :: J.JSVal
-    , fireSetEditNode :: J.Callback (J.JSVal -> IO ())
+data Callbacks = Callbacks
+    { fireSetEditNode :: J.Callback (J.JSVal -> IO ())
     , fireToggleComplete :: J.Callback (J.JSVal -> IO ())
     , fireStartEdit :: J.Callback (J.JSVal -> IO ())
     , fireDestroy :: J.Callback (J.JSVal -> IO ())
@@ -52,10 +47,31 @@ data Model = Model
     , fireChange :: J.Callback (J.JSVal -> IO ())
     , handleKeyDown :: J.Callback (J.JSVal -> IO ())
     }
+makeClassy_ ''Callbacks
+
+data Model = Model
+    { uid :: J.JSString
+    , value :: J.JSString
+    , completed :: Bool
+    , editText :: J.JSString
+    , editNode :: J.JSVal
+    , handleWith :: Callbacks
+    }
 
 makeClassy_ ''Model
 
-getGarbage :: Model -> [E.Garbage]
+mkCallbacks :: ((J.JSVal -> MaybeT IO Action) -> IO (J.Callback (J.JSVal -> IO ()))) -> IO Callbacks
+mkCallbacks f =
+    Callbacks
+    <$> (f setEditNodeFirer)
+    <*> (f toggleCompleteFirer)
+    <*> (f startEditFirer)
+    <*> (f destroyFirer)
+    <*> (f cancelEditFirer)
+    <*> (f changeFirer)
+    <*> (f keyDownHandler)
+
+getGarbage :: Callbacks -> [E.Garbage]
 getGarbage s =
     [ E.scrap $ fireSetEditNode s
     , E.scrap $ fireToggleComplete s
@@ -65,9 +81,6 @@ getGarbage s =
     , E.scrap $ fireChange s
     , E.scrap $ handleKeyDown s
     ]
-
-classNames :: [(J.JSString, Bool)] -> J.JSVal
-classNames = J.jsval . J.unwords . fmap fst . filter snd
 
 window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
 window = do
@@ -83,29 +96,29 @@ window = do
                                       , ("className", E.strval "toggle")
                                       , ("type", E.strval "checkbox")
                                       , ("checked", J.pToJSVal $ completed s)
-                                      , ("onChange", J.jsval $ fireToggleComplete s)
+                                      , ("onChange", J.jsval $ s ^. _handleWith . _fireToggleComplete)
                                       ])
             R.branch "label"  (M.fromList
                                       [ ("key", E.strval "label")
-                                      , ("onDoubleClick", J.jsval $ fireStartEdit s)
+                                      , ("onDoubleClick", J.jsval $ s ^. _handleWith . _fireStartEdit)
                                       ]) (R.txt $ value s)
             R.leaf (E.strval "button") (M.fromList
                                       [ ("key", E.strval "destroy")
                                       , ("className", E.strval "destroy")
-                                      , ("onClick", J.jsval $ fireDestroy s)
+                                      , ("onClick", J.jsval $ s ^. _handleWith . _fireDestroy)
                                       ])
         R.leaf (E.strval "input") (M.fromList
                                   [ ("key", E.strval "todo-input")
-                                  , ("ref", J.jsval $ fireSetEditNode s)
+                                  , ("ref", J.jsval $ s ^. _handleWith . _fireSetEditNode)
                                   , ("className", E.strval "edit")
                                   , ("value", J.jsval $ editText s)
                                   , ("checked", J.pToJSVal $ completed s)
-                                  , ("onBlur", J.jsval $ fireCancelEdit s)
-                                  , ("onChange", J.jsval $ fireChange s)
-                                  , ("onKeyDown", J.jsval $ handleKeyDown s)
+                                  , ("onBlur", J.jsval $ s ^. _handleWith . _fireCancelEdit)
+                                  , ("onChange", J.jsval $ s ^. _handleWith . _fireChange)
+                                  , ("onKeyDown", J.jsval $ s ^. _handleWith . _handleKeyDown)
                                   ])
   where
-    cns s = classNames [("completed", completed s), ("editing", not . J.null $ editText s)]
+    cns s = E.classNames [("completed", completed s), ("editing", not . J.null $ editText s)]
 
 setEditNodeFirer :: Monad m => J.JSVal -> m Action
 setEditNodeFirer v = pure $ SetEditNodeAction v

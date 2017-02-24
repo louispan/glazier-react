@@ -184,23 +184,11 @@ interpretCommand _ _         (TD.App.TrashGarbageCommand xs) =
 interpretCommand stateMVar _ (TD.App.InputCommand (TD.Input.RenderRequiredCommand)) = forceRender stateMVar
 
 interpretCommand _ output    (TD.App.InputCommand (TD.Input.SubmitCommand str)) = do
-    liftIO $ void $ atomically $ PC.send output (TD.App.NewTodoRequestAction str)
+    liftIO $ void $ atomically $ PC.send output (TD.App.RequestNewTodoAction str)
 
-interpretCommand _ output    (TD.App.NewTodoSetupCommand n str) = do
-    model <- liftIO $ TD.Todo.Model
-            <$> (pure . J.pack . show $ n)
-            <*> (pure str)
-            <*> (pure False)
-            <*> (pure J.empty)
-            <*> (pure J.nullRef)
-            <*> (mkActionCallback output (TD.App.mapTodoHandler n TD.Todo.setEditNodeFirer))
-            <*> (mkActionCallback output (TD.App.mapTodoHandler n TD.Todo.toggleCompleteFirer))
-            <*> (mkActionCallback output (TD.App.mapTodoHandler n TD.Todo.startEditFirer))
-            <*> (mkActionCallback output (TD.App.mapTodoHandler n TD.Todo.destroyFirer))
-            <*> (mkActionCallback output (TD.App.mapTodoHandler n TD.Todo.cancelEditFirer))
-            <*> (mkActionCallback output (TD.App.mapTodoHandler n TD.Todo.changeFirer))
-            <*> (mkActionCallback output (TD.App.mapTodoHandler n TD.Todo.keyDownHandler))
-    liftIO $ void $ atomically $ PC.send output (TD.App.NewTodoReadyAction n model)
+interpretCommand _ output    (TD.App.MakeCallbacksCommand f) = do
+    action <- liftIO $ f (mkActionCallback output)
+    liftIO $ void $ atomically $ PC.send output action
 
 interpretCommand stateMVar _ (TD.App.TodosCommand (_, TD.Todo.RenderRequiredCommand)) = forceRender stateMVar
 

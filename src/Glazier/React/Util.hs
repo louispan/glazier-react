@@ -7,10 +7,12 @@ module Glazier.React.Util
     , Trash(..)
     , Garbage(..)
     , scrap
+    , classNames
     ) where
 
 import qualified GHCJS.Types as J
 import qualified GHCJS.Foreign.Callback as J
+import qualified Data.JSString as J
 
 -- | This makes it easier to use OverloadedStrings with inputs that accept a JSVal that could be a JSString
 strval :: J.JSString -> J.JSVal
@@ -37,3 +39,6 @@ scrap = Garbage
 
 instance Trash (J.Callback a) where
     trash = J.releaseCallback
+
+classNames :: [(J.JSString, Bool)] -> J.JSVal
+classNames = J.jsval . J.unwords . fmap fst . filter snd

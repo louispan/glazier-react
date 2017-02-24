@@ -46,6 +46,7 @@ import qualified Pipes.Concurrent as PC
 import qualified Pipes.Misc as PM
 import qualified Todo.Input as TD.Input
 import qualified Todo.Todo as TD.Todo
+import qualified Data.JSString as J
 
 type TodoKey = Int
 
@@ -58,7 +59,8 @@ type TodosModel' = Map.Map TodoKey TD.Todo.Model
 data Command
     = RenderRequiredCommand
     | TrashGarbageCommand [E.Garbage]
-    | NewTodoSetupCommand Int J.JSString
+    | MakeCallbacksCommand (((J.JSVal -> MaybeT IO Action) -> IO (J.Callback (J.JSVal -> IO ()))) -> IO Action)
+    -- | NewTodoSetupCommand Int J.JSString
     | InputCommand TD.Input.Command
     | TodosCommand TodosCommand'
 
@@ -67,8 +69,8 @@ data Action
     | DestroyTodoAction TodoKey
     | RenderUpdatedAction Int
     | DelayedCommands Int (D.DList Command)
-    | NewTodoRequestAction J.JSString
-    | NewTodoReadyAction Int TD.Todo.Model
+    | RequestNewTodoAction J.JSString
+    | AddNewTodoAction Int TD.Todo.Model
     | InputAction TD.Input.Action
     | TodosAction TodosAction'
 
@@ -99,8 +101,15 @@ toggleCompleteAllFirer = const $ pure ToggleCompleteAllAction
 mapInputHandler :: (J.JSVal -> MaybeT IO TD.Input.Action) -> J.JSVal -> MaybeT IO Action
 mapInputHandler f v = (review _InputAction) <$> f v
 
-mapTodoHandler :: Applicative m => TodoKey -> (J.JSVal -> m TD.Todo.Action) -> J.JSVal -> m Action
+mapTodoHandler :: Functor m => TodoKey -> (J.JSVal -> m TD.Todo.Action) -> J.JSVal -> m Action
 mapTodoHandler k f v = (\a -> TodosAction (k, a)) <$> f v
+
+mkTodoCallbacks
+    :: TodoKey
+    -> ((J.JSVal -> MaybeT IO Action) -> IO (J.Callback (J.JSVal -> IO ())))
+    -> (J.JSVal -> MaybeT IO TD.Todo.Action)
+    -> IO (J.Callback (J.JSVal -> IO ()))
+mkTodoCallbacks k f = f . mapTodoHandler k
 
 window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
 window = do
@@ -172,7 +181,7 @@ appGadget = do
             ts <- use _todosModel
             ret <- runMaybeT $ do
                 todoModel <- MaybeT $ pure $ Map.lookup k ts
-                junk <- pure $ TD.Todo.getGarbage todoModel
+                junk <- pure $ TD.Todo.getGarbage (TD.Todo.handleWith todoModel)
                 renderSeqNum' <- use _renderSeqNum
                 _garbageDump %= (Map.alter (addGarbage (D.fromList junk)) renderSeqNum')
                 _todosModel %= Map.delete k
@@ -196,12 +205,19 @@ appGadget = do
 
             pure $ (foldMap snd . Map.toList $ cmds') `D.snoc` TrashGarbageCommand (D.toList . foldMap snd . Map.toList $ garbage)
 
-        NewTodoRequestAction str -> do
+        RequestNewTodoAction str -> do
             n <- use _todoSeqNum
             _todoSeqNum %= (+ 1)
-            pure $ D.singleton $ NewTodoSetupCommand n str
+            pure $ D.singleton $ MakeCallbacksCommand $ \f -> do
+                callbacks <- TD.Todo.mkCallbacks (mkTodoCallbacks n f)
+                pure $ AddNewTodoAction n $ TD.Todo.Model (J.pack . show $ n)
+                    str
+                    False
+                    J.empty
+                    J.nullRef
+                    callbacks
 
-        NewTodoReadyAction n s -> do
+        AddNewTodoAction n s -> do
             _todosModel %= Map.insert n s
             pure $ D.singleton RenderRequiredCommand
 
