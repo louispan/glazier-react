@@ -49,7 +49,7 @@ main = do
 
     -- It is not trivial to call arbitrary Haskell functions from Javascript
     -- A hacky way is to create a Callback and assign it to a global registry.
-    inputCallbacks <- TD.Input.mkCallbacks (TD.App.Run.mkActionCallback output . TD.App.mapInputHandler)
+    inputCallbacks <- TD.App.mkInputCallbacks (TD.App.Run.mkActionCallback output)
     appCallbacks <- TD.App.mkCallbacks (TD.App.Run.mkActionCallback output)
 
     -- TODO: How to make sure the correct handlers are passed into the correct place?

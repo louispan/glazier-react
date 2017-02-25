@@ -19,9 +19,7 @@ module Todo.App
     , window
     , gadget
     , mkCallbacks
-    , toggleCompleteAllFirer
-    , mapInputHandler
-    , mapTodoHandler
+    , mkInputCallbacks
     ) where
 
 import qualified Control.Disposable as CD
@@ -108,6 +106,9 @@ mkCallbacks :: ((J.JSVal -> MaybeT IO Action) -> IO (J.Callback (J.JSVal -> IO (
 mkCallbacks f =
     Callbacks
     <$> (f toggleCompleteAllFirer)
+
+mkInputCallbacks :: ((J.JSVal -> MaybeT IO Action) -> IO (J.Callback (J.JSVal -> IO ()))) -> IO TD.Input.Callbacks
+mkInputCallbacks f = TD.Input.mkCallbacks (f . mapInputHandler)
 
 hasActiveTodos :: TodosModel' -> Bool
 hasActiveTodos = not . null . filter (not . TD.Todo.completed) . fmap snd . M.toList
