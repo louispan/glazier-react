@@ -60,7 +60,7 @@ type TodosModel' = Map.Map TodoKey TD.Todo.Model
 
 data Command
     = RenderRequiredCommand
-    | ScrapGarbageCommand E.Garbage
+    | DisposeCommand E.SomeDisposable
     | MakeCallbacksCommand (((J.JSVal -> MaybeT IO Action) -> IO (J.Callback (J.JSVal -> IO ()))) -> IO Command)
     | SendActionCommand Action
     | InputCommand TD.Input.Command
@@ -82,13 +82,13 @@ data Callbacks = Callbacks
     { fireToggleCompleteAll :: J.Callback (J.JSVal -> IO ())
     } deriving (G.Generic)
 
-instance E.Trash Callbacks
+instance E.Disposing Callbacks
 
 data Model = Model
     { uid :: J.JSString
     , renderSeqNum :: Int
     , todoSeqNum :: Int
-    , garbageDump :: Map.Map Int (D.DList E.Garbage)
+    , disposables :: Map.Map Int (D.DList E.SomeDisposable)
     , delayedCommands :: Map.Map Int (D.DList Command)
     , todoInput :: TD.Input.Model
     , todosModel :: TodosModel'
@@ -182,9 +182,9 @@ appGadget = do
             ts <- use _todosModel
             ret <- runMaybeT $ do
                 todoModel <- MaybeT $ pure $ Map.lookup k ts
-                junk <- pure $ E.trash (TD.Todo.callbacks todoModel)
+                junk <- pure $ E.disposing (TD.Todo.callbacks todoModel)
                 renderSeqNum' <- use _renderSeqNum
-                _garbageDump %= (Map.alter (addGarbage (D.singleton junk)) renderSeqNum')
+                _disposables %= (Map.alter (addDisposable (D.singleton junk)) renderSeqNum')
                 _todosModel %= Map.delete k
                 pure $ D.singleton RenderRequiredCommand
             maybe (pure mempty) pure ret
@@ -194,9 +194,9 @@ appGadget = do
             -- So make this into an action is evaluated after re-rendering
             -- to ensure callbacks wont get called.
             -- All garbage with lower key than seqNum are safe to be released
-            dump <- use _garbageDump
+            dump <- use _disposables
             let (garbage, leftoverJunk) = Map.partitionWithKey (\k _ -> k < n) dump
-            _garbageDump .= leftoverJunk
+            _disposables .= leftoverJunk
 
             -- Similarly run delayed commands that need to wait until a particular frame is rendered
             -- Eg focusing after other rendering changes
@@ -204,7 +204,7 @@ appGadget = do
             let (cmds', leftoverCmds) = Map.partitionWithKey (\k _ -> k < n) cmds
             _delayedCommands .= leftoverCmds
 
-            pure $ (foldMap snd . Map.toList $ cmds') `D.snoc` ScrapGarbageCommand (E.RubbishPile . D.toList . foldMap snd . Map.toList $ garbage)
+            pure $ (foldMap snd . Map.toList $ cmds') `D.snoc` DisposeCommand (E.DisposeList . D.toList . foldMap snd . Map.toList $ garbage)
 
         RequestNewTodoAction str -> do
             n <- use _todoSeqNum
@@ -229,8 +229,8 @@ appGadget = do
     addCommands cmds Nothing = Just cmds
     addCommands cmds (Just cmds') = Just (cmds' <> cmds)
 
-    addGarbage junk Nothing = Just junk
-    addGarbage junk (Just junk') = Just (junk' <> junk)
+    addDisposable junk Nothing = Just junk
+    addDisposable junk (Just junk') = Just (junk' <> junk)
 
     toggleCompleteAll :: Map.Map TodoKey TD.Todo.Model -> Map.Map TodoKey TD.Todo.Model
     toggleCompleteAll xs = fmap (toggleCompleteAll' $ hasActiveTodos xs) xs

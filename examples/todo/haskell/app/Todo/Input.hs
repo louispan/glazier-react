@@ -26,7 +26,7 @@ data Callbacks = Callbacks
     , fireSubmit :: J.Callback (J.JSVal -> IO ())
     } deriving (G.Generic)
 
-instance E.Trash Callbacks
+instance E.Disposing Callbacks
 
 data Model = Model
     { uid :: J.JSString

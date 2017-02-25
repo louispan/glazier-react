@@ -11,9 +11,9 @@ module Glazier.React.Util
     ( strval
     , getProperty
     , classNames
-    , Scrap(..)
-    , Garbage(..)
-    , Trash(..)
+    , Disposable(..)
+    , SomeDisposable(..)
+    , Disposing(..)
     ) where
 
 import Data.Foldable
@@ -40,49 +40,47 @@ getProperty p x = js_unsafeGetProp p x
 classNames :: [(J.JSString, Bool)] -> J.JSVal
 classNames = J.jsval . J.unwords . fmap fst . filter snd
 
--- | A 'Scrap' is something with some resources to release
-class Scrap a where
-    scrap :: a -> IO ()
+-- | A 'Disposable' is something with some resources to release
+class Disposable a where
+    dispose :: a -> IO ()
 
-instance Scrap (J.Callback a) where
-    scrap = J.releaseCallback
+instance Disposable (J.Callback a) where
+    dispose = J.releaseCallback
 
--- | Allows storing 'Scrap's in a heterogenous container
-data Garbage where
-    Rubbish :: forall a. Scrap a => a -> Garbage
-    RubbishPile :: forall a. Scrap a => [a] -> Garbage
+-- | Allows storing 'Disposable's in a heterogenous container
+data SomeDisposable where
+    Dispose :: forall a. Disposable a => a -> SomeDisposable
+    DisposeList :: forall a. Disposable a => [a] -> SomeDisposable
 
-instance Scrap Garbage where
-    scrap (Rubbish a) = scrap a
-    scrap (RubbishPile as) = traverse_ scrap as
+instance Disposable SomeDisposable where
+    dispose (Dispose a) = dispose a
+    dispose (DisposeList as) = traverse_ dispose as
 
--- | Allow generic deriving instances of things that can be made into 'Garbage'
-class Trash a where
-  trash :: a -> Garbage
-  default trash :: (G.Generic a, GTrash (G.Rep a)) => a -> Garbage
-  trash x = RubbishPile . D.toList . gTrash $ G.from x
-
--- | All Scraps are Trash, and can be made into Garbage
--- instance Scrap a => Trash a where
---     trash = Rubbish
+-- | Allow generic deriving instances of things that can be made into 'SomeDisposable'
+-- If a data type derives from Generic, and only contain instances of Disposable,
+-- then it can be made an instance of Disposing.
+class Disposing a where
+  disposing :: a -> SomeDisposable
+  default disposing :: (G.Generic a, GDisposing (G.Rep a)) => a -> SomeDisposable
+  disposing x = DisposeList . D.toList . gDisposing $ G.from x
 
 -- | Generics instance basically traverses the data tree
--- and expects the values to be all instances of Trash
-class GTrash f where
-    gTrash :: f p -> D.DList Garbage
+-- and expects the values to be all instances of 'Disposable'
+class GDisposing f where
+    gDisposing :: f p -> D.DList SomeDisposable
 
-instance GTrash G.U1 where
-  gTrash G.U1 = mempty
+instance GDisposing G.U1 where
+  gDisposing G.U1 = mempty
 
-instance (GTrash f, GTrash g) => GTrash (f G.:+: g) where
-  gTrash (G.L1 x) = gTrash x
-  gTrash (G.R1 x) = gTrash x
+instance (GDisposing f, GDisposing g) => GDisposing (f G.:+: g) where
+  gDisposing (G.L1 x) = gDisposing x
+  gDisposing (G.R1 x) = gDisposing x
 
-instance (GTrash f, GTrash g) => GTrash (f G.:*: g) where
-  gTrash (x G.:*: y) = (gTrash x) <> (gTrash y)
+instance (GDisposing f, GDisposing g) => GDisposing (f G.:*: g) where
+  gDisposing (x G.:*: y) = (gDisposing x) <> (gDisposing y)
 
-instance (Scrap c) => GTrash (G.K1 i c) where
-  gTrash (G.K1 x) = D.singleton $ Rubbish x
+instance (Disposable c) => GDisposing (G.K1 i c) where
+  gDisposing (G.K1 x) = D.singleton $ Dispose x
 
-instance (GTrash f) => GTrash (G.M1 i t f) where
-  gTrash (G.M1 x) = gTrash x
+instance (GDisposing f) => GDisposing (G.M1 i t f) where
+  gDisposing (G.M1 x) = gDisposing x

@@ -63,6 +63,8 @@ data Callbacks = Callbacks
     , handleKeyDown :: J.Callback (J.JSVal -> IO ())
     } deriving G.Generic
 
+instance E.Disposing Callbacks
+
 data Model = Model
     { uid :: J.JSString
     , value :: J.JSString
@@ -84,8 +86,6 @@ mkCallbacks f =
     <*> (f cancelEditFirer)
     <*> (f changeFirer)
     <*> (f keyDownHandler)
-
-instance E.Trash Callbacks
 
 -- getGarbage :: Callbacks -> E.Garbage
 -- getGarbage s = E.TrashPile
