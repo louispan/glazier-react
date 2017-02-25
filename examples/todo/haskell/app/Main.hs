@@ -49,9 +49,8 @@ main = do
 
     -- It is not trivial to call arbitrary Haskell functions from Javascript
     -- A hacky way is to create a Callback and assign it to a global registry.
-    inputChangeFirer' <- TD.App.Run.mkActionCallback output (TD.App.mapInputHandler TD.Input.changeFirer)
-    inputSubmitFirer' <- TD.App.Run.mkActionCallback output (TD.App.mapInputHandler TD.Input.submitFirer)
-    toggleCompleteAllFirer' <- TD.App.Run.mkActionCallback output TD.App.toggleCompleteAllFirer
+    inputCallbacks <- TD.Input.mkCallbacks (TD.App.Run.mkActionCallback output . TD.App.mapInputHandler)
+    appCallbacks <- TD.App.mkCallbacks (TD.App.Run.mkActionCallback output)
 
     -- TODO: How to make sure the correct handlers are passed into the correct place?
     let initialState = TD.App.Model
@@ -62,13 +61,11 @@ main = do
             (TD.Input.Model
                  "new-input"
                  J.empty
-                 (TD.Input.Callbacks
-                     inputChangeFirer'
-                     inputSubmitFirer'))
+                 inputCallbacks)
             mempty -- todosModel
-            (TD.App.Callbacks toggleCompleteAllFirer')
+            appCallbacks
 
-    -- Make a MVar so render can get the latest state
+        -- Make a MVar so render can get the latest state
     currentState <- newMVar initialState
 
     -- Setup the render callback
@@ -99,9 +96,8 @@ main = do
     -- so let's add the cleanup code here to be explicit.
     J.releaseCallback doRender
     J.releaseCallback doRenderUpdated
-    J.releaseCallback inputSubmitFirer'
-    J.releaseCallback toggleCompleteAllFirer'
-    J.releaseCallback inputChangeFirer'
+    CD.dispose (CD.disposing appCallbacks)
+    CD.dispose (CD.disposing inputCallbacks)
 
 foreign import javascript unsafe
   "hgr$todo$registry['listen']($1, $2);"

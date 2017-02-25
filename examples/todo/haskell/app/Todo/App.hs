@@ -18,6 +18,7 @@ module Todo.App
     , isRenderRequiredCommand
     , window
     , gadget
+    , mkCallbacks
     , toggleCompleteAllFirer
     , mapInputHandler
     , mapTodoHandler
@@ -102,6 +103,11 @@ data Model = Model
     }
 
 makeClassy_ ''Model
+
+mkCallbacks :: ((J.JSVal -> MaybeT IO Action) -> IO (J.Callback (J.JSVal -> IO ()))) -> IO Callbacks
+mkCallbacks f =
+    Callbacks
+    <$> (f toggleCompleteAllFirer)
 
 hasActiveTodos :: TodosModel' -> Bool
 hasActiveTodos = not . null . filter (not . TD.Todo.completed) . fmap snd . M.toList

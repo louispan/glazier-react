@@ -74,18 +74,14 @@ changeFirer = R.eventHandlerM goStrict goLazy
           evt' <- MaybeT $ pure $ R.castSyntheticEvent evt
           -- target is the "input" DOM
           input <- lift $ pure . J.jsval . R.target . R.parseEvent $ evt'
-          v <- lift $ E.getProperty "value" input
-          v' <- MaybeT $ J.fromJSVal v
-          ss <- lift $ E.getProperty "selectionStart" input
-          ss' <- MaybeT $ J.fromJSVal ss
-          se <- lift $ E.getProperty "selectionEnd" input
-          se' <- MaybeT $ J.fromJSVal se
-          sd <- lift $ E.getProperty "selectionDirection" input
-          sd' <- MaybeT $ J.fromJSVal sd
-          pure $ (input, ss', se', sd', v')
+          ss <- MaybeT $ E.getProperty "selectionStart" input >>= J.fromJSVal
+          se <- MaybeT $ E.getProperty "selectionEnd" input >>= J.fromJSVal
+          sd <- MaybeT $ E.getProperty "selectionDirection" input >>= J.fromJSVal
+          v <- MaybeT $ E.getProperty "value" input >>= J.fromJSVal
+          pure $ (input, ss, se, sd, v)
 
       goLazy :: (J.JSVal, Int, Int, J.JSString, J.JSString) -> MaybeT IO Action
-      goLazy (n, ss', se', sd', v') = pure $ ChangeAction n ss' se' sd' v'
+      goLazy (n, ss, se, sd, v) = pure $ ChangeAction n ss se sd v
 
 submitFirer :: J.JSVal -> MaybeT IO Action
 submitFirer = R.eventHandlerM goStrict goLazy
@@ -110,7 +106,6 @@ gadget = do
             pure $ D.fromList
                 [ DeferCommand (SetSelectionCommand n ss se sd)
                 , RenderRequiredCommand
-                -- [ RenderRequiredCommand
                 ]
         SubmitAction -> do
             v <- J.strip <$> use _value
