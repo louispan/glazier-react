@@ -48,6 +48,10 @@ foreign import javascript unsafe
   js_focusNode :: J.JSVal -> IO ()
 
 
+foreign import javascript unsafe
+  "if ($1 && $1['setSelectionRange']) { $1['setSelectionRange']($2, $3, $4); }"
+  js_setSelectionRange :: J.JSVal -> Int -> Int -> J.JSString -> IO ()
+
 -- | Evaluate commands from gadgets here
 interpretCommand
     :: (MonadIO io, MonadState TD.App.Model io)
@@ -68,6 +72,13 @@ interpretCommand shout stateMVar _  (TD.App.InputCommand (TD.Input.RenderRequire
 
 interpretCommand _ _ output         (TD.App.InputCommand (TD.Input.SubmitCommand str)) = do
     liftIO $ void $ atomically $ PC.send output (TD.App.RequestNewTodoAction str)
+
+interpretCommand _ _ output         (TD.App.InputCommand (TD.Input.SetSelectionCommand n ss se sd)) =
+    liftIO $ js_setSelectionRange n ss se sd
+
+interpretCommand _ _ output         (TD.App.InputCommand (TD.Input.DeferCommand cmd)) = do
+    i <- use TD.App._renderSeqNum
+    liftIO . void . atomically $ PC.send output (TD.App.DeferCommandAction i (TD.App.InputCommand cmd))
 
 interpretCommand shout stateMVar output    (TD.App.MakeCallbacksCommand f) = do
     cmd <- liftIO $ f (mkActionCallback output)

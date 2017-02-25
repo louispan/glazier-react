@@ -39,8 +39,8 @@ data Command
     | FocusNodeCommand J.JSVal
 
 data Action
-    = ToggleCompleteAction
-    | StartEditAction
+    = StartEditAction
+    | ToggleCompleteAction
     | DestroyAction
     | CancelEditAction
     | SubmitAction

@@ -21,6 +21,15 @@ import qualified Glazier.React.Event as R
 import qualified Glazier.React.Markup as R
 import qualified Glazier.React.Util as E
 
+data Command
+    = RenderRequiredCommand
+    | DeferCommand Command
+    | SubmitCommand J.JSString
+    | SetSelectionCommand J.JSVal
+                          Int
+                          Int
+                          J.JSString
+
 data Callbacks = Callbacks
     { fireChange :: J.Callback (J.JSVal -> IO ())
     , fireSubmit :: J.Callback (J.JSVal -> IO ())
@@ -36,6 +45,14 @@ data Model = Model
 
 makeClassy_ ''Model
 
+data Action = ChangeAction J.JSVal Int Int J.JSString J.JSString | SubmitAction
+
+mkCallbacks :: ((J.JSVal -> MaybeT IO Action) -> IO (J.Callback (J.JSVal -> IO ()))) -> IO Callbacks
+mkCallbacks f =
+    Callbacks
+    <$> (f changeFirer)
+    <*> (f submitFirer)
+
 window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
 window = do
     s <- ask
@@ -49,21 +66,26 @@ window = do
                     , ("onKeyDown", J.jsval $ fireSubmit $ callbacks s)
                     ]
 
-data Action = ChangeAction J.JSString | SubmitAction
-
 changeFirer :: J.JSVal -> MaybeT IO Action
 changeFirer = R.eventHandlerM goStrict goLazy
     where
-      goStrict :: J.JSVal -> MaybeT IO J.JSString
+      goStrict :: J.JSVal -> MaybeT IO (J.JSVal, Int, Int, J.JSString, J.JSString)
       goStrict evt = do
           evt' <- MaybeT $ pure $ R.castSyntheticEvent evt
           -- target is the "input" DOM
           input <- lift $ pure . J.jsval . R.target . R.parseEvent $ evt'
           v <- lift $ E.getProperty "value" input
-          MaybeT $ J.fromJSVal v
+          v' <- MaybeT $ J.fromJSVal v
+          ss <- lift $ E.getProperty "selectionStart" input
+          ss' <- MaybeT $ J.fromJSVal ss
+          se <- lift $ E.getProperty "selectionEnd" input
+          se' <- MaybeT $ J.fromJSVal se
+          sd <- lift $ E.getProperty "selectionDirection" input
+          sd' <- MaybeT $ J.fromJSVal sd
+          pure $ (input, ss', se', sd', v')
 
-      goLazy :: J.JSString -> MaybeT IO Action
-      goLazy = pure . ChangeAction
+      goLazy :: (J.JSVal, Int, Int, J.JSString, J.JSString) -> MaybeT IO Action
+      goLazy (n, ss', se', sd', v') = pure $ ChangeAction n ss' se' sd' v'
 
 submitFirer :: J.JSVal -> MaybeT IO Action
 submitFirer = R.eventHandlerM goStrict goLazy
@@ -79,15 +101,17 @@ submitFirer = R.eventHandlerM goStrict goLazy
                        then pure SubmitAction
                        else A.empty
 
-data Command = RenderRequiredCommand | SubmitCommand J.JSString
-
 gadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
 gadget = do
     a <- ask
     case a of
-        ChangeAction str -> do
+        ChangeAction n ss se sd str -> do
             _value .= str
-            pure $ D.singleton RenderRequiredCommand
+            pure $ D.fromList
+                [ DeferCommand (SetSelectionCommand n ss se sd)
+                , RenderRequiredCommand
+                -- [ RenderRequiredCommand
+                ]
         SubmitAction -> do
             v <- J.strip <$> use _value
             _value .= J.empty

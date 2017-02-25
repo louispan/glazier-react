@@ -23,7 +23,6 @@ module Todo.App
     , mapTodoHandler
     ) where
 
-import Control.Concurrent.STM
 import qualified Control.Disposable as CD
 import Control.Lens
 import Control.Monad.Morph
@@ -41,8 +40,6 @@ import qualified GHCJS.Types as J
 import qualified Glazier as G
 import qualified Glazier.React.Markup as R
 import qualified Glazier.React.Util as E
-import qualified Pipes as P
-import qualified Pipes.Concurrent as PC
 import qualified Todo.Input as TD.Input
 import qualified Todo.Todo as TD.Todo
 import qualified Data.JSString as J
@@ -60,7 +57,7 @@ type RenderSeqNum = Int
 data Command
     -- General Application level commands
     -- | This should result in React component @setState({ seqNum: RenderSeqNum })@
-    = RenderRequiredCommand -- FIXME: SeqNum
+    = RenderRequiredCommand
     -- | This should run dispose on the SomeDisposable (eg. to release Callbacks)
     | DisposeCommand CD.SomeDisposable
     -- | This should result in passing a callback factory into the argument function which produces a cmd,
@@ -96,7 +93,7 @@ instance CD.Disposing Callbacks
 
 data Model = Model
     { uid :: J.JSString
-    , renderSeqNum :: RenderSeqNum
+    , renderSeqNum :: RenderSeqNum -- | Current rendered frame seqNum
     , deferredCommands :: M.Map RenderSeqNum (D.DList Command)
     , todoSeqNum :: Int
     , todoInput :: TD.Input.Model

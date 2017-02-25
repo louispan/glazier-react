@@ -46,7 +46,6 @@ setup-info:
 # will not be run. This is useful for tweaking upstream packages.
 packages:
 - '.'
-- '/Users/louis/repo/hs/glazier'
 - '/Users/louis/repo/hs/pipes-misc'
 
 # Dependency packages to be pulled from upstream that are not in the resolver
