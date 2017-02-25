@@ -1,6 +1,5 @@
 {-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeApplications #-}
@@ -56,16 +55,15 @@ main = do
     let initialState = TD.App.Model
             "todos"
             0
+            mempty
             0
-            mempty
-            mempty
             (TD.Input.Model
                  "new-input"
                  J.empty
                  (TD.Input.Callbacks
                      inputChangeFirer'
                      inputSubmitFirer'))
-            mempty
+            mempty -- todosModel
             (TD.App.Callbacks toggleCompleteAllFirer')
 
     -- Make a MVar so render can get the latest state
@@ -201,10 +199,10 @@ interpretCommand _ output    (TD.App.TodosCommand (k, TD.Todo.DestroyCommand)) =
 interpretCommand _ _         (TD.App.TodosCommand (_, TD.Todo.FocusNodeCommand node)) =
     liftIO $ js_focusNode node
 
-interpretCommand _ output    (TD.App.TodosCommand (k, TD.Todo.DelayedCommands cmds)) = do
+interpretCommand _ output    (TD.App.TodosCommand (k, TD.Todo.DeferCommand cmd)) = do
     i <- use TD.App._renderSeqNum
-    let cmds' = (\c -> TD.App.TodosCommand (k, c)) <$> cmds
-    liftIO $ void $ atomically $ PC.send output (TD.App.DelayedCommands i cmds')
+    let cmd' = TD.App.TodosCommand (k, cmd)
+    liftIO . void . atomically $ PC.send output (TD.App.DeferCommandAction i cmd')
 
 foreign import javascript unsafe
   "if ($1) { $1.focus(); }"

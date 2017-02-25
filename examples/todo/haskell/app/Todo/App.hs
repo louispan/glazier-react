@@ -1,6 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE MonomorphismRestriction #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -59,19 +58,32 @@ type TodosAction' = (TodoKey, TD.Todo.Action)
 
 type TodosModel' = Map.Map TodoKey TD.Todo.Model
 
+type RenderSeqNum = Int
+
 data Command
-    = RenderRequiredCommand
+    -- General Application level commands
+    -- | This should result in React component @setState({ seqNum: RenderSeqNum })@
+    = RenderRequiredCommand -- FIXME: SeqNum
+    -- | This should run dispose on the SomeDisposable (eg. to release Callbacks)
     | DisposeCommand CD.SomeDisposable
+    -- | This should result in passing a callback factory into the argument function which produces a cmd,
+    -- | Then evaluating that resulting cmd.
     | MakeCallbacksCommand (((J.JSVal -> MaybeT IO Action) -> IO (J.Callback (J.JSVal -> IO ()))) -> IO Command)
+    -- | Send the action to the application output address.
     | SendActionCommand Action
+
+    -- TODO specific commands
     | InputCommand TD.Input.Command
     | TodosCommand TodosCommand'
 
+
 data Action
-    = ToggleCompleteAllAction
+    -- General Application level actions
+    = RenderUpdatedAction RenderSeqNum
+    | DeferCommandAction RenderSeqNum Command
+    -- TODO specific actions
+    | ToggleCompleteAllAction
     | DestroyTodoAction TodoKey
-    | RenderUpdatedAction Int
-    | DelayedCommands Int (D.DList Command)
     | RequestNewTodoAction J.JSString
     | AddNewTodoAction Int TD.Todo.Model
     | InputAction TD.Input.Action
@@ -87,19 +99,15 @@ instance CD.Disposing Callbacks
 
 data Model = Model
     { uid :: J.JSString
-    , renderSeqNum :: Int
+    , renderSeqNum :: RenderSeqNum
+    , deferredCommands :: Map.Map RenderSeqNum (D.DList Command)
     , todoSeqNum :: Int
-    , disposables :: Map.Map Int (D.DList CD.SomeDisposable)
-    , delayedCommands :: Map.Map Int (D.DList Command)
     , todoInput :: TD.Input.Model
     , todosModel :: TodosModel'
     , callbacks :: Callbacks
     }
 
 makeClassy_ ''Model
-
--- getGarbage :: Model -> E.Garbage
--- getGarbage s =  E.Trash $ fireToggleCompleteAll s
 
 hasActiveTodos :: TodosModel' -> Bool
 hasActiveTodos = not . null . filter (not . TD.Todo.completed) . fmap snd . Map.toList
@@ -174,8 +182,8 @@ appGadget = do
             _todosModel %= toggleCompleteAll
             pure $ D.singleton RenderRequiredCommand
 
-        DelayedCommands i cmds -> do
-            _delayedCommands %= (Map.alter (addCommands cmds) i)
+        DeferCommandAction i cmd -> do
+            _deferredCommands %= (Map.alter (addCommand cmd) i)
             pure $ D.singleton RenderRequiredCommand
 
         DestroyTodoAction k -> do
@@ -183,29 +191,24 @@ appGadget = do
             ts <- use _todosModel
             ret <- runMaybeT $ do
                 todoModel <- MaybeT $ pure $ Map.lookup k ts
-                junk <- pure $ CD.disposing (TD.Todo.callbacks todoModel)
-                renderSeqNum' <- use _renderSeqNum
-                _disposables %= (Map.alter (addDisposable (D.singleton junk)) renderSeqNum')
+                let junk = CD.disposing (TD.Todo.callbacks todoModel)
+                i <- use _renderSeqNum
+                _deferredCommands %= (Map.alter (addCommand $ DisposeCommand junk) i)
+                -- Remove the todo from the model
                 _todosModel %= Map.delete k
                 pure $ D.singleton RenderRequiredCommand
             maybe (pure mempty) pure ret
 
         RenderUpdatedAction n -> do
-            -- Called callbacks that have been released will generate an exception
-            -- So make this into an action is evaluated after re-rendering
-            -- to ensure callbacks wont get called.
-            -- All garbage with lower key than seqNum are safe to be released
-            dump <- use _disposables
-            let (garbage, leftoverJunk) = Map.partitionWithKey (\k _ -> k < n) dump
-            _disposables .= leftoverJunk
-
+            -- All deferred commands with renderSeqNum lower than the rendered SeqNum is
+            -- safe to run
             -- Similarly run delayed commands that need to wait until a particular frame is rendered
             -- Eg focusing after other rendering changes
-            cmds <- use _delayedCommands
+            cmds <- use _deferredCommands
             let (cmds', leftoverCmds) = Map.partitionWithKey (\k _ -> k < n) cmds
-            _delayedCommands .= leftoverCmds
+            _deferredCommands .= leftoverCmds
 
-            pure $ (foldMap snd . Map.toList $ cmds') `D.snoc` DisposeCommand (CD.DisposeList . D.toList . foldMap snd . Map.toList $ garbage)
+            pure . foldMap snd . Map.toList $ cmds'
 
         RequestNewTodoAction str -> do
             n <- use _todoSeqNum
@@ -227,8 +230,8 @@ appGadget = do
         InputAction _ -> pure mempty
         TodosAction _ -> pure mempty
   where
-    addCommands cmds Nothing = Just cmds
-    addCommands cmds (Just cmds') = Just (cmds' <> cmds)
+    addCommand cmd Nothing = Just $ D.singleton cmd
+    addCommand cmd (Just cmds') = Just (cmds' `D.snoc` cmd)
 
     addDisposable junk Nothing = Just junk
     addDisposable junk (Just junk') = Just (junk' <> junk)

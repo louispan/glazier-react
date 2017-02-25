@@ -2,9 +2,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
--- TODO:
--- * generics generate callback bits
-
 module Todo.Todo
  ( Command(..)
  , Action(..)
@@ -39,13 +36,12 @@ import qualified Glazier.React.Util as E
 data Command
     = RenderRequiredCommand
     | DestroyCommand
-    | DelayedCommands (D.DList Command)
+    | DeferCommand Command
     | FocusNodeCommand J.JSVal
 
 data Action
     = ToggleCompleteAction
     | StartEditAction
-    | CommandsAction (D.DList Command)
     | DestroyAction
     | CancelEditAction
     | SubmitAction
@@ -87,17 +83,6 @@ mkCallbacks f =
     <*> (f cancelEditFirer)
     <*> (f changeFirer)
     <*> (f keyDownHandler)
-
--- getGarbage :: Callbacks -> E.Garbage
--- getGarbage s = E.TrashPile
---     [ E.Trash $ fireSetEditNode s
---     , E.Trash $ fireToggleComplete s
---     , E.Trash $ fireStartEdit s
---     , E.Trash $ fireDestroy s
---     , E.Trash $ fireCancelEdit s
---     , E.Trash $ fireChange s
---     , E.Trash $ handleKeyDown s
---     ]
 
 window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
 window = do
@@ -185,8 +170,6 @@ gadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
 gadget = do
     a <- ask
     case a of
-        CommandsAction cmds -> do
-            pure cmds
         ToggleCompleteAction -> do
             _completed %= not
             pure $ D.singleton RenderRequiredCommand
@@ -200,7 +183,7 @@ gadget = do
                 value' <- use _value
                 _editText .= value'
                 -- Need to delay focusing until after the next render
-                pure $ D.fromList [ DelayedCommands (D.singleton $ FocusNodeCommand n')
+                pure $ D.fromList [ DeferCommand (FocusNodeCommand n')
                                   , RenderRequiredCommand
                                   ]
             maybe (pure mempty) pure ret
