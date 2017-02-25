@@ -21,7 +21,6 @@ module Todo.App
     , toggleCompleteAllFirer
     , mapInputHandler
     , mapTodoHandler
-    , producer
     ) where
 
 import Control.Concurrent.STM
@@ -45,7 +44,6 @@ import qualified Glazier.React.Markup as R
 import qualified Glazier.React.Util as E
 import qualified Pipes as P
 import qualified Pipes.Concurrent as PC
-import qualified Pipes.Misc as PM
 import qualified Todo.Input as TD.Input
 import qualified Todo.Todo as TD.Todo
 import qualified Data.JSString as J
@@ -264,6 +262,3 @@ todosGadget = do
 
 todosGadget' :: Monad m => G.GadgetT Action Model m (D.DList Command)
 todosGadget' = fmap TodosCommand <$> zoom _todosModel (magnify _TodosAction todosGadget)
-
-producer :: PC.Input Action -> P.Producer' (D.DList Command) (StateT Model STM) ()
-producer input = PM.execInput input (G.runGadgetT gadget)

@@ -46,6 +46,7 @@ library
 executable glazier-react-todo
   hs-source-dirs:      examples/todo/haskell/app
   other-modules:       Todo.App
+                       Todo.App.Run
                        Todo.Input
                        Todo.Todo
   main-is:             Main.hs

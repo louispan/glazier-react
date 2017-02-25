@@ -32,8 +32,10 @@ import qualified Glazier.React.Util as E
 import qualified Pipes as P
 import qualified Pipes.Concurrent as PC
 import qualified Pipes.Lift as PL
+import qualified Pipes.Misc as PM
 import qualified Pipes.Prelude as PP
 import qualified Todo.App as TD.App
+import qualified Todo.App.Run as TD.App.Run
 import qualified Todo.Input as TD.Input
 import qualified Todo.Todo as TD.Todo
 
@@ -47,9 +49,9 @@ main = do
 
     -- It is not trivial to call arbitrary Haskell functions from Javascript
     -- A hacky way is to create a Callback and assign it to a global registry.
-    inputChangeFirer' <- mkActionCallback output (TD.App.mapInputHandler TD.Input.changeFirer)
-    inputSubmitFirer' <- mkActionCallback output (TD.App.mapInputHandler TD.Input.submitFirer)
-    toggleCompleteAllFirer' <- mkActionCallback output TD.App.toggleCompleteAllFirer
+    inputChangeFirer' <- TD.App.Run.mkActionCallback output (TD.App.mapInputHandler TD.Input.changeFirer)
+    inputSubmitFirer' <- TD.App.Run.mkActionCallback output (TD.App.mapInputHandler TD.Input.submitFirer)
+    toggleCompleteAllFirer' <- TD.App.Run.mkActionCallback output TD.App.toggleCompleteAllFirer
 
     -- TODO: How to make sure the correct handlers are passed into the correct place?
     let initialState = TD.App.Model
@@ -109,25 +111,6 @@ foreign import javascript unsafe
   "hgr$todo$registry['shout']($1, $2);"
   js_globalShout :: J.JSString -> J.JSVal -> IO ()
 
-mkActionCallback
-    :: PC.Output TD.App.Action
-    -> (J.JSVal -> MaybeT IO TD.App.Action)
-    -> IO (J.Callback (J.JSVal -> IO ()))
-mkActionCallback output handler =
-    J.syncCallback1 J.ContinueAsync $ \evt ->
-        void $ runMaybeT $ do
-            action <- handler evt
-            lift $ void $ atomically $ PC.send output action
-
-forceRender :: (MonadIO io, MonadState TD.App.Model io) => MVar TD.App.Model -> io ()
-forceRender stateMVar = do
-    -- increment the sequence number if render is required
-    TD.App._renderSeqNum %= (+ 1)
-    s <- get
-    let i = TD.App.renderSeqNum s
-    liftIO . void $ swapMVar stateMVar s -- ^ so that the render callback can use the latest state
-    liftIO $ js_globalShout "forceRender" (J.pToJSVal i) -- ^ tell React to call render
-
 appEffect
     :: MonadIO io
     => MVar TD.App.Model
@@ -142,7 +125,10 @@ appEffect stateMVar output input = do
         PP.drain
 
 producerIO :: MonadIO io => PC.Input TD.App.Action -> P.Producer' (D.DList TD.App.Command) (StateT TD.App.Model io) ()
-producerIO input = hoist (hoist (liftIO . atomically)) (TD.App.producer input)
+producerIO input = hoist (hoist (liftIO . atomically)) (producer input)
+
+producer :: PC.Input TD.App.Action -> P.Producer' (D.DList TD.App.Command) (StateT TD.App.Model STM) ()
+producer input = PM.execInput input (G.runGadgetT TD.App.gadget)
 
 interpretCommandsPipe
     :: (MonadState TD.App.Model io, MonadIO io)
@@ -164,46 +150,4 @@ interpretCommands
     -> t TD.App.Command
     -> io ()
 interpretCommands stateMVar output =
-    traverse_ (interpretCommand stateMVar output)
-
--- | Evaluate commands from gadgets here
-interpretCommand
-    :: (MonadIO io, MonadState TD.App.Model io)
-    => MVar TD.App.Model
-    -> PC.Output TD.App.Action
-    -> TD.App.Command
-    -> io ()
-
-interpretCommand stateMVar _  TD.App.RenderRequiredCommand = forceRender stateMVar
-
-interpretCommand _ _         (TD.App.DisposeCommand x) =
-    liftIO $ CD.dispose x
-
-interpretCommand stateMVar _ (TD.App.InputCommand (TD.Input.RenderRequiredCommand)) = forceRender stateMVar
-
-interpretCommand _ output    (TD.App.InputCommand (TD.Input.SubmitCommand str)) = do
-    liftIO $ void $ atomically $ PC.send output (TD.App.RequestNewTodoAction str)
-
-interpretCommand stateMVar output    (TD.App.MakeCallbacksCommand f) = do
-    cmd <- liftIO $ f (mkActionCallback output)
-    interpretCommand stateMVar output cmd
-
-interpretCommand _ output    (TD.App.SendActionCommand a) = do
-    liftIO $ void $ atomically $ PC.send output a
-
-interpretCommand stateMVar _ (TD.App.TodosCommand (_, TD.Todo.RenderRequiredCommand)) = forceRender stateMVar
-
-interpretCommand _ output    (TD.App.TodosCommand (k, TD.Todo.DestroyCommand)) =
-    liftIO $ void $ atomically $ PC.send output (TD.App.DestroyTodoAction k)
-
-interpretCommand _ _         (TD.App.TodosCommand (_, TD.Todo.FocusNodeCommand node)) =
-    liftIO $ js_focusNode node
-
-interpretCommand _ output    (TD.App.TodosCommand (k, TD.Todo.DeferCommand cmd)) = do
-    i <- use TD.App._renderSeqNum
-    let cmd' = TD.App.TodosCommand (k, cmd)
-    liftIO . void . atomically $ PC.send output (TD.App.DeferCommandAction i cmd')
-
-foreign import javascript unsafe
-  "if ($1) { $1.focus(); }"
-  js_focusNode :: J.JSVal -> IO ()
+    traverse_ (TD.App.Run.interpretCommand js_globalShout stateMVar output)
