@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MonomorphismRestriction #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -9,6 +10,7 @@ module Todo.App
     , TodosCommand'
     , TodosAction'
     , TodosModel'
+    , Callbacks(..)
     , Command(..)
     , Action(..)
     , AsAction(..)
@@ -20,7 +22,6 @@ module Todo.App
     , toggleCompleteAllFirer
     , mapInputHandler
     , mapTodoHandler
-    , getGarbage
     , producer
     ) where
 
@@ -35,6 +36,7 @@ import Data.Foldable
 import qualified Data.HashMap.Strict as M
 import qualified Data.Map.Strict as Map
 import Data.Semigroup
+import qualified GHC.Generics as G
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
@@ -76,6 +78,12 @@ data Action
 
 makeClassyPrisms ''Action
 
+data Callbacks = Callbacks
+    { fireToggleCompleteAll :: J.Callback (J.JSVal -> IO ())
+    } deriving (G.Generic)
+
+instance E.Trash Callbacks
+
 data Model = Model
     { uid :: J.JSString
     , renderSeqNum :: Int
@@ -84,13 +92,13 @@ data Model = Model
     , delayedCommands :: Map.Map Int (D.DList Command)
     , todoInput :: TD.Input.Model
     , todosModel :: TodosModel'
-    , fireToggleCompleteAll :: J.Callback (J.JSVal -> IO ())
+    , callbacks :: Callbacks
     }
 
 makeClassy_ ''Model
 
-getGarbage :: Model -> E.Garbage
-getGarbage s =  E.Trash $ fireToggleCompleteAll s
+-- getGarbage :: Model -> E.Garbage
+-- getGarbage s =  E.Trash $ fireToggleCompleteAll s
 
 hasActiveTodos :: TodosModel' -> Bool
 hasActiveTodos = not . null . filter (not . TD.Todo.completed) . fmap snd . Map.toList
@@ -132,7 +140,7 @@ mainWindow = do
                         , ("className", E.strval "toggle-all")
                         , ("type", E.strval "checkbox")
                         , ("checked", J.pToJSVal . not . hasActiveTodos $ todos)
-                        , ("onChange", J.jsval $ fireToggleCompleteAll s)
+                        , ("onChange", J.jsval $ fireToggleCompleteAll $ callbacks s)
                         ])
             view G._WindowT todoListWindow s
 
@@ -174,7 +182,7 @@ appGadget = do
             ts <- use _todosModel
             ret <- runMaybeT $ do
                 todoModel <- MaybeT $ pure $ Map.lookup k ts
-                junk <- pure $ TD.Todo.getGarbage (TD.Todo.callbacks todoModel)
+                junk <- pure $ E.trash (TD.Todo.callbacks todoModel)
                 renderSeqNum' <- use _renderSeqNum
                 _garbageDump %= (Map.alter (addGarbage (D.singleton junk)) renderSeqNum')
                 _todosModel %= Map.delete k
@@ -196,19 +204,19 @@ appGadget = do
             let (cmds', leftoverCmds) = Map.partitionWithKey (\k _ -> k < n) cmds
             _delayedCommands .= leftoverCmds
 
-            pure $ (foldMap snd . Map.toList $ cmds') `D.snoc` ScrapGarbageCommand (E.TrashPile . D.toList . foldMap snd . Map.toList $ garbage)
+            pure $ (foldMap snd . Map.toList $ cmds') `D.snoc` ScrapGarbageCommand (E.RubbishPile . D.toList . foldMap snd . Map.toList $ garbage)
 
         RequestNewTodoAction str -> do
             n <- use _todoSeqNum
             _todoSeqNum %= (+ 1)
             pure $ D.singleton $ MakeCallbacksCommand $ \f -> do
-                callbacks <- TD.Todo.mkCallbacks $ f . mapTodoHandler n
+                cbs <- TD.Todo.mkCallbacks $ f . mapTodoHandler n
                 pure $ SendActionCommand $ AddNewTodoAction n $ TD.Todo.Model (J.pack . show $ n)
                     str
                     False
                     J.empty
                     J.nullRef
-                    callbacks
+                    cbs
 
         AddNewTodoAction n s -> do
             _todosModel %= Map.insert n s

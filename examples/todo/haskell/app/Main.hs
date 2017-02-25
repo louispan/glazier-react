@@ -61,10 +61,11 @@ main = do
             (TD.Input.Model
                  "new-input"
                  J.empty
-                 inputChangeFirer'
-                 inputSubmitFirer')
+                 (TD.Input.Callbacks
+                     inputChangeFirer'
+                     inputSubmitFirer'))
             mempty
-            toggleCompleteAllFirer'
+            (TD.App.Callbacks toggleCompleteAllFirer')
 
     -- Make a MVar so render can get the latest state
     currentState <- newMVar initialState

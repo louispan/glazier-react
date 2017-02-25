@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
@@ -10,6 +11,7 @@ import Control.Monad.Trans.Maybe
 import qualified Data.DList as D
 import qualified Data.HashMap.Strict as M
 import qualified Data.JSString as J
+import qualified GHC.Generics as G
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Marshal as J
 import qualified GHCJS.Marshal.Pure as J
@@ -19,19 +21,20 @@ import qualified Glazier.React.Event as R
 import qualified Glazier.React.Markup as R
 import qualified Glazier.React.Util as E
 
+data Callbacks = Callbacks
+    { fireChange :: J.Callback (J.JSVal -> IO ())
+    , fireSubmit :: J.Callback (J.JSVal -> IO ())
+    } deriving (G.Generic)
+
+instance E.Trash Callbacks
+
 data Model = Model
     { uid :: J.JSString
     , value :: J.JSString
-    , fireChange :: J.Callback (J.JSVal -> IO ())
-    , fireSubmit :: J.Callback (J.JSVal -> IO ())
+    , callbacks :: Callbacks
     }
 
 makeClassy_ ''Model
-
-getGarbage :: Model -> E.Garbage
-getGarbage s = E.TrashPile [ E.Trash $ fireChange s
-               , E.Trash $ fireSubmit s
-               ]
 
 window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
 window = do
@@ -42,8 +45,8 @@ window = do
                     , ("placeholder", E.strval "What needs to be done?")
                     , ("value", J.jsval $ value s)
                     , ("autoFocus", J.pToJSVal True)
-                    , ("onChange", J.jsval $ fireChange s)
-                    , ("onKeyDown", J.jsval $ fireSubmit s)
+                    , ("onChange", J.jsval $ fireChange $ callbacks s)
+                    , ("onKeyDown", J.jsval $ fireSubmit $ callbacks s)
                     ])
 
 data Action = ChangeAction J.JSString | SubmitAction

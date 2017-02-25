@@ -1,9 +1,9 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 -- TODO:
 -- * generics generate callback bits
--- * callbaks garbage monoid?
 
 module Todo.Todo
  ( Command(..)
@@ -13,7 +13,6 @@ module Todo.Todo
  , Model(..)
  , HasModel(..)
  , mkCallbacks
- , getGarbage
  , window
  , gadget
  ) where
@@ -25,6 +24,7 @@ import Control.Monad.Trans.Maybe
 import qualified Data.DList as D
 import qualified Data.HashMap.Strict as M
 import qualified Data.JSString as J
+import qualified GHC.Generics as G
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Marshal as J
 import qualified GHCJS.Marshal.Pure as J
@@ -61,7 +61,7 @@ data Callbacks = Callbacks
     , fireCancelEdit :: J.Callback (J.JSVal -> IO ())
     , fireChange :: J.Callback (J.JSVal -> IO ())
     , handleKeyDown :: J.Callback (J.JSVal -> IO ())
-    }
+    } deriving G.Generic
 
 data Model = Model
     { uid :: J.JSString
@@ -85,16 +85,18 @@ mkCallbacks f =
     <*> (f changeFirer)
     <*> (f keyDownHandler)
 
-getGarbage :: Callbacks -> E.Garbage
-getGarbage s = E.TrashPile
-    [ E.Trash $ fireSetEditNode s
-    , E.Trash $ fireToggleComplete s
-    , E.Trash $ fireStartEdit s
-    , E.Trash $ fireDestroy s
-    , E.Trash $ fireCancelEdit s
-    , E.Trash $ fireChange s
-    , E.Trash $ handleKeyDown s
-    ]
+instance E.Trash Callbacks
+
+-- getGarbage :: Callbacks -> E.Garbage
+-- getGarbage s = E.TrashPile
+--     [ E.Trash $ fireSetEditNode s
+--     , E.Trash $ fireToggleComplete s
+--     , E.Trash $ fireStartEdit s
+--     , E.Trash $ fireDestroy s
+--     , E.Trash $ fireCancelEdit s
+--     , E.Trash $ fireChange s
+--     , E.Trash $ handleKeyDown s
+--     ]
 
 window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
 window = do
