@@ -37,6 +37,10 @@ data Command
     | DestroyCommand
     | DeferCommand Command
     | FocusNodeCommand J.JSVal
+    | SetSelectionCommand J.JSVal
+                          Int
+                          Int
+                          J.JSString
 
 data Action
     = StartEditAction
@@ -44,7 +48,7 @@ data Action
     | DestroyAction
     | CancelEditAction
     | SubmitAction
-    | ChangeAction J.JSString
+    | ChangeAction J.JSVal Int Int J.JSString J.JSString
     | SetEditNodeAction J.JSVal
 
 makeClassyPrisms ''Action
@@ -135,16 +139,19 @@ cancelEditFirer = const $ pure CancelEditAction
 changeFirer :: J.JSVal -> MaybeT IO Action
 changeFirer = R.eventHandlerM goStrict goLazy
     where
-      goStrict :: J.JSVal -> MaybeT IO J.JSString
+      goStrict :: J.JSVal -> MaybeT IO (J.JSVal, Int, Int, J.JSString, J.JSString)
       goStrict evt = do
           evt' <- MaybeT $ pure $ R.castSyntheticEvent evt
           -- target is the "input" DOM
           input <- lift $ pure . J.jsval . R.target . R.parseEvent $ evt'
-          v <- lift $ E.getProperty "value" input
-          MaybeT $ J.fromJSVal v
+          ss <- MaybeT $ E.getProperty "selectionStart" input >>= J.fromJSVal
+          se <- MaybeT $ E.getProperty "selectionEnd" input >>= J.fromJSVal
+          sd <- MaybeT $ E.getProperty "selectionDirection" input >>= J.fromJSVal
+          v <- MaybeT $ E.getProperty "value" input >>= J.fromJSVal
+          pure $ (input, ss, se, sd, v)
 
-      goLazy :: J.JSString -> MaybeT IO Action
-      goLazy = pure . ChangeAction
+      goLazy :: (J.JSVal, Int, Int, J.JSString, J.JSString) -> MaybeT IO Action
+      goLazy (n, ss, se, sd, v) = pure $ ChangeAction n ss se sd v
 
 keyDownHandler :: J.JSVal -> MaybeT IO Action
 keyDownHandler = R.eventHandlerM goStrict goLazy
@@ -168,9 +175,11 @@ gadget = do
         ToggleCompleteAction -> do
             _completed %= not
             pure $ D.singleton RenderRequiredCommand
+
         SetEditNodeAction v -> do
             _editNode .= v
             pure mempty
+
         StartEditAction -> do
             n <- use _editNode
             ret <- runMaybeT $ do
@@ -182,14 +191,20 @@ gadget = do
                                   , RenderRequiredCommand
                                   ]
             maybe (pure mempty) pure ret
+
         DestroyAction -> pure $ D.singleton DestroyCommand
 
         CancelEditAction -> do
             _editText .= J.empty
             pure $ D.singleton RenderRequiredCommand
-        ChangeAction str -> do
+
+        ChangeAction n ss se sd str -> do
             _editText .= str
-            pure $ D.singleton RenderRequiredCommand
+            pure $ D.fromList
+                [ DeferCommand (SetSelectionCommand n ss se sd)
+                , RenderRequiredCommand
+                ]
+
         SubmitAction -> do
             -- trim the text
             v <- J.strip <$> use _editText

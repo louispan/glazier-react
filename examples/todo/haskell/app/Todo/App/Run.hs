@@ -96,6 +96,9 @@ interpretCommand _ _ output         (TD.App.TodosCommand (k, TD.Todo.DestroyComm
 interpretCommand _ _ _              (TD.App.TodosCommand (_, TD.Todo.FocusNodeCommand node)) =
     liftIO $ js_focusNode node
 
+interpretCommand _ _ output         (TD.App.TodosCommand (_, TD.Todo.SetSelectionCommand n ss se sd)) =
+    liftIO $ js_setSelectionRange n ss se sd
+
 interpretCommand _ _ output         (TD.App.TodosCommand (k, TD.Todo.DeferCommand cmd)) = do
     i <- use TD.App._renderSeqNum
     let cmd' = TD.App.TodosCommand (k, cmd)
