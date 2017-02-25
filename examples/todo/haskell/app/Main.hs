@@ -9,6 +9,7 @@ module Main (main) where
 
 import Control.Concurrent.MVar
 import Control.Concurrent.STM
+import qualified Control.Disposable as CD
 import Control.Lens
 import Control.Monad
 import Control.Monad.IO.Class
@@ -178,7 +179,7 @@ interpretCommand
 interpretCommand stateMVar _  TD.App.RenderRequiredCommand = forceRender stateMVar
 
 interpretCommand _ _         (TD.App.DisposeCommand x) =
-    liftIO $ E.dispose x
+    liftIO $ CD.dispose x
 
 interpretCommand stateMVar _ (TD.App.InputCommand (TD.Input.RenderRequiredCommand)) = forceRender stateMVar
 

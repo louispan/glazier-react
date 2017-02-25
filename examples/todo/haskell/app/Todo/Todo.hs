@@ -18,6 +18,7 @@ module Todo.Todo
  ) where
 
 import Control.Applicative as A
+import qualified Control.Disposable as CD
 import Control.Lens
 import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
@@ -63,7 +64,7 @@ data Callbacks = Callbacks
     , handleKeyDown :: J.Callback (J.JSVal -> IO ())
     } deriving G.Generic
 
-instance E.Disposing Callbacks
+instance CD.Disposing Callbacks
 
 data Model = Model
     { uid :: J.JSString

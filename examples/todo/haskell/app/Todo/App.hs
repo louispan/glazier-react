@@ -26,6 +26,7 @@ module Todo.App
     ) where
 
 import Control.Concurrent.STM
+import qualified Control.Disposable as CD
 import Control.Lens
 import Control.Monad.Morph
 import Control.Monad.Reader
@@ -60,7 +61,7 @@ type TodosModel' = Map.Map TodoKey TD.Todo.Model
 
 data Command
     = RenderRequiredCommand
-    | DisposeCommand E.SomeDisposable
+    | DisposeCommand CD.SomeDisposable
     | MakeCallbacksCommand (((J.JSVal -> MaybeT IO Action) -> IO (J.Callback (J.JSVal -> IO ()))) -> IO Command)
     | SendActionCommand Action
     | InputCommand TD.Input.Command
@@ -82,13 +83,13 @@ data Callbacks = Callbacks
     { fireToggleCompleteAll :: J.Callback (J.JSVal -> IO ())
     } deriving (G.Generic)
 
-instance E.Disposing Callbacks
+instance CD.Disposing Callbacks
 
 data Model = Model
     { uid :: J.JSString
     , renderSeqNum :: Int
     , todoSeqNum :: Int
-    , disposables :: Map.Map Int (D.DList E.SomeDisposable)
+    , disposables :: Map.Map Int (D.DList CD.SomeDisposable)
     , delayedCommands :: Map.Map Int (D.DList Command)
     , todoInput :: TD.Input.Model
     , todosModel :: TodosModel'
@@ -182,7 +183,7 @@ appGadget = do
             ts <- use _todosModel
             ret <- runMaybeT $ do
                 todoModel <- MaybeT $ pure $ Map.lookup k ts
-                junk <- pure $ E.disposing (TD.Todo.callbacks todoModel)
+                junk <- pure $ CD.disposing (TD.Todo.callbacks todoModel)
                 renderSeqNum' <- use _renderSeqNum
                 _disposables %= (Map.alter (addDisposable (D.singleton junk)) renderSeqNum')
                 _todosModel %= Map.delete k
@@ -204,7 +205,7 @@ appGadget = do
             let (cmds', leftoverCmds) = Map.partitionWithKey (\k _ -> k < n) cmds
             _delayedCommands .= leftoverCmds
 
-            pure $ (foldMap snd . Map.toList $ cmds') `D.snoc` DisposeCommand (E.DisposeList . D.toList . foldMap snd . Map.toList $ garbage)
+            pure $ (foldMap snd . Map.toList $ cmds') `D.snoc` DisposeCommand (CD.DisposeList . D.toList . foldMap snd . Map.toList $ garbage)
 
         RequestNewTodoAction str -> do
             n <- use _todoSeqNum
