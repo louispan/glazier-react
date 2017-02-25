@@ -12,30 +12,30 @@ module Glazier.React.Element
     , Properties
     ) where
 
-import qualified Data.HashMap.Strict as M
-import GHCJS.Marshal.Pure (PToJSVal(..))
-import GHCJS.Types (IsJSVal, JSString, JSVal, jsval)
-import Glazier.React.Internal (PureJSVal(..))
-import JavaScript.Array (JSArray, fromList)
-import JavaScript.Object (Object, create, unsafeSetProp)
-import Data.JSString.Text (textToJSString)
+import qualified Data.HashMap.Strict as HM
+import qualified GHCJS.Marshal.Pure as J
+import qualified GHCJS.Types as J
+import qualified Glazier.React.Internal as R
+import qualified JavaScript.Array as JA
+import qualified JavaScript.Object as JO
+import qualified Data.JSString.Text as J
 import qualified Data.Text as T
 
-newtype ReactElement = ReactElement JSVal
-instance IsJSVal ReactElement
-instance PToJSVal ReactElement where
-    pToJSVal = jsval
+newtype ReactElement = ReactElement J.JSVal
+instance J.IsJSVal ReactElement
+instance J.PToJSVal ReactElement where
+    pToJSVal = J.jsval
 
 -- | This is an IO action even if the same args was used
 -- a different ReactElement may be created, because JSVal
 -- and JSArray are mutable.
 foreign import javascript unsafe
     "$r = React.createElement($1, $2, $3);"
-    js_mkBranchElement :: JSString -> JSVal -> JSArray -> IO ReactElement
+    js_mkBranchElement :: J.JSString -> J.JSVal -> JA.JSArray -> IO ReactElement
 
 foreign import javascript unsafe
     "$r = React.createElement($1, $2);"
-    js_mkLeafElement :: JSVal -> JSVal -> IO ReactElement
+    js_mkLeafElement :: J.JSVal -> J.JSVal -> IO ReactElement
 
 
 -- | Unfortunately, ReactJS did not export an easy way to check if something is a ReactElement,
@@ -44,46 +44,47 @@ foreign import javascript unsafe
 -- and is marked unsafe as a reminder that the coersion is unchecked.
 -- This function is required when receiving ReactElement from javascript (eg in a callback)
 -- or to interface with foreign React Elements.
-unsafeCoerceElement :: JSVal -> ReactElement
+unsafeCoerceElement :: J.JSVal -> ReactElement
 unsafeCoerceElement = ReactElement
 
-type Properties = M.HashMap T.Text JSVal
+type Properties = HM.HashMap T.Text J.JSVal
 
 -- | Create a JS Object from a HashMap
-toJSProps :: Properties -> IO (Maybe Object)
-toJSProps m | M.null m = pure Nothing
+toJSProps :: Properties -> IO (Maybe JO.Object)
+toJSProps m | HM.null m = pure Nothing
 toJSProps m | otherwise = do
-                    obj <- create
-                    M.foldlWithKey' (\action k v -> action >> unsafeSetProp (textToJSString k) v obj) (pure ()) m
+                    obj <- JO.create
+                    HM.foldlWithKey' (\action k v -> action
+                                        >> JO.unsafeSetProp (J.textToJSString k) v obj) (pure ()) m
                     pure (Just obj)
 
 -- | Create a react element (with children) from a HashMap of properties
-mkBranchElement :: JSString -> Properties -> [ReactElement] -> IO ReactElement
+mkBranchElement :: J.JSString -> Properties -> [ReactElement] -> IO ReactElement
 mkBranchElement n props xs = do
     props' <- toJSProps props
-    js_mkBranchElement n (pToJSVal (PureJSVal <$> props')) (fromList $ jsval <$> xs)
+    js_mkBranchElement n (J.pToJSVal (R.PureJSVal <$> props')) (JA.fromList $ J.jsval <$> xs)
 
 -- | Create a react element (with no children) from a HashMap of properties
-mkLeafElement :: JSVal -> Properties -> IO ReactElement
+mkLeafElement :: J.JSVal -> Properties -> IO ReactElement
 mkLeafElement n props = do
     props' <- toJSProps props
-    js_mkLeafElement n (pToJSVal (PureJSVal <$> props'))
+    js_mkLeafElement n (J.pToJSVal (R.PureJSVal <$> props'))
 
 foreign import javascript unsafe
     "$r = $1;"
-    js_textElement :: JSString -> ReactElement
+    js_textElement :: J.JSString -> ReactElement
 
 -- | Not an IO action because JSString is immutable
-textElement :: JSString -> ReactElement
+textElement :: J.JSString -> ReactElement
 textElement = js_textElement
 
 -- | Wrap a list of ReactElements inside a 'div'
 foreign import javascript unsafe
     "$r = hgr$mkCombinedElements($1);"
-    js_mkCombinedElements :: JSArray -> IO ReactElement
+    js_mkCombinedElements :: JA.JSArray -> IO ReactElement
 
 -- | React only allows a single top most element.
 -- Provide a handly function to wrap a list of ReactElements inside a 'div' if required.
 -- If there is only one element in the list, then nothing is changed.
 mkCombinedElements :: [ReactElement] -> IO ReactElement
-mkCombinedElements xs = js_mkCombinedElements (fromList $ jsval <$> xs)
+mkCombinedElements xs = js_mkCombinedElements (JA.fromList $ J.jsval <$> xs)

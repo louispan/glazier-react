@@ -20,8 +20,8 @@ module Glazier.React.Markup
     , toElements
     , renderedWindow
     , txt
-    , leaf
-    , branch
+    , lf
+    , bh
     ) where
 
 import Control.Applicative
@@ -36,6 +36,8 @@ import Data.Semigroup
 import qualified GHCJS.Types as J
 import qualified Glazier as G
 import qualified Glazier.React.Element as R
+import qualified Data.HashMap.Strict as HM
+import qualified Data.Text as T
 
 -- | The parameters required to create a branch ReactElement with children
 data BranchParam = BranchParam
@@ -119,11 +121,11 @@ txt :: Applicative m => J.JSString -> ReactMlT m ()
 txt n = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` TextMarkup n)
 
 -- | For the contentless elements: eg 'br_'
-leaf :: Applicative m => J.JSVal -> R.Properties -> ReactMlT m ()
-leaf n props = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` LeafMarkup (LeafParam n props))
+lf :: Applicative m => J.JSVal -> [(T.Text, J.JSVal)] -> ReactMlT m ()
+lf n props = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` LeafMarkup (LeafParam n $ HM.fromList props))
 
 -- | For the contentful elements: eg 'div_'
-branch :: Functor m => J.JSString -> R.Properties -> ReactMlT m a -> ReactMlT m a
-branch n props (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
+bh :: Functor m => J.JSString -> [(T.Text, J.JSVal)] -> ReactMlT m a -> ReactMlT m a
+bh n props (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
     (a, childs') <- childs mempty
-    pure (a, xs `D.snoc` BranchMarkup (BranchParam n props childs'))
+    pure (a, xs `D.snoc` BranchMarkup (BranchParam n (HM.fromList props) childs'))

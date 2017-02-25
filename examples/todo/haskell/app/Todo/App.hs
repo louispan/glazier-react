@@ -32,8 +32,7 @@ import Control.Monad.State.Strict
 import Control.Monad.Trans.Maybe
 import qualified Data.DList as D
 import Data.Foldable
-import qualified Data.HashMap.Strict as M
-import qualified Data.Map.Strict as Map
+import qualified Data.Map.Strict as M
 import Data.Semigroup
 import qualified GHC.Generics as G
 import qualified GHCJS.Foreign.Callback as J
@@ -54,7 +53,7 @@ type TodosCommand' = (TodoKey, TD.Todo.Command)
 
 type TodosAction' = (TodoKey, TD.Todo.Action)
 
-type TodosModel' = Map.Map TodoKey TD.Todo.Model
+type TodosModel' = M.Map TodoKey TD.Todo.Model
 
 type RenderSeqNum = Int
 
@@ -98,7 +97,7 @@ instance CD.Disposing Callbacks
 data Model = Model
     { uid :: J.JSString
     , renderSeqNum :: RenderSeqNum
-    , deferredCommands :: Map.Map RenderSeqNum (D.DList Command)
+    , deferredCommands :: M.Map RenderSeqNum (D.DList Command)
     , todoSeqNum :: Int
     , todoInput :: TD.Input.Model
     , todosModel :: TodosModel'
@@ -108,7 +107,7 @@ data Model = Model
 makeClassy_ ''Model
 
 hasActiveTodos :: TodosModel' -> Bool
-hasActiveTodos = not . null . filter (not . TD.Todo.completed) . fmap snd . Map.toList
+hasActiveTodos = not . null . filter (not . TD.Todo.completed) . fmap snd . M.toList
 
 toggleCompleteAllFirer :: Applicative m => J.JSVal -> m Action
 toggleCompleteAllFirer = const $ pure ToggleCompleteAllAction
@@ -122,11 +121,10 @@ mapTodoHandler k f v = (\a -> TodosAction (k, a)) <$> f v
 window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
 window = do
     s <- ask
-    lift $ R.branch "header" (M.fromList
-                       [ ("key", J.jsval $ uid s)
-                       , ("className", E.strval "header")
-                       ]) $ do
-        R.branch "h1" (M.singleton "key" (E.strval "heading")) (R.txt "todos")
+    lift $ R.bh "header" [ ("key", J.jsval $ uid s)
+                         , ("className", E.strval "header")
+                         ] $ do
+        R.bh "h1" [("key", E.strval "heading")] (R.txt "todos")
         view G._WindowT inputWindow s
         view G._WindowT mainWindow s
 
@@ -137,27 +135,25 @@ mainWindow = do
         then pure ()
         else do
         s <- ask
-        lift $ R.branch "section" (M.fromList
-                        [ ("key", E.strval "main")
-                        , ("className", E.strval "main")
-                        ]) $ do
+        lift $ R.bh "section" [ ("key", E.strval "main")
+                              , ("className", E.strval "main")
+                              ] $ do
             -- This is the complete all checkbox
-            R.leaf (E.strval "input") (M.fromList
+            R.lf (E.strval "input")
                         [ ("key", E.strval "toggle-all")
                         , ("className", E.strval "toggle-all")
                         , ("type", E.strval "checkbox")
                         , ("checked", J.pToJSVal . not . hasActiveTodos $ todos)
                         , ("onChange", J.jsval $ fireToggleCompleteAll $ callbacks s)
-                        ])
+                        ]
             view G._WindowT todoListWindow s
 
 todoListWindow :: Monad m => G.WindowT Model (R.ReactMlT m) ()
 todoListWindow = do
-    todos <- fmap snd . Map.toList <$> view _todosModel
-    lift $ R.branch "ul"  (M.fromList
-                        [ ("key", E.strval "todo-list")
-                        , ("className", E.strval "todo-list")
-                        ]) $ do
+    todos <- fmap snd . M.toList <$> view _todosModel
+    lift $ R.bh "ul" [ ("key", E.strval "todo-list")
+                     , ("className", E.strval "todo-list")
+                     ] $
         traverse_ (view G._WindowT TD.Todo.window) todos
 
 gadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
@@ -181,19 +177,19 @@ appGadget = do
             pure $ D.singleton RenderRequiredCommand
 
         DeferCommandAction i cmd -> do
-            _deferredCommands %= (Map.alter (addCommand cmd) i)
+            _deferredCommands %= (M.alter (addCommand cmd) i)
             pure $ D.singleton RenderRequiredCommand
 
         DestroyTodoAction k -> do
             -- queue up callbacks to be released after rerendering
             ts <- use _todosModel
             ret <- runMaybeT $ do
-                todoModel <- MaybeT $ pure $ Map.lookup k ts
+                todoModel <- MaybeT $ pure $ M.lookup k ts
                 let junk = CD.disposing (TD.Todo.callbacks todoModel)
                 i <- use _renderSeqNum
-                _deferredCommands %= (Map.alter (addCommand $ DisposeCommand junk) i)
+                _deferredCommands %= (M.alter (addCommand $ DisposeCommand junk) i)
                 -- Remove the todo from the model
-                _todosModel %= Map.delete k
+                _todosModel %= M.delete k
                 pure $ D.singleton RenderRequiredCommand
             maybe (pure mempty) pure ret
 
@@ -203,10 +199,10 @@ appGadget = do
             -- Similarly run delayed commands that need to wait until a particular frame is rendered
             -- Eg focusing after other rendering changes
             cmds <- use _deferredCommands
-            let (cmds', leftoverCmds) = Map.partitionWithKey (\k _ -> k < n) cmds
+            let (cmds', leftoverCmds) = M.partitionWithKey (\k _ -> k < n) cmds
             _deferredCommands .= leftoverCmds
 
-            pure . foldMap snd . Map.toList $ cmds'
+            pure . foldMap snd . M.toList $ cmds'
 
         RequestNewTodoAction str -> do
             n <- use _todoSeqNum
@@ -221,7 +217,7 @@ appGadget = do
                     cbs
 
         AddNewTodoAction n s -> do
-            _todosModel %= Map.insert n s
+            _todosModel %= M.insert n s
             pure $ D.singleton RenderRequiredCommand
 
         -- these will be handled by monoidally appending other gadgets
@@ -234,7 +230,7 @@ appGadget = do
     addDisposable junk Nothing = Just junk
     addDisposable junk (Just junk') = Just (junk' <> junk)
 
-    toggleCompleteAll :: Map.Map TodoKey TD.Todo.Model -> Map.Map TodoKey TD.Todo.Model
+    toggleCompleteAll :: M.Map TodoKey TD.Todo.Model -> M.Map TodoKey TD.Todo.Model
     toggleCompleteAll xs = fmap (toggleCompleteAll' $ hasActiveTodos xs) xs
     toggleCompleteAll' :: Bool -> TD.Todo.Model -> TD.Todo.Model
     toggleCompleteAll' b s = s & TD.Todo._completed .~ b
@@ -251,12 +247,12 @@ todosGadget = do
     -- expect a (key, action) pair
     (k, a) <- ask
     s <- get
-    case Map.lookup k s of
+    case M.lookup k s of
         Nothing -> pure mempty
         Just s' -> do
             -- run the todo gadget logic
             (cmds, s'') <- lift $ view G._GadgetT TD.Todo.gadget a s'
-            put $ Map.insert k s'' s
+            put $ M.insert k s'' s
             -- annotate cmd with the key
             pure $ (\cmd -> (k, cmd)) <$> cmds
 

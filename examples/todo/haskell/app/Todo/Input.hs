@@ -10,7 +10,6 @@ import Control.Lens
 import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
 import qualified Data.DList as D
-import qualified Data.HashMap.Strict as M
 import qualified Data.JSString as J
 import qualified GHC.Generics as G
 import qualified GHCJS.Foreign.Callback as J
@@ -40,7 +39,7 @@ makeClassy_ ''Model
 window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
 window = do
     s <- ask
-    lift $ R.leaf (E.strval "input") (M.fromList
+    lift $ R.lf (E.strval "input")
                     [ ("key", E.strval $ uid s)
                     , ("className", E.strval "new-todo")
                     , ("placeholder", E.strval "What needs to be done?")
@@ -48,7 +47,7 @@ window = do
                     , ("autoFocus", J.pToJSVal True)
                     , ("onChange", J.jsval $ fireChange $ callbacks s)
                     , ("onKeyDown", J.jsval $ fireSubmit $ callbacks s)
-                    ])
+                    ]
 
 data Action = ChangeAction J.JSString | SubmitAction
 

@@ -20,7 +20,6 @@ import Control.Lens
 import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
 import qualified Data.DList as D
-import qualified Data.HashMap.Strict as M
 import qualified Data.JSString as J
 import qualified GHC.Generics as G
 import qualified GHCJS.Foreign.Callback as J
@@ -87,38 +86,34 @@ mkCallbacks f =
 window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
 window = do
     s <- ask
-    lift $ R.branch "li" (M.fromList [ ("key", J.jsval $ uid s)
-                                     , ("className", cns s)
-                                     ]) $ do
-        R.branch "div" (M.fromList [ ("key", E.strval "view")
-                                   , ("className", E.strval "view")
-                                   ]) $ do
-            R.leaf (E.strval "input") (M.fromList
-                                      [ ("key", E.strval "toggle")
-                                      , ("className", E.strval "toggle")
-                                      , ("type", E.strval "checkbox")
-                                      , ("checked", J.pToJSVal $ completed s)
-                                      , ("onChange", J.jsval $ s ^. _callbacks . to fireToggleComplete)
-                                      ])
-            R.branch "label"  (M.fromList
-                                      [ ("key", E.strval "label")
-                                      , ("onDoubleClick", J.jsval $ s ^. _callbacks . to fireStartEdit)
-                                      ]) (R.txt $ value s)
-            R.leaf (E.strval "button") (M.fromList
-                                      [ ("key", E.strval "destroy")
-                                      , ("className", E.strval "destroy")
-                                      , ("onClick", J.jsval $ s ^. _callbacks . to fireDestroy)
-                                      ])
-        R.leaf (E.strval "input") (M.fromList
-                                  [ ("key", E.strval "todo-input")
-                                  , ("ref", J.jsval $ s ^. _callbacks . to fireSetEditNode)
-                                  , ("className", E.strval "edit")
-                                  , ("value", J.jsval $ editText s)
-                                  , ("checked", J.pToJSVal $ completed s)
-                                  , ("onBlur", J.jsval $ s ^. _callbacks . to fireCancelEdit)
-                                  , ("onChange", J.jsval $ s ^. _callbacks . to fireChange)
-                                  , ("onKeyDown", J.jsval $ s ^. _callbacks . to handleKeyDown)
-                                  ])
+    lift $ R.bh "li" [ ("key", J.jsval $ uid s)
+                     , ("className", cns s)
+                     ] $ do
+        R.bh "div" [ ("key", E.strval "view")
+                   , ("className", E.strval "view")
+                   ] $ do
+            R.lf (E.strval "input") [ ("key", E.strval "toggle")
+                                    , ("className", E.strval "toggle")
+                                    , ("type", E.strval "checkbox")
+                                    , ("checked", J.pToJSVal $ completed s)
+                                    , ("onChange", J.jsval $ s ^. _callbacks . to fireToggleComplete)
+                                    ]
+            R.bh "label"  [ ("key", E.strval "label")
+                          , ("onDoubleClick", J.jsval $ s ^. _callbacks . to fireStartEdit)
+                          ] (R.txt $ value s)
+            R.lf (E.strval "button") [ ("key", E.strval "destroy")
+                                     , ("className", E.strval "destroy")
+                                     , ("onClick", J.jsval $ s ^. _callbacks . to fireDestroy)
+                                     ]
+        R.lf (E.strval "input") [ ("key", E.strval "todo-input")
+                                , ("ref", J.jsval $ s ^. _callbacks . to fireSetEditNode)
+                                , ("className", E.strval "edit")
+                                , ("value", J.jsval $ editText s)
+                                , ("checked", J.pToJSVal $ completed s)
+                                , ("onBlur", J.jsval $ s ^. _callbacks . to fireCancelEdit)
+                                , ("onChange", J.jsval $ s ^. _callbacks . to fireChange)
+                                , ("onKeyDown", J.jsval $ s ^. _callbacks . to handleKeyDown)
+                                ]
   where
     cns s = E.classNames [("completed", completed s), ("editing", not . J.null $ editText s)]
 
