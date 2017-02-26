@@ -2,7 +2,17 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Todo.Input where
+module Todo.Input
+ ( Command(..)
+ , Action(..)
+ , AsAction(..)
+ , Callbacks(..)
+ , Model(..)
+ , HasModel(..)
+ , mkCallbacks
+ , window
+ , gadget
+ ) where
 
 import Control.Applicative as A
 import qualified Control.Disposable as CD
@@ -46,6 +56,8 @@ data Model = Model
 makeClassy_ ''Model
 
 data Action = ChangeAction J.JSVal Int Int J.JSString J.JSString | SubmitAction
+
+makeClassyPrisms ''Action
 
 mkCallbacks :: ((J.JSVal -> MaybeT IO Action) -> IO (J.Callback (J.JSVal -> IO ()))) -> IO Callbacks
 mkCallbacks f =
