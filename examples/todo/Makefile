@@ -2,15 +2,19 @@ SHELL := /bin/bash
 INSTALL_ROOT:=$(shell stack path --local-install-root)
 GHCJS_OUT:=$(INSTALL_ROOT)/bin/glazier-react-todo.jsexe
 
-.PHONY: all clean install npm-start stack-build
+.PHONY: all install install-min clean start stack-build
 
 all: install
+	@true # dependency tracking doesn't work for empty @targets
 
 # install: build/todo.js build/todo.min.js
 # 	npm install
 
 install: build/todo.js
 	npm install
+
+install-min: build/todo.min.js install
+	@true # dependency tracking doesn't work for empty @targets
 
 clean:
 	rm -rf node_modules
@@ -19,14 +23,14 @@ clean:
 start: install
 	npm start
 
-install-min: build/todo.min.js install
-
 stack-build:
 	stack build
 
 $(GHCJS_OUT)/all.js: stack-build
+	@true # dependency tracking doesn't work for empty @targets
 
 $(GHCJS_OUT)/all.js.externs: stack-build
+	@true # dependency tracking doesn't work for empty @targets
 
 # add a nodeJS module wrapper http://edsko.net/2015/02/14/atom-haskell/
 # Don't output to src as babel looks in that directory for js files to transpile.
@@ -35,14 +39,14 @@ $(GHCJS_OUT)/all.js.externs: stack-build
 # "ERROR - Closure dependency methods(goog.provide, goog.require, etc)
 # must be called at file scope. "
 # This step also removes the dummy calls to goog.provide and goog.require.
-build/todo.js: $(GHCJS_OUT)/all.js $(GHCJS_OUT)/all.js.externs
+build/todo.js: $(GHCJS_OUT)/all.js haskell/jsexports/exports.header haskell/jsexports/exports.js
 	mkdir -p build
 	cat haskell/jsexports/exports.header \
 		<(sed -e '/goog.provide.*/d;/goog.require.*/d' $(GHCJS_OUT)/all.js) \
 		haskell/jsexports/exports.js \
-		haskell/jsexports/exports.footer > build/todo.js
+		> build/todo.js
 
-build/todo.min.js: build/todo.js build/react-externs.js
+build/todo.min.js: build/react-externs.js $(GHCJS_OUT)/all.js.externs build/todo.js
 	closure-compiler \
 		--compilation_level=ADVANCED_OPTIMIZATIONS \
 		--externs build/react-externs.js \

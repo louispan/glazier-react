@@ -5,7 +5,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE DuplicateRecordFields #-}
 
 -- | 'Lucid.HtmlT' inspired monad for creating 'ReactElement's
 module Glazier.React.Markup
@@ -41,16 +40,14 @@ import qualified Data.Text as T
 
 -- | The parameters required to create a branch ReactElement with children
 data BranchParam = BranchParam
-    { name :: J.JSString
-    , properties :: R.Properties
-    , children :: D.DList ReactMarkup
-    }
+    J.JSVal -- ^ Can be a react component type as well as html name
+    R.Properties
+    (D.DList ReactMarkup) -- ^ children
 
 -- | The parameters required to create a leaf ReactElement (no children)
 data LeafParam = LeafParam
-    { name :: J.JSVal -- ^ Can be a react component name
-    , properties :: R.Properties
-    }
+    J.JSVal -- ^ Can be a react component type as well as html name
+    R.Properties
 
 data ReactMarkup
     = ElementMarkup R.ReactElement
@@ -125,7 +122,7 @@ lf :: Applicative m => J.JSVal -> [(T.Text, J.JSVal)] -> ReactMlT m ()
 lf n props = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` LeafMarkup (LeafParam n $ HM.fromList props))
 
 -- | For the contentful elements: eg 'div_'
-bh :: Functor m => J.JSString -> [(T.Text, J.JSVal)] -> ReactMlT m a -> ReactMlT m a
+bh :: Functor m => J.JSVal -> [(T.Text, J.JSVal)] -> ReactMlT m a -> ReactMlT m a
 bh n props (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
     (a, childs') <- childs mempty
     pure (a, xs `D.snoc` BranchMarkup (BranchParam n (HM.fromList props) childs'))

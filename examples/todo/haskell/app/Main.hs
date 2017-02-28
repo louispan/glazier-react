@@ -28,7 +28,6 @@ import qualified GHCJS.Types as J
 import qualified Glazier as G
 import qualified Glazier.React.Element as R
 import qualified Glazier.React.Markup as R
-import qualified Glazier.React.Util as E
 import qualified Pipes as P
 import qualified Pipes.Concurrent as PC
 import qualified Pipes.Lift as PL
@@ -37,9 +36,12 @@ import qualified Pipes.Prelude as PP
 import qualified Todo.App as TD.App
 import qualified Todo.App.Run as TD.App.Run
 import qualified Todo.Input as TD.Input
-import qualified Todo.Todo as TD.Todo
+import qualified Todo.Dummy as TD.Dummy
 
 -- | 'main' is used to create React classes and setup callbacks to be used externally by the browser.
+-- GHCJS runs 'main' lazily.
+-- The code here only start running after all javascript is loaded.
+-- Ie. h$main(h$mainZCZCMainzimain) just schedules the work to be executed after all javascript is loaded.
 main :: IO ()
 main = do
     -- Create a 'Pipes.Concurrent' mailbox for receiving actions from html events.
@@ -52,7 +54,19 @@ main = do
     inputCallbacks <- TD.App.mkInputCallbacks (TD.App.Run.mkActionCallback output)
     appCallbacks <- TD.App.mkCallbacks (TD.App.Run.mkActionCallback output)
 
-    -- TODO: How to make sure the correct handlers are passed into the correct place?
+    -- Dummy
+    dummyState <- newEmptyMVar
+    dummyCallbacks <- TD.App.mkDummyCallbacks dummyState (TD.App.Run.mkActionCallback output)
+    let dummyModel = TD.Dummy.Model
+            J.nullRef
+            0
+            mempty
+            "dummy"
+            mempty
+            dummyCallbacks
+
+    putMVar dummyState dummyModel
+
     let initialState = TD.App.Model
             "todos"
             0
@@ -64,6 +78,8 @@ main = do
                  inputCallbacks)
             mempty -- todosModel
             appCallbacks
+            dummyModel
+            dummyState
 
         -- Make a MVar so render can get the latest state
     currentState <- newMVar initialState
@@ -85,6 +101,12 @@ main = do
     -- trigger a render now that the render callback is initialized
     js_globalShout "forceRender" (J.pToJSVal $ TD.App.renderSeqNum initialState)
 
+    -- Start the Dummy render
+    js_renderDummy "root2"
+        (TD.Dummy.onRender . TD.Dummy.callbacks $ dummyModel)
+        (TD.Dummy.onRef . TD.Dummy.callbacks $ dummyModel)
+        (TD.Dummy.onUpdated . TD.Dummy.callbacks $ dummyModel)
+
     -- Run the gadget effect which reads actions from 'Pipes.Concurrent.Input'
     -- and notifies html React of any state changes.
     -- runEffect will only stop if input is finished (which in this example never does).
@@ -98,6 +120,15 @@ main = do
     J.releaseCallback doRenderUpdated
     CD.dispose (CD.disposing appCallbacks)
     CD.dispose (CD.disposing inputCallbacks)
+
+foreign import javascript unsafe
+  "ReactDOM.render(React.createElement(Dummy, { render: $2, ref: $3, updated: $4 }), document.getElementById($1) );"
+  js_renderDummy
+      :: J.JSString
+      -> J.Callback (J.JSVal -> IO J.JSVal)
+      -> J.Callback (J.JSVal -> IO ())
+      -> J.Callback (J.JSVal -> IO ())
+      -> IO ()
 
 foreign import javascript unsafe
   "hgr$todo$registry['listen']($1, $2);"

@@ -20,8 +20,10 @@ module Todo.App
     , gadget
     , mkCallbacks
     , mkInputCallbacks
+    , mkDummyCallbacks
     ) where
 
+import Control.Concurrent.MVar
 import qualified Control.Disposable as CD
 import Control.Lens
 import Control.Monad.Morph
@@ -30,6 +32,7 @@ import Control.Monad.State.Strict
 import Control.Monad.Trans.Maybe
 import qualified Data.DList as D
 import Data.Foldable
+import qualified Data.JSString as J
 import qualified Data.Map.Strict as M
 import Data.Semigroup
 import qualified GHC.Generics as G
@@ -39,9 +42,9 @@ import qualified GHCJS.Types as J
 import qualified Glazier as G
 import qualified Glazier.React.Markup as R
 import qualified Glazier.React.Util as E
+import qualified Todo.Dummy as TD.Dummy
 import qualified Todo.Input as TD.Input
 import qualified Todo.Todo as TD.Todo
-import qualified Data.JSString as J
 
 type TodoKey = Int
 
@@ -68,7 +71,7 @@ data Command
     -- TODO specific commands
     | InputCommand TD.Input.Command
     | TodosCommand TodosCommand'
-
+    | DummyCommand TD.Dummy.Command
 
 data Action
     -- General Application level actions
@@ -81,6 +84,7 @@ data Action
     | AddNewTodoAction Int TD.Todo.Model
     | InputAction TD.Input.Action
     | TodosAction TodosAction'
+    | DummyAction TD.Dummy.Action
 
 makeClassyPrisms ''Action
 
@@ -98,6 +102,8 @@ data Model = Model
     , todoInput :: TD.Input.Model
     , todosModel :: TodosModel'
     , callbacks :: Callbacks
+    , todoDummy :: TD.Dummy.Model
+    , todoDummyMVar :: MVar TD.Dummy.Model
     }
 
 makeClassy_ ''Model
@@ -109,6 +115,9 @@ mkCallbacks f =
 
 mkInputCallbacks :: ((J.JSVal -> MaybeT IO Action) -> IO (J.Callback (J.JSVal -> IO ()))) -> IO TD.Input.Callbacks
 mkInputCallbacks f = TD.Input.mkCallbacks (f . mapInputHandler)
+
+mkDummyCallbacks :: MVar TD.Dummy.Model -> ((J.JSVal -> MaybeT IO Action) -> IO (J.Callback (J.JSVal -> IO ()))) -> IO TD.Dummy.Callbacks
+mkDummyCallbacks s f = TD.Dummy.mkCallbacks s (f . mapDummyHandler)
 
 hasActiveTodos :: TodosModel' -> Bool
 hasActiveTodos = not . null . filter (not . TD.Todo.completed) . fmap snd . M.toList
@@ -122,13 +131,16 @@ mapInputHandler f v = (review _InputAction) <$> f v
 mapTodoHandler :: Functor m => TodoKey -> (J.JSVal -> m TD.Todo.Action) -> J.JSVal -> m Action
 mapTodoHandler k f v = (\a -> TodosAction (k, a)) <$> f v
 
+mapDummyHandler :: (J.JSVal -> MaybeT IO TD.Dummy.Action) -> J.JSVal -> MaybeT IO Action
+mapDummyHandler f v = (review _DummyAction) <$> f v
+
 window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
 window = do
     s <- ask
-    lift $ R.bh "header" [ ("key", J.jsval $ uid s)
-                         , ("className", E.strval "header")
-                         ] $ do
-        R.bh "h1" [("key", E.strval "heading")] (R.txt "todos")
+    lift $ R.bh (E.strval "header") [ ("key", J.jsval $ uid s)
+                                    , ("className", E.strval "header")
+                                    ] $ do
+        R.bh (E.strval "h1") [("key", E.strval "heading")] (R.txt "todos")
         view G._WindowT inputWindow s
         view G._WindowT mainWindow s
 
@@ -139,9 +151,9 @@ mainWindow = do
         then pure ()
         else do
         s <- ask
-        lift $ R.bh "section" [ ("key", E.strval "main")
-                              , ("className", E.strval "main")
-                              ] $ do
+        lift $ R.bh (E.strval "section") [ ("key", E.strval "main")
+                                         , ("className", E.strval "main")
+                                         ] $ do
             -- This is the complete all checkbox
             R.lf (E.strval "input")
                         [ ("key", E.strval "toggle-all")
@@ -155,15 +167,16 @@ mainWindow = do
 todoListWindow :: Monad m => G.WindowT Model (R.ReactMlT m) ()
 todoListWindow = do
     todos <- fmap snd . M.toList <$> view _todosModel
-    lift $ R.bh "ul" [ ("key", E.strval "todo-list")
-                     , ("className", E.strval "todo-list")
-                     ] $
+    lift $ R.bh (E.strval "ul") [ ("key", E.strval "todo-list")
+                                , ("className", E.strval "todo-list")
+                                ] $
         traverse_ (view G._WindowT TD.Todo.window) todos
 
 gadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
 gadget = appGadget
     <> inputGadget
     <> todosGadget'
+    <> dummyGadget
 
 isRenderRequiredCommand :: Command -> Bool
 isRenderRequiredCommand cmd = case cmd of
@@ -227,12 +240,10 @@ appGadget = do
         -- these will be handled by monoidally appending other gadgets
         InputAction _ -> pure mempty
         TodosAction _ -> pure mempty
+        DummyAction _ -> pure mempty
   where
     addCommand cmd Nothing = Just $ D.singleton cmd
     addCommand cmd (Just cmds') = Just (cmds' `D.snoc` cmd)
-
-    addDisposable junk Nothing = Just junk
-    addDisposable junk (Just junk') = Just (junk' <> junk)
 
     toggleCompleteAll :: M.Map TodoKey TD.Todo.Model -> M.Map TodoKey TD.Todo.Model
     toggleCompleteAll xs = fmap (toggleCompleteAll' $ hasActiveTodos xs) xs
@@ -262,3 +273,6 @@ todosGadget = do
 
 todosGadget' :: Monad m => G.GadgetT Action Model m (D.DList Command)
 todosGadget' = fmap TodosCommand <$> zoom _todosModel (magnify _TodosAction todosGadget)
+
+dummyGadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
+dummyGadget = fmap DummyCommand <$> zoom _todoDummy (magnify _DummyAction TD.Dummy.gadget)

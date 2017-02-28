@@ -1,2 +1,2 @@
-global["registry"] = hgr$todo$registry;
-global["mkCombinedElements"] = hgr$mkCombinedElements;
+exports["registry"] = hgr$todo$registry;
+exports["mkCombinedElements"] = hgr$mkCombinedElements;

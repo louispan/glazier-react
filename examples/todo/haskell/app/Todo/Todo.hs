@@ -90,21 +90,21 @@ mkCallbacks f =
 window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
 window = do
     s <- ask
-    lift $ R.bh "li" [ ("key", J.jsval $ uid s)
-                     , ("className", cns s)
-                     ] $ do
-        R.bh "div" [ ("key", E.strval "view")
-                   , ("className", E.strval "view")
-                   ] $ do
+    lift $ R.bh (E.strval "li") [ ("key", J.jsval $ uid s)
+                                , ("className", cns s)
+                                ] $ do
+        R.bh (E.strval "div") [ ("key", E.strval "view")
+                              , ("className", E.strval "view")
+                              ] $ do
             R.lf (E.strval "input") [ ("key", E.strval "toggle")
                                     , ("className", E.strval "toggle")
                                     , ("type", E.strval "checkbox")
                                     , ("checked", J.pToJSVal $ completed s)
                                     , ("onChange", J.jsval $ s ^. _callbacks . to fireToggleComplete)
                                     ]
-            R.bh "label"  [ ("key", E.strval "label")
-                          , ("onDoubleClick", J.jsval $ s ^. _callbacks . to fireStartEdit)
-                          ] (R.txt $ value s)
+            R.bh (E.strval "label")  [ ("key", E.strval "label")
+                                     , ("onDoubleClick", J.jsval $ s ^. _callbacks . to fireStartEdit)
+                                     ] (R.txt $ value s)
             R.lf (E.strval "button") [ ("key", E.strval "destroy")
                                      , ("className", E.strval "destroy")
                                      , ("onClick", J.jsval $ s ^. _callbacks . to fireDestroy)

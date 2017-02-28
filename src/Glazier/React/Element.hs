@@ -31,7 +31,7 @@ instance J.PToJSVal ReactElement where
 -- and JSArray are mutable.
 foreign import javascript unsafe
     "$r = React.createElement($1, $2, $3);"
-    js_mkBranchElement :: J.JSString -> J.JSVal -> JA.JSArray -> IO ReactElement
+    js_mkBranchElement :: J.JSVal -> J.JSVal -> JA.JSArray -> IO ReactElement
 
 foreign import javascript unsafe
     "$r = React.createElement($1, $2);"
@@ -59,7 +59,7 @@ toJSProps m | otherwise = do
                     pure (Just obj)
 
 -- | Create a react element (with children) from a HashMap of properties
-mkBranchElement :: J.JSString -> Properties -> [ReactElement] -> IO ReactElement
+mkBranchElement :: J.JSVal -> Properties -> [ReactElement] -> IO ReactElement
 mkBranchElement n props xs = do
     props' <- toJSProps props
     js_mkBranchElement n (J.pToJSVal (R.PureJSVal <$> props')) (JA.fromList $ J.jsval <$> xs)

@@ -1,5 +1,5 @@
 'use strict';
-// Wrap ghcjs ouptut into a NodeJS module - ie. expect 'exports' and 'require' is in scope
-(function(global) {
+// Webpack can shim this into a NodeJS module, so 'exports' and 'require' is in scope
 const React = require('react');
 const ReactDOM = require('react-dom');
+const Dummy = require('../src/Dummy').default;

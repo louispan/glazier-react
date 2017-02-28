@@ -1,5 +1,6 @@
 import React from 'react';
 // import {registry, mkCombinedElements} from '../build/todo.min';
+// This has the side effect of scheduling the haskell main function.
 import {registry, mkCombinedElements} from '../build/todo';
 
 // Inheriting from Component means every call to this.setState will result in a render
