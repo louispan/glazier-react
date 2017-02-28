@@ -28,6 +28,7 @@ import qualified GHCJS.Types as J
 import qualified Glazier as G
 import qualified Glazier.React.Element as R
 import qualified Glazier.React.Markup as R
+import qualified Glazier.React.Widget as R
 import qualified Pipes as P
 import qualified Pipes.Concurrent as PC
 import qualified Pipes.Lift as PL
@@ -102,10 +103,12 @@ main = do
     js_globalShout "forceRender" (J.pToJSVal $ TD.App.renderSeqNum initialState)
 
     -- Start the Dummy render
-    js_renderDummy "root2"
+    root2 <- js_getElementById "root2"
+    g <- R.createGlazierElement
         (TD.Dummy.onRender . TD.Dummy.callbacks $ dummyModel)
         (TD.Dummy.onRef . TD.Dummy.callbacks $ dummyModel)
         (TD.Dummy.onUpdated . TD.Dummy.callbacks $ dummyModel)
+    R.reactDomRender g root2
 
     -- Run the gadget effect which reads actions from 'Pipes.Concurrent.Input'
     -- and notifies html React of any state changes.
@@ -122,13 +125,8 @@ main = do
     CD.dispose (CD.disposing inputCallbacks)
 
 foreign import javascript unsafe
-  "ReactDOM.render(React.createElement(Dummy, { render: $2, ref: $3, updated: $4 }), document.getElementById($1) );"
-  js_renderDummy
-      :: J.JSString
-      -> J.Callback (J.JSVal -> IO J.JSVal)
-      -> J.Callback (J.JSVal -> IO ())
-      -> J.Callback (J.JSVal -> IO ())
-      -> IO ()
+  "$r = document.getElementById($1);"
+  js_getElementById :: J.JSString -> IO J.JSVal
 
 foreign import javascript unsafe
   "hgr$todo$registry['listen']($1, $2);"

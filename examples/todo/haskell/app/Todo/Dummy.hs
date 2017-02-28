@@ -29,10 +29,10 @@ import qualified GHCJS.Marshal as J
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import qualified Glazier as G
-import qualified Glazier.React.Element as R
 import qualified Glazier.React.Event as R
 import qualified Glazier.React.Markup as R
 import qualified Glazier.React.Util as E
+import qualified Glazier.React.Widget as R
 
 type RenderSeqNum = Int
 
@@ -65,7 +65,7 @@ data Action
 makeClassyPrisms ''Action
 
 data Callbacks = Callbacks
-    { onRender :: J.Callback (J.JSVal -> IO J.JSVal)
+    { onRender :: J.Callback (IO J.JSVal)
     , onRef :: J.Callback (J.JSVal -> IO ())
     , onUpdated :: J.Callback (J.JSVal -> IO ())
     , onChange :: J.Callback (J.JSVal -> IO ())
@@ -92,9 +92,9 @@ mkCallbacks
     -> IO Callbacks
 mkCallbacks s f =
     Callbacks
-    <$> (J.syncCallback1' $ onRender' s)
-    <*> (f onRef')
-    <*> (f onUpdated')
+    <$> (J.syncCallback' $ R.onRender window s)
+    <*> (f $ R.onRef RefAction)
+    <*> (f $ R.onUpdated RenderedAction)
     <*> (f onChange')
     <*> (f onKeyDown')
 
@@ -110,26 +110,6 @@ window = do
                     , ("onChange", J.jsval . onChange $ callbacks s)
                     , ("onKeyDown", J.jsval . onKeyDown $ callbacks s)
                     ]
-
--- | This is called synchronously by React to render the DOM.
--- This must not block!
-onRender' :: MVar Model -> J.JSVal -> IO J.JSVal
-onRender' currentState _ = do
-    s <- readMVar currentState
-    xs <- view G._WindowT' (R.renderedWindow window) s
-    J.jsval <$> R.mkCombinedElements xs
-
-onRef' :: Monad m => J.JSVal -> m Action
-onRef' a = pure $ RefAction a
-
-onUpdated' :: J.JSVal -> MaybeT IO Action
-onUpdated' =  R.eventHandlerM goStrict goLazy
-  where
-    goStrict :: J.JSVal -> MaybeT IO Int
-    goStrict i = MaybeT $ J.fromJSVal i
-
-    goLazy :: Int -> MaybeT IO Action
-    goLazy i = pure $ RenderedAction i
 
 onChange' :: J.JSVal -> MaybeT IO Action
 onChange' = R.eventHandlerM goStrict goLazy

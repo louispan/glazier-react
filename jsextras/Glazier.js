@@ -18,7 +18,7 @@ class Dummy extends React.PureComponent {
 
     render() {
         if (this.props['render'])
-            return this.props['render'](this.state['seqNum']);
+            return this.props['render']();
         return null;
     }
 }

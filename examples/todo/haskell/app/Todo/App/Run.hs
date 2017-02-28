@@ -43,8 +43,8 @@ forceRender shout stateMVar = do
 
 
 foreign import javascript unsafe
-  "if ($1) { $1.focus(); }"
-  js_focusNode :: J.JSVal -> IO ()
+  "if ($1 && $1['focus']) { $1['focus'](); }"
+  js_focus :: J.JSVal -> IO ()
 
 
 foreign import javascript unsafe
@@ -99,7 +99,7 @@ interpretCommand _ _ output             (TD.App.TodosCommand (k, TD.Todo.Destroy
     liftIO $ void $ atomically $ PC.send output (TD.App.DestroyTodoAction k)
 
 interpretCommand _ _ _                  (TD.App.TodosCommand (_, TD.Todo.FocusNodeCommand node)) =
-    liftIO $ js_focusNode node
+    liftIO $ js_focus node
 
 interpretCommand _ _ _                  (TD.App.TodosCommand (_, TD.Todo.SetSelectionCommand n ss se sd)) =
     liftIO $ js_setSelectionRange n ss se sd
