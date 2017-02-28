@@ -34,7 +34,7 @@ import qualified Glazier.React.Markup as R
 import qualified Glazier.React.Util as E
 import qualified Glazier.React.Widget as R
 
-type RenderSeqNum = Int
+type FrameNum = Int
 
 data Command
     -- | This should result in renderSeqNum being increased by one,
@@ -54,7 +54,7 @@ data Command
 
 data Action
     = RefAction J.JSVal
-    | RenderedAction RenderSeqNum
+    | RenderedAction FrameNum
     | ChangeAction J.JSVal
                    Int
                    Int
@@ -77,8 +77,8 @@ instance CD.Disposing Callbacks
 data Model = Model
     { ref :: J.JSVal
     -- | renderSeqNum is updated on react's componentDidUpdate callback with the new seqNum
-    , renderSeqNum :: RenderSeqNum
-    , deferredCommands :: M.Map RenderSeqNum (D.DList Command)
+    , frameNum :: FrameNum
+    , deferredCommands :: M.Map FrameNum (D.DList Command)
     , uid :: J.JSString
     , value :: J.JSString
     , callbacks :: Callbacks
@@ -153,7 +153,7 @@ gadget = do
         ChangeAction n ss se sd str -> do
             _value .= str
             let cmd = SetSelectionCommand n ss se sd
-            i <- use _renderSeqNum
+            i <- use _frameNum
             _deferredCommands %= (M.alter (addCommand cmd) i)
             pure $ D.singleton RenderCommand
 

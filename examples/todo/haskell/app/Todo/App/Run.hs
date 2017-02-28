@@ -53,8 +53,8 @@ foreign import javascript unsafe
 
 
 foreign import javascript unsafe
-  "if ($1 && $1['setState']) { $1['setState']({ seqNum : $2 }); }"
-  js_setState :: J.JSVal -> Int -> IO ()
+  "if ($1 && $1['setState']) { $1['setState']({ frameNum : $2 }); }"
+  js_setStateFrameNum :: J.JSVal -> Int -> IO ()
 
 
 -- | Evaluate commands from gadgets here
@@ -111,13 +111,12 @@ interpretCommand _ _ output             (TD.App.TodosCommand (k, TD.Todo.DeferCo
 
 interpretCommand _ _ _      (TD.App.DummyCommand (TD.Dummy.RenderCommand)) = do
     -- increment the sequence number if render is required
-    TD.App._todoDummy . TD.Dummy._renderSeqNum  %= (+ 1)
-    s <- use TD.App._todoDummy
-    modelMVar <- use TD.App._todoDummyMVar
-    liftIO . void $ swapMVar modelMVar s -- ^ so that the render callback can use the latest state
-    let i = TD.Dummy.renderSeqNum s
-    ref <- use (TD.App._todoDummy . TD.Dummy._ref)
-    liftIO $ js_setState ref i -- ^ notify React that the specific component has changed
+    TD.App._todoDummy . _2 . TD.Dummy._frameNum  %= (+ 1)
+    (ms, s) <- use TD.App._todoDummy
+    liftIO . void $ swapMVar ms s -- ^ so that the render callback can use the latest state
+    let i = TD.Dummy.frameNum s
+    ref <- use (TD.App._todoDummy . _2 . TD.Dummy._ref)
+    liftIO $ js_setStateFrameNum ref i -- ^ notify React that the specific component has changed
 
 interpretCommand _ _ output             (TD.App.DummyCommand (TD.Dummy.SubmitCommand str)) = do
     liftIO $ void $ atomically $ PC.send output (TD.App.RequestNewTodoAction str)

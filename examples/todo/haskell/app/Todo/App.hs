@@ -102,8 +102,7 @@ data Model = Model
     , todoInput :: TD.Input.Model
     , todosModel :: TodosModel'
     , callbacks :: Callbacks
-    , todoDummy :: TD.Dummy.Model
-    , todoDummyMVar :: MVar TD.Dummy.Model
+    , todoDummy :: (MVar TD.Dummy.Model, TD.Dummy.Model)
     }
 
 makeClassy_ ''Model
@@ -275,4 +274,4 @@ todosGadget' :: Monad m => G.GadgetT Action Model m (D.DList Command)
 todosGadget' = fmap TodosCommand <$> zoom _todosModel (magnify _TodosAction todosGadget)
 
 dummyGadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
-dummyGadget = fmap DummyCommand <$> zoom _todoDummy (magnify _DummyAction TD.Dummy.gadget)
+dummyGadget = fmap DummyCommand <$> zoom (_todoDummy . _2) (magnify _DummyAction TD.Dummy.gadget)

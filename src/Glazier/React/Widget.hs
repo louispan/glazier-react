@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 -- | Contains commons utilities when defining your own widget
 module Glazier.React.Widget
   ( onRender
@@ -9,6 +11,7 @@ module Glazier.React.Widget
 
 import Control.Concurrent.MVar
 import Control.Lens
+import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Marshal as J
@@ -17,6 +20,7 @@ import qualified Glazier as G
 import qualified Glazier.React.Event as R
 import qualified Glazier.React.Element as R
 import qualified Glazier.React.Markup as R
+import qualified Glazier.React.Util as E
 
 -- | This is called synchronously by React to render the DOM.
 -- This must not block!
@@ -33,7 +37,9 @@ onUpdated :: (Int -> act) -> J.JSVal -> MaybeT IO act
 onUpdated f =  R.eventHandlerM goStrict goLazy
   where
     -- goStrict :: J.JSVal -> MaybeT IO Int
-    goStrict i = MaybeT $ J.fromJSVal i
+    goStrict v = do
+        i <- lift $ E.getProperty "frameNum" v
+        MaybeT $ J.fromJSVal i
 
     -- goLazy :: Int -> MaybeT IO act
     goLazy i = pure $ f i

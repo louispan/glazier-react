@@ -2,7 +2,7 @@ import React from 'react';
 
 // Inheriting from Component means every call to this.setState will result in a render
 // Inheriting from PureComponet means a shallow comparison will be made
-class Dummy extends React.PureComponent {
+class Glazier extends React.PureComponent {
 
     constructor(props) {
         super(props);
@@ -13,7 +13,7 @@ class Dummy extends React.PureComponent {
 
     componentDidUpdate() {
         if (this.props['updated'])
-            this.props['updated'](this.state['seqNum']);
+            this.props['updated'](this.state);
     }
 
     render() {
@@ -23,4 +23,4 @@ class Dummy extends React.PureComponent {
     }
 }
 
-export default Dummy;
+export default Glazier;

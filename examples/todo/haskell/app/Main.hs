@@ -56,8 +56,8 @@ main = do
     appCallbacks <- TD.App.mkCallbacks (TD.App.Run.mkActionCallback output)
 
     -- Dummy
-    dummyState <- newEmptyMVar
-    dummyCallbacks <- TD.App.mkDummyCallbacks dummyState (TD.App.Run.mkActionCallback output)
+    dummyMModel <- newEmptyMVar
+    dummyCallbacks <- TD.App.mkDummyCallbacks dummyMModel (TD.App.Run.mkActionCallback output)
     let dummyModel = TD.Dummy.Model
             J.nullRef
             0
@@ -66,7 +66,7 @@ main = do
             mempty
             dummyCallbacks
 
-    putMVar dummyState dummyModel
+    putMVar dummyMModel dummyModel
 
     let initialState = TD.App.Model
             "todos"
@@ -79,8 +79,7 @@ main = do
                  inputCallbacks)
             mempty -- todosModel
             appCallbacks
-            dummyModel
-            dummyState
+            (dummyMModel, dummyModel)
 
         -- Make a MVar so render can get the latest state
     currentState <- newMVar initialState
