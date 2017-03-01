@@ -11,7 +11,7 @@ all: install
 # install: build/todo.js build/todo.min.js
 # 	npm install
 
-install: build/todo.js src/Glazier.js
+install: build/todo.js src/Shim.js
 	npm install
 
 install-min: build/todo.min.js install
@@ -59,5 +59,5 @@ build/todo.min.js: build/react-externs.js $(GHCJS_OUT)/all.js.externs build/todo
 build/react-externs.js:
 	wget https://raw.githubusercontent.com/steida/react-externs/master/externs.js -O build/react-externs.js
 
-src/Glazier.js: $(PROJECT_ROOT)/jsextras/Glazier.js
-	cp $(PROJECT_ROOT)/jsextras/Glazier.js src
+src/Shim.js: $(PROJECT_ROOT)/jsextras/Shim.js
+	cp $(PROJECT_ROOT)/jsextras/Shim.js src

@@ -29,6 +29,8 @@ import qualified Glazier as G
 import qualified Glazier.React.Element as R
 import qualified Glazier.React.Markup as R
 import qualified Glazier.React.Widget as R
+import qualified Glazier.React.ReactDOM as RD
+import qualified Glazier.React.Internal as R
 import qualified Pipes as P
 import qualified Pipes.Concurrent as PC
 import qualified Pipes.Lift as PL
@@ -103,11 +105,12 @@ main = do
 
     -- Start the Dummy render
     root2 <- js_getElementById "root2"
-    g <- R.createGlazierElement
-        (TD.Dummy.onRender . TD.Dummy.callbacks $ dummyModel)
-        (TD.Dummy.onRef . TD.Dummy.callbacks $ dummyModel)
-        (TD.Dummy.onUpdated . TD.Dummy.callbacks $ dummyModel)
-    R.reactDomRender g root2
+    es <- R.toElements $ R.lf R.shimComponent
+            [ ("render", J.pToJSVal . R.PureJSVal . TD.Dummy.onRender . TD.Dummy.callbacks $ dummyModel)
+            , ("ref", J.pToJSVal . R.PureJSVal . TD.Dummy.onRef . TD.Dummy.callbacks $ dummyModel)
+            , ("updated", J.pToJSVal . R.PureJSVal . TD.Dummy.onUpdated . TD.Dummy.callbacks $ dummyModel) ]
+    e <- R.mkCombinedElements es
+    RD.render (J.pToJSVal e) root2
 
     -- Run the gadget effect which reads actions from 'Pipes.Concurrent.Input'
     -- and notifies html React of any state changes.

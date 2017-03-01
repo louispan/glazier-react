@@ -5,15 +5,13 @@ module Glazier.React.Widget
   ( onRender
   , onRef
   , onUpdated
-  , createGlazierElement
-  , reactDomRender
+  , shimComponent
   ) where
 
 import Control.Concurrent.MVar
 import Control.Lens
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
-import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Marshal as J
 import qualified GHCJS.Types as J
 import qualified Glazier as G
@@ -44,29 +42,13 @@ onUpdated f =  R.eventHandlerM goStrict goLazy
     -- goLazy :: Int -> MaybeT IO act
     goLazy i = pure $ f i
 
--- | Creates the React rendering instructions using the Glazier react component
--- Glazier react component is specified in jsextras/Glazier.js
--- It is a simple React.PureComponent with render, ref, and updated callbacks.
-createGlazierElement
-      :: J.Callback (IO J.JSVal)
-      -> J.Callback (J.JSVal -> IO ())
-      -> J.Callback (J.JSVal -> IO ())
-      -> IO J.JSVal
-createGlazierElement = js_createGlazierElement
+-- | Get a reference to the Shim react component
+shimComponent :: J.JSVal
+shimComponent = js_shimComponent
 
--- | Using a React Element (first arg) give React rendering control over a DOM element (second arg).
--- This should only be called for the topmost component.
-reactDomRender :: J.JSVal -> J.JSVal -> IO ()
-reactDomRender = js_reactDomRender
-
+-- | This expect Shim to be in global scope.
+-- See examples/todo/haskell/exports.header
 foreign import javascript unsafe
-  "$r = React.createElement(Glazier, { render: $1, ref: $2, updated: $3 });"
-  js_createGlazierElement
-      :: J.Callback (IO J.JSVal)
-      -> J.Callback (J.JSVal -> IO ())
-      -> J.Callback (J.JSVal -> IO ())
-      -> IO J.JSVal
-
-foreign import javascript unsafe
-  "ReactDOM.render($1, $2);"
-  js_reactDomRender :: J.JSVal -> J.JSVal -> IO ()
+  "$r = Shim;"
+  js_shimComponent
+      :: J.JSVal

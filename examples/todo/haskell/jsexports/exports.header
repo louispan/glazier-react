@@ -2,4 +2,4 @@
 // Webpack can shim this into a NodeJS module, so 'exports' and 'require' is in scope
 const React = require('react');
 const ReactDOM = require('react-dom');
-const Glazier = require('../src/Glazier').default;
+const Shim = require('../src/Shim').default;

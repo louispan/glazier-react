@@ -12,7 +12,7 @@ copyright:           2017 Louis Pan
 category:            Web, FRP
 build-type:          Simple
 extra-source-files:  README.md
-                     jsextras/Glazier.js
+                     jsextras/Shim.js
 cabal-version:       >=1.10
 
 library
@@ -24,6 +24,7 @@ library
                        Glazier.React.DOM
                        Glazier.React.Internal
                        Glazier.React.Markup
+                       Glazier.React.ReactDOM
                        Glazier.React.Util
                        Glazier.React.Widget
   build-depends:       base >= 4.7 && < 5

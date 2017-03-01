@@ -11,6 +11,7 @@ module Todo.Dummy
  , HasModel(..)
  , mkCallbacks
  , window
+ -- , windowBig
  , gadget
  ) where
 
@@ -110,6 +111,20 @@ window = do
                     , ("onChange", J.jsval . onChange $ callbacks s)
                     , ("onKeyDown", J.jsval . onKeyDown $ callbacks s)
                     ]
+
+-- windowBig :: Monad m => G.WindowT Model (R.ReactMlT m) ()
+-- windowBig = do
+--     s <- ask
+--     lift $ R.lf (E.strval "input")
+--                     [ ("key", E.strval "inputBIG")
+--                     , ("className", E.strval "new-todo")
+--                     , ("placeholder", E.strval "What needs to be done?")
+--                     , ("value", J.jsval $ value s)
+--                     , ("autoFocus", J.pToJSVal True)
+--                     , ("onChange", J.jsval . onChange $ callbacks s)
+--                     , ("onKeyDown", J.jsval . onKeyDown $ callbacks s)
+--                     ]
+--     lift $ R.lf (
 
 onChange' :: J.JSVal -> MaybeT IO Action
 onChange' = R.eventHandlerM goStrict goLazy
