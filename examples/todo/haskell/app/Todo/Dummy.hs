@@ -11,7 +11,6 @@ module Todo.Dummy
  , HasModel(..)
  , mkCallbacks
  , window
- -- , windowBig
  , gadget
  ) where
 
@@ -38,13 +37,12 @@ import qualified Glazier.React.Widget as R
 type FrameNum = Int
 
 data Command
-    -- | This should result in renderSeqNum being increased by one,
-    -- and the model to be stored in the render TMVar
+    -- | This should result in frameNum incremented by one;
+    -- the model to be stored in the render TMVar;
     -- and the following pseudo javascript to notify React of the state change:
-    -- ref.setState({seqNum: renderSeqNum})
-    -- NB. the seqNum are incremented by gadget and as a parameter to RenderCommand
-    -- because incrementing the seqNum is an indication that a render request to React
-    -- has been sent (not just requested).
+    -- ref.setState({frameNum: i})
+    -- NB. the seqNum are incremented by the interpreter because incrementing the seqNum
+    -- is an indication that a render request to React has been sent (not just requested).
     -- Incrementing the seqNum on the gadget side may result React not rendering a stale state.
     = RenderCommand
     | SubmitCommand J.JSString
@@ -76,9 +74,8 @@ data Callbacks = Callbacks
 instance CD.Disposing Callbacks
 
 data Model = Model
-    { ref :: J.JSVal
-    -- | renderSeqNum is updated on react's componentDidUpdate callback with the new seqNum
-    , frameNum :: FrameNum
+    { ref :: J.JSVal -- ^ ref to react component object
+    , frameNum :: FrameNum -- ^ frameNum is incremented by RenderCommand interpreter
     , deferredCommands :: M.Map FrameNum (D.DList Command)
     , uid :: J.JSString
     , value :: J.JSString
@@ -93,14 +90,25 @@ mkCallbacks
     -> IO Callbacks
 mkCallbacks s f =
     Callbacks
-    <$> (J.syncCallback' $ R.onRender window s)
+    <$> (J.syncCallback' $ R.onRender render s)
     <*> (f $ R.onRef RefAction)
     <*> (f $ R.onUpdated RenderedAction)
     <*> (f onChange')
     <*> (f onKeyDown')
 
+
+-- | This is used by parent components to render this component
 window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
 window = do
+    s <- ask
+    lift $ R.lf R.shimComponent
+        [ ("render", J.pToJSVal . E.PureJSVal . onRender . callbacks $ s)
+        , ("ref", J.pToJSVal . E.PureJSVal . onRef . callbacks $ s)
+        , ("updated", J.pToJSVal . E.PureJSVal . onUpdated . callbacks $ s) ]
+
+-- | This is used by the render function
+render :: Monad m => G.WindowT Model (R.ReactMlT m) ()
+render = do
     s <- ask
     lift $ R.lf (E.strval "input")
                     [ ("key", E.strval $ uid s)
@@ -111,20 +119,6 @@ window = do
                     , ("onChange", J.jsval . onChange $ callbacks s)
                     , ("onKeyDown", J.jsval . onKeyDown $ callbacks s)
                     ]
-
--- windowBig :: Monad m => G.WindowT Model (R.ReactMlT m) ()
--- windowBig = do
---     s <- ask
---     lift $ R.lf (E.strval "input")
---                     [ ("key", E.strval "inputBIG")
---                     , ("className", E.strval "new-todo")
---                     , ("placeholder", E.strval "What needs to be done?")
---                     , ("value", J.jsval $ value s)
---                     , ("autoFocus", J.pToJSVal True)
---                     , ("onChange", J.jsval . onChange $ callbacks s)
---                     , ("onKeyDown", J.jsval . onKeyDown $ callbacks s)
---                     ]
---     lift $ R.lf (
 
 onChange' :: J.JSVal -> MaybeT IO Action
 onChange' = R.eventHandlerM goStrict goLazy

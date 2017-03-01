@@ -9,7 +9,6 @@ module Main (main) where
 import Control.Concurrent.MVar
 import Control.Concurrent.STM
 import qualified Control.Disposable as CD
-import Control.Lens
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Morph
@@ -20,16 +19,13 @@ import Data.Foldable
 import qualified Data.JSString as J
 import Data.List
 import Data.Monoid
-import qualified GHCJS.Extras as E
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Marshal as J
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Prim as J
 import qualified GHCJS.Types as J
 import qualified Glazier as G
-import qualified Glazier.React.Element as R
 import qualified Glazier.React.Markup as R
-import qualified Glazier.React.Widget as R
 import qualified Glazier.React.ReactDOM as RD
 import qualified Pipes as P
 import qualified Pipes.Concurrent as PC
@@ -90,8 +86,7 @@ main = do
     -- render <- syncCallback1' (view G._WindowT' (jsval <$> counterWindow) . R.unsafeCoerceReactElement)
     doRender <- J.syncCallback1' $ \_ -> do
         s <- readMVar currentState
-        xs <- view G._WindowT' (R.renderedWindow TD.App.window) s
-        J.jsval <$> R.mkCombinedElements xs
+        J.pToJSVal <$> R.markedElement TD.App.window s
     void $ js_globalListen "renderHaskell" doRender
 
     -- Setup the callback garbage collection callback
@@ -105,11 +100,7 @@ main = do
 
     -- Start the Dummy render
     root2 <- js_getElementById "root2"
-    es <- R.toElements $ R.lf R.shimComponent
-            [ ("render", J.pToJSVal . E.PureJSVal . TD.Dummy.onRender . TD.Dummy.callbacks $ dummyModel)
-            , ("ref", J.pToJSVal . E.PureJSVal . TD.Dummy.onRef . TD.Dummy.callbacks $ dummyModel)
-            , ("updated", J.pToJSVal . E.PureJSVal . TD.Dummy.onUpdated . TD.Dummy.callbacks $ dummyModel) ]
-    e <- R.mkCombinedElements es
+    e <- R.markedElement TD.Dummy.window dummyModel
     RD.render (J.pToJSVal e) root2
 
     -- Run the gadget effect which reads actions from 'Pipes.Concurrent.Input'

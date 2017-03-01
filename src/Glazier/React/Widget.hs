@@ -9,11 +9,11 @@ module Glazier.React.Widget
   ) where
 
 import Control.Concurrent.MVar
-import Control.Lens
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
 import qualified GHCJS.Extras as E
 import qualified GHCJS.Marshal as J
+import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import qualified Glazier as G
 import qualified Glazier.React.Event as R
@@ -25,8 +25,7 @@ import qualified Glazier.React.Markup as R
 onRender :: G.WindowT s (R.ReactMlT IO) () -> MVar s -> IO J.JSVal
 onRender w s = do
     s' <- readMVar s
-    xs <- view G._WindowT' (R.renderedWindow w) s'
-    J.jsval <$> R.mkCombinedElements xs
+    J.pToJSVal <$> R.markedElement w s'
 
 onRef :: (J.JSVal -> act) -> J.JSVal -> MaybeT IO act
 onRef f = pure . f

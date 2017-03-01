@@ -11,13 +11,14 @@ module Glazier.React.Markup
     ( ReactMarkup(..)
     , BranchParam(..)
     , LeafParam(..)
-    , mkFromMarkup
-    , mkFromMarkups
+    , fromMarkup
     , ReactMlT(..)
     , ReactMl
     , fromElement
     , toElements
-    , renderedWindow
+    , markedWindow
+    , markedElements
+    , markedElement
     , txt
     , lf
     , bh
@@ -56,20 +57,16 @@ data ReactMarkup
     | LeafMarkup LeafParam
 
 -- | Create 'ReactElement's from a 'AtomMarkup'
-mkFromMarkup :: ReactMarkup -> IO (R.ReactElement)
-mkFromMarkup (BranchMarkup (BranchParam n p xs)) = do
-    xs' <- sequenceA $ mkFromMarkup <$> (D.toList xs)
+fromMarkup :: ReactMarkup -> IO (R.ReactElement)
+fromMarkup (BranchMarkup (BranchParam n p xs)) = do
+    xs' <- sequenceA $ fromMarkup <$> (D.toList xs)
     R.mkBranchElement n p xs'
 
-mkFromMarkup (LeafMarkup (LeafParam n p)) = R.mkLeafElement n p
+fromMarkup (LeafMarkup (LeafParam n p)) = R.mkLeafElement n p
 
-mkFromMarkup (TextMarkup str) = pure $ R.textElement str
+fromMarkup (TextMarkup str) = pure $ R.textElement str
 
-mkFromMarkup (ElementMarkup e) = pure e
-
--- | Create '[ReactElement]' from '[ReactMark]'
-mkFromMarkups :: Traversable t => t ReactMarkup -> IO (t R.ReactElement)
-mkFromMarkups xs = sequenceA $ mkFromMarkup <$> xs
+fromMarkup (ElementMarkup e) = pure e
 
 -- | Monadic generator of ReactActom.
 -- It is a CPS-style WriterT (ie a StateT) to build up a function
@@ -108,10 +105,19 @@ fromElement e = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` ElementMarkup e
 toElements :: MonadIO io => ReactMlT io () -> io [R.ReactElement]
 toElements m = do
     xs <- execStateT (runReactMlT m) mempty
-    liftIO $ sequenceA $ mkFromMarkup <$> (D.toList xs)
--- | Handy function to render the ReactMlt under a Glazier window
-renderedWindow :: MonadIO io => G.WindowT s (ReactMlT io) () -> G.WindowT s io [R.ReactElement]
-renderedWindow = G.belowWindowT (toElements .)
+    liftIO $ sequenceA $ fromMarkup <$> (D.toList xs)
+
+-- | Render the ReactMlt under a Glazier window
+markedWindow :: MonadIO io => G.WindowT s (ReactMlT io) () -> G.WindowT s io [R.ReactElement]
+markedWindow = G.belowWindowT (toElements .)
+
+-- | Fully render the ReactMlt into a [R.ReactElement]
+markedElements :: MonadIO io => G.WindowT s (ReactMlT io) () -> s -> io [R.ReactElement]
+markedElements w s = view G._WindowT' (markedWindow w) s
+
+-- | Fully render the ReactMlt into a R.ReactElement
+markedElement :: MonadIO io => G.WindowT s (ReactMlT io) () -> s -> io R.ReactElement
+markedElement w s = markedElements w s >>= liftIO . R.mkCombinedElements
 
 -- | For text content
 txt :: Applicative m => J.JSString -> ReactMlT m ()
