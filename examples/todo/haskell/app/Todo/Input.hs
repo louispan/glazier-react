@@ -161,7 +161,7 @@ onKeyDown' = R.eventHandlerM goStrict goLazy
                      else A.empty
 
 -- | State update logic.
--- The best practice is to leave this in general Monad m (ie, not MonadIO).
+-- The best practice is to leave this in general Monad m (eg, not MonadIO).
 -- This allows gadget to use STM as the base monad which allows for combining concurrently
 -- with other stateful STM effects and still maintain a single source of truth.
 gadget :: Monad m => G.GadgetT Action Model m (D.DList Command)

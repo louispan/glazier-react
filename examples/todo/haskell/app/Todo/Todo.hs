@@ -10,6 +10,7 @@ module Todo.Todo
  , Model(..)
  , HasModel(..)
  , mkCallbacks
+ , newModel
  , window
  , gadget
  ) where
@@ -122,6 +123,19 @@ mkCallbacks s f =
     <*> (f fireCancelEdit')
     <*> (f onChange')
     <*> (f onKeyDown')
+
+-- | Convenient constructor to create a new model
+newModel :: Callbacks -> J.JSString -> J.JSString -> Model
+newModel callbacks' uid' str = Model
+    callbacks'
+    uid'
+    J.nullRef
+    0
+    mempty
+    J.nullRef
+    str
+    False
+    Nothing
 
 -- | This is used by parent components to render this component
 window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
