@@ -17,7 +17,6 @@ import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import qualified Glazier as G
 import qualified Glazier.React.Event as R
-import qualified Glazier.React.Element as R
 import qualified Glazier.React.Markup as R
 
 -- | This is called synchronously by React to render the DOM.

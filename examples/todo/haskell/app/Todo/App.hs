@@ -212,10 +212,6 @@ appGadget = do
             _todosModel .= s'
             pure cmds
 
-        -- DeferCommandAction i cmd -> do
-        --     _deferredCommands %= (M.alter (addCommand cmd) i)
-        --     pure $ D.singleton RenderRequiredCommand
-
         DestroyTodoAction k -> do
             -- queue up callbacks to be released after rerendering
             ts <- use _todosModel
@@ -231,6 +227,7 @@ appGadget = do
             maybe (pure mempty) pure ret
 
         -- FIXME: Anyway to avoid IO?
+        -- FIXME: Can we put model creation in the widget?
         RequestNewTodoAction str -> do
             n <- use _todoSeqNum
             _todoSeqNum %= (+ 1)
@@ -246,7 +243,7 @@ appGadget = do
                         J.nullRef
                         str
                         False
-                        J.empty
+                        Nothing
                 putMVar ms s
                 pure . SendActionCommand $ AddNewTodoAction n ms s
 

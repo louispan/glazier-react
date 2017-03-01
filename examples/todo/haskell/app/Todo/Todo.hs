@@ -23,6 +23,7 @@ import Control.Monad.Trans.Maybe
 import qualified Data.DList as D
 import qualified Data.JSString as J
 import qualified Data.Map.Strict as M
+import Data.Maybe
 import qualified GHC.Generics as G
 import qualified GHCJS.Extras as E
 import qualified GHCJS.Foreign.Callback as J
@@ -98,7 +99,7 @@ data Model = Model
     , inputRef :: J.JSVal
     , value :: J.JSString
     , completed :: Bool
-    , editText :: J.JSString
+    , editText :: Maybe J.JSString
     }
 
 makeClassy_ ''Model
@@ -155,14 +156,14 @@ render = do
         R.lf (E.strval "input") [ ("key", E.strval "todo-input")
                                 , ("ref", J.jsval $ s ^. _callbacks . to onInputRef)
                                 , ("className", E.strval "edit")
-                                , ("value", J.jsval $ editText s)
+                                , ("value", J.jsval $ fromMaybe J.empty $ editText s)
                                 , ("checked", J.pToJSVal $ completed s)
                                 , ("onBlur", J.jsval $ s ^. _callbacks . to fireCancelEdit)
                                 , ("onChange", J.jsval $ s ^. _callbacks . to onChange)
                                 , ("onKeyDown", J.jsval $ s ^. _callbacks . to onKeyDown)
                                 ]
   where
-    cns s = E.classNames [("completed", completed s), ("editing", not . J.null $ editText s)]
+    cns s = E.classNames [("completed", completed s), ("editing", isJust $ editText s)]
 
 onInputRef' :: Monad m => J.JSVal -> m Action
 onInputRef' v = pure $ InputRefAction v
@@ -246,7 +247,7 @@ gadget = do
             ret <- runMaybeT $ do
                 n' <- MaybeT $ pure $ J.nullableToMaybe (J.Nullable n)
                 value' <- use _value
-                _editText .= value'
+                _editText .= Just value'
                 -- Need to delay focusing until after the next render
                 let cmd = FocusNodeCommand n'
                 i <- use _frameNum
@@ -258,11 +259,11 @@ gadget = do
         DestroyAction -> pure $ D.singleton DestroyCommand
 
         CancelEditAction -> do
-            _editText .= J.empty
+            _editText .= Nothing
             pure $ D.singleton RenderCommand
 
         ChangeAction n ss se sd str -> do
-            _editText .= str
+            _editText .= Just str
             -- Need to delay set cursor position until after the next render
             let cmd = SetSelectionCommand n ss se sd
             i <- use _frameNum
@@ -271,10 +272,11 @@ gadget = do
 
         SubmitAction -> do
             -- trim the text
-            v <- J.strip <$> use _editText
-            _value .= v
-            _editText .= J.empty
-            if J.null v
+            v <- (fmap J.strip) <$> use _editText
+            let v' = fromMaybe J.empty v
+            _value .= v'
+            _editText .= Nothing
+            if J.null v'
                 then pure $ D.singleton DestroyCommand
                 else pure $ D.singleton RenderCommand
   where

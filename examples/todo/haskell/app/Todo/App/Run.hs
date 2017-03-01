@@ -46,6 +46,8 @@ foreign import javascript unsafe
 
 
 -- | Evaluate commands from gadgets here
+-- FIXME: Move ms to (ms, model)
+-- FIXME: Share render code
 interpretCommand
     :: (MonadIO io, MonadState TD.App.Model io)
     => MVar TD.App.Model
@@ -72,7 +74,7 @@ interpretCommand stateMVar output (TD.App.MakeCallbacksCommand f) = do
 interpretCommand _ output             (TD.App.SendActionCommand a) = do
     liftIO $ void $ atomically $ PC.send output a
 
-interpretCommand stateMVar _      (TD.App.InputCommand (TD.Input.RenderCommand)) = do
+interpretCommand _ _      (TD.App.InputCommand (TD.Input.RenderCommand)) = do
     -- increment the sequence number if render is required
     TD.App._todoInput . _2 . TD.Input._frameNum  %= (+ 1)
     (ms, s) <- use TD.App._todoInput
@@ -87,7 +89,7 @@ interpretCommand _ output             (TD.App.InputCommand (TD.Input.SubmitComma
 interpretCommand _ _         (TD.App.InputCommand (TD.Input.SetSelectionCommand n ss se sd)) =
     liftIO $ js_setSelectionRange n ss se sd
 
-interpretCommand stateMVar _      (TD.App.TodosCommand (k, TD.Todo.RenderCommand)) = void $ runMaybeT $ do
+interpretCommand _ _      (TD.App.TodosCommand (k, TD.Todo.RenderCommand)) = void $ runMaybeT $ do
     (ms, s) <- MaybeT $ use (TD.App._todosModel . at k)
     let s' = s & TD.Todo._frameNum %~ (+ 1)
     (TD.App._todosModel . at k) .= Just (ms, s')
