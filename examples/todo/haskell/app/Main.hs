@@ -13,14 +13,9 @@ import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Morph
 import Control.Monad.State.Strict
-import Control.Monad.Trans.Maybe
 import qualified Data.DList as D
 import Data.Foldable
 import qualified Data.JSString as J
-import Data.List
-import Data.Monoid
-import qualified GHCJS.Foreign.Callback as J
-import qualified GHCJS.Marshal as J
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Prim as J
 import qualified GHCJS.Types as J
@@ -35,7 +30,6 @@ import qualified Pipes.Prelude as PP
 import qualified Todo.App as TD.App
 import qualified Todo.App.Run as TD.App.Run
 import qualified Todo.Input as TD.Input
-import qualified Todo.Dummy as TD.Dummy
 
 -- | 'main' is used to create React classes and setup callbacks to be used externally by the browser.
 -- GHCJS runs 'main' lazily.
@@ -48,72 +42,66 @@ main = do
     -- blocked events are kept by the GHCJCS runtime.
     (output, input) <- liftIO . PC.spawn $ PC.unbounded
 
-    -- It is not trivial to call arbitrary Haskell functions from Javascript
-    -- A hacky way is to create a Callback and assign it to a global registry.
-    inputCallbacks <- TD.App.mkInputCallbacks (TD.App.Run.mkActionCallback output)
-    appCallbacks <- TD.App.mkCallbacks (TD.App.Run.mkActionCallback output)
-
-    -- Dummy
-    dummyMModel <- newEmptyMVar
-    dummyCallbacks <- TD.App.mkDummyCallbacks dummyMModel (TD.App.Run.mkActionCallback output)
-    let dummyModel = TD.Dummy.Model
+    -- Input Model
+    inputMModel <- newEmptyMVar
+    inputCallbacks <- TD.App.mkInputCallbacks inputMModel (TD.App.Run.mkActionCallback output)
+    let inputModel = TD.Input.Model
+            inputCallbacks
+            "new-input"
             J.nullRef
             0
             mempty
-            "dummy"
             mempty
-            dummyCallbacks
 
-    putMVar dummyMModel dummyModel
+    putMVar inputMModel inputModel
 
-    let initialState = TD.App.Model
-            "todos"
-            0
-            mempty
-            0
-            (TD.Input.Model
-                 "new-input"
-                 J.empty
-                 inputCallbacks)
-            mempty -- todosModel
+    -- App Model
+    appMModel <- newEmptyMVar
+    appCallbacks <- TD.App.mkCallbacks appMModel (TD.App.Run.mkActionCallback output)
+    let appModel = TD.App.Model
             appCallbacks
-            (dummyMModel, dummyModel)
+            "todos"
+            J.nullRef
+            0
+            mempty
+            0
+            (inputMModel, inputModel)
+            mempty -- todosModel
 
-        -- Make a MVar so render can get the latest state
-    currentState <- newMVar initialState
+    putMVar appMModel appModel
 
-    -- Setup the render callback
-    -- render <- syncCallback1' (view G._WindowT' (jsval <$> counterWindow) . R.unsafeCoerceReactElement)
-    doRender <- J.syncCallback1' $ \_ -> do
-        s <- readMVar currentState
-        J.pToJSVal <$> R.markedElement TD.App.window s
-    void $ js_globalListen "renderHaskell" doRender
+    -- -- Setup the render callback
+    -- -- render <- syncCallback1' (view G._WindowT' (jsval <$> counterWindow) . R.unsafeCoerceReactElement)
+    -- doRender <- J.syncCallback1' $ \_ -> do
+    --     s <- readMVar currentState
+    --     J.pToJSVal <$> R.markedElement TD.App.window s
+    -- void $ js_globalListen "renderHaskell" doRender
 
-    -- Setup the callback garbage collection callback
-    doRenderUpdated <- J.asyncCallback1 $ \seqNum -> void . runMaybeT $ do
-        seqNum' <- MaybeT $ J.fromJSVal seqNum
-        MaybeT . fmap guard . atomically . PC.send output $ TD.App.RenderUpdatedAction seqNum'
-    void $ js_globalListen "renderUpdated" doRenderUpdated
+    -- -- Setup the callback garbage collection callback
+    -- doRenderUpdated <- J.asyncCallback1 $ \seqNum -> void . runMaybeT $ do
+    --     seqNum' <- MaybeT $ J.fromJSVal seqNum
+    --     MaybeT . fmap guard . atomically . PC.send output $ TD.App.RenderUpdatedAction seqNum'
+    -- void $ js_globalListen "renderUpdated" doRenderUpdated
 
-    -- trigger a render now that the render callback is initialized
-    js_globalShout "forceRender" (J.pToJSVal $ TD.App.renderSeqNum initialState)
+    -- -- trigger a render now that the render callback is initialized
+    -- js_globalShout "forceRender" (J.pToJSVal $ TD.App.renderSeqNum initialState)
 
-    -- Start the Dummy render
-    root2 <- js_getElementById "root2"
-    e <- R.markedElement TD.Dummy.window dummyModel
-    RD.render (J.pToJSVal e) root2
+    -- Start the App render
+    root <- js_getElementById "root"
+    e <- R.markedElement TD.App.window appModel
+    RD.render (J.pToJSVal e) root
 
     -- Run the gadget effect which reads actions from 'Pipes.Concurrent.Input'
     -- and notifies html React of any state changes.
     -- runEffect will only stop if input is finished (which in this example never does).
-    void . P.runEffect $ appEffect currentState output input
+    void . P.runEffect $ appEffect appMModel output input
 
     -- Cleanup
     -- We actually never get here because in this example runEffect never quits
     -- but in other apps, gadgetEffect might be quit-able (eg with MaybeT)
     -- so let's add the cleanup code here to be explicit.
-    J.releaseCallback doRender
-    J.releaseCallback doRenderUpdated
+    -- J.releaseCallback doRender
+    -- J.releaseCallback doRenderUpdated
     CD.dispose (CD.disposing appCallbacks)
     CD.dispose (CD.disposing inputCallbacks)
 
@@ -121,13 +109,13 @@ foreign import javascript unsafe
   "$r = document.getElementById($1);"
   js_getElementById :: J.JSString -> IO J.JSVal
 
-foreign import javascript unsafe
-  "hgr$todo$registry['listen']($1, $2);"
-  js_globalListen :: J.JSString -> J.Callback a -> IO ()
+-- foreign import javascript unsafe
+--   "hgr$todo$registry['listen']($1, $2);"
+--   js_globalListen :: J.JSString -> J.Callback a -> IO ()
 
-foreign import javascript unsafe
-  "hgr$todo$registry['shout']($1, $2);"
-  js_globalShout :: J.JSString -> J.JSVal -> IO ()
+-- foreign import javascript unsafe
+--   "hgr$todo$registry['shout']($1, $2);"
+--   js_globalShout :: J.JSString -> J.JSVal -> IO ()
 
 appEffect
     :: MonadIO io
@@ -153,13 +141,7 @@ interpretCommandsPipe
     => MVar TD.App.Model
     -> PC.Output TD.App.Action
     -> P.Pipe (D.DList TD.App.Command) () io ()
-interpretCommandsPipe stateMVar output = PP.mapM go
-   where
-     go cmds = do
-         let (changes, cmds') = partition TD.App.isRenderRequiredCommand (D.toList cmds)
-         interpretCommands stateMVar output cmds'
-         -- Run only one of the state changed
-         interpretCommands stateMVar output (foldMap (First . Just) changes)
+interpretCommandsPipe stateMVar output = PP.mapM (interpretCommands stateMVar output)
 
 interpretCommands
     :: (Foldable t, MonadState TD.App.Model io, MonadIO io)
@@ -168,4 +150,4 @@ interpretCommands
     -> t TD.App.Command
     -> io ()
 interpretCommands stateMVar output =
-    traverse_ (TD.App.Run.interpretCommand js_globalShout stateMVar output)
+    traverse_ (TD.App.Run.interpretCommand stateMVar output)

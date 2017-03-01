@@ -1,11 +1,9 @@
 // The registry is like a simplified NodeJS EventEmitter.
 // This is used so that the props can be assigned from Haskell
 // and retrieved via Javascript.
-// It is required to interoperate with foreign React components.
-// A Haskell-only React app that only relies on React's dom diff will not need this.
-// However, if you want reduce DOM diffing by using the React.Component.setState,
-// then you'll need a registry for interoperability.
-// Use this registry to create a global variable that is accessible from both haskell and html.
+// It is required to interoperate with foreign React components which
+// contains haskell components.
+// A Haskell-only React app will not need this.
 function hgr$registry() {
     // private
 
