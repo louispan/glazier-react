@@ -20,6 +20,7 @@ import Data.Foldable
 import qualified Data.JSString as J
 import Data.List
 import Data.Monoid
+import qualified GHCJS.Extras as E
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Marshal as J
 import qualified GHCJS.Marshal.Pure as J
@@ -30,7 +31,6 @@ import qualified Glazier.React.Element as R
 import qualified Glazier.React.Markup as R
 import qualified Glazier.React.Widget as R
 import qualified Glazier.React.ReactDOM as RD
-import qualified Glazier.React.Internal as R
 import qualified Pipes as P
 import qualified Pipes.Concurrent as PC
 import qualified Pipes.Lift as PL
@@ -106,9 +106,9 @@ main = do
     -- Start the Dummy render
     root2 <- js_getElementById "root2"
     es <- R.toElements $ R.lf R.shimComponent
-            [ ("render", J.pToJSVal . R.PureJSVal . TD.Dummy.onRender . TD.Dummy.callbacks $ dummyModel)
-            , ("ref", J.pToJSVal . R.PureJSVal . TD.Dummy.onRef . TD.Dummy.callbacks $ dummyModel)
-            , ("updated", J.pToJSVal . R.PureJSVal . TD.Dummy.onUpdated . TD.Dummy.callbacks $ dummyModel) ]
+            [ ("render", J.pToJSVal . E.PureJSVal . TD.Dummy.onRender . TD.Dummy.callbacks $ dummyModel)
+            , ("ref", J.pToJSVal . E.PureJSVal . TD.Dummy.onRef . TD.Dummy.callbacks $ dummyModel)
+            , ("updated", J.pToJSVal . E.PureJSVal . TD.Dummy.onUpdated . TD.Dummy.callbacks $ dummyModel) ]
     e <- R.mkCombinedElements es
     RD.render (J.pToJSVal e) root2
 

@@ -25,6 +25,7 @@ import qualified Data.DList as D
 import qualified Data.JSString as J
 import qualified Data.Map.Strict as M
 import qualified GHC.Generics as G
+import qualified GHCJS.Extras as E
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Marshal as J
 import qualified GHCJS.Marshal.Pure as J
@@ -32,7 +33,6 @@ import qualified GHCJS.Types as J
 import qualified Glazier as G
 import qualified Glazier.React.Event as R
 import qualified Glazier.React.Markup as R
-import qualified Glazier.React.Util as E
 import qualified Glazier.React.Widget as R
 
 type FrameNum = Int

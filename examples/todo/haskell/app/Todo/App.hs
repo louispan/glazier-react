@@ -36,12 +36,12 @@ import qualified Data.JSString as J
 import qualified Data.Map.Strict as M
 import Data.Semigroup
 import qualified GHC.Generics as G
+import qualified GHCJS.Extras as E
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import qualified Glazier as G
 import qualified Glazier.React.Markup as R
-import qualified Glazier.React.Util as E
 import qualified Todo.Dummy as TD.Dummy
 import qualified Todo.Input as TD.Input
 import qualified Todo.Todo as TD.Todo

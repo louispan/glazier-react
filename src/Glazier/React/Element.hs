@@ -13,9 +13,9 @@ module Glazier.React.Element
     ) where
 
 import qualified Data.HashMap.Strict as HM
+import qualified GHCJS.Extras as E
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
-import qualified Glazier.React.Internal as R
 import qualified JavaScript.Array as JA
 import qualified JavaScript.Object as JO
 import qualified Data.JSString.Text as J
@@ -62,13 +62,13 @@ toJSProps m | otherwise = do
 mkBranchElement :: J.JSVal -> Properties -> [ReactElement] -> IO ReactElement
 mkBranchElement n props xs = do
     props' <- toJSProps props
-    js_mkBranchElement n (J.pToJSVal (R.PureJSVal <$> props')) (JA.fromList $ J.jsval <$> xs)
+    js_mkBranchElement n (J.pToJSVal (E.PureJSVal <$> props')) (JA.fromList $ J.jsval <$> xs)
 
 -- | Create a react element (with no children) from a HashMap of properties
 mkLeafElement :: J.JSVal -> Properties -> IO ReactElement
 mkLeafElement n props = do
     props' <- toJSProps props
-    js_mkLeafElement n (J.pToJSVal (R.PureJSVal <$> props'))
+    js_mkLeafElement n (J.pToJSVal (E.PureJSVal <$> props'))
 
 foreign import javascript unsafe
     "$r = $1;"

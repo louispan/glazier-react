@@ -12,13 +12,13 @@ import Control.Concurrent.MVar
 import Control.Lens
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
+import qualified GHCJS.Extras as E
 import qualified GHCJS.Marshal as J
 import qualified GHCJS.Types as J
 import qualified Glazier as G
 import qualified Glazier.React.Event as R
 import qualified Glazier.React.Element as R
 import qualified Glazier.React.Markup as R
-import qualified Glazier.React.Util as E
 
 -- | This is called synchronously by React to render the DOM.
 -- This must not block!
