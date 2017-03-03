@@ -108,7 +108,7 @@ data Model = Model
     , deferredCommands :: M.Map FrameNum (D.DList Command)
     -- TodoMVC specifc model
     , todoSeqNum :: TodosKey
-    , todoInput :: (MVar TD.Input.Model, TD.Input.Model)
+    , todoInput :: (MVar TD.Input.CModel, TD.Input.CModel)
     , todosModel :: TodosModel'
     }
 
@@ -130,7 +130,7 @@ instance CD.Disposing Model where
 
 mkMModel :: J.JSString -> F (R.Maker Action) (MVar Model, Model)
 mkMModel uid' = do
-    (minput, input) <- hoistF (R.mapAction $ review _InputAction) $
+    minput <- hoistF (R.mapAction $ review _InputAction) $
         TD.Input.mkMModel "newtodo" "What needs to be done?"
     R.mkMModel mkCallbacks $
         \cbs -> Model
@@ -140,7 +140,7 @@ mkMModel uid' = do
                 0
                 mempty
                 0
-                (minput, input)
+                minput
                 mempty
 
 hasActiveTodos :: TodosModel' -> Bool
@@ -275,7 +275,7 @@ inputWindow :: Monad m => G.WindowT Model (R.ReactMlT m) ()
 inputWindow = magnify (_todoInput . _2) TD.Input.window
 
 inputGadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
-inputGadget = fmap InputCommand <$> zoom (_todoInput . _2) (magnify _InputAction TD.Input.gadget)
+inputGadget = fmap InputCommand <$> zoom (_todoInput . TD.Input.model) (magnify _InputAction TD.Input.gadget)
 
 todosGadget :: Monad m => G.GadgetT TodosAction' TodosModel' m (D.DList TodosCommand')
 todosGadget = do

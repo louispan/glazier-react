@@ -77,11 +77,11 @@ interpretCommand _ _                  (TD.App.DisposeCommand x) =
 
 interpretCommand _ _      (TD.App.InputCommand (TD.Input.RenderCommand)) = do
     -- increment the sequence number if render is required
-    TD.App._todoInput . _2 . TD.Input._frameNum  %= (+ 1)
+    TD.App._todoInput . TD.Input.model . TD.Input.frameNum  %= (+ 1)
     (ms, s) <- use TD.App._todoInput
     liftIO . void $ swapMVar ms s -- ^ so that the render callback can use the latest state
-    let i = TD.Input.frameNum s
-    ref <- use (TD.App._todoInput . _2 . TD.Input._ref)
+    let i = s ^. TD.Input.model . TD.Input.frameNum
+    ref <- use (TD.App._todoInput . TD.Input.model . TD.Input.ref)
     liftIO $ js_setStateFrameNum ref i -- ^ notify React that the specific component has changed
 
 interpretCommand _ output             (TD.App.InputCommand (TD.Input.SubmitCommand str)) = do

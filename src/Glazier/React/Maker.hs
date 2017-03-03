@@ -17,6 +17,8 @@ import qualified Glazier as G
 import qualified Glazier.React.Markup as R
 
 -- | DSL for IO effects required during making widget models and callbacks
+-- 'Maker' remembers the action type to allow 'mapAction' for changing the action type by parent widgets.
+-- The model type does not need to be changed, so it is hidden in the GADT existential.
 data Maker act nxt where
     MkHandler :: (J.JSVal -> MaybeT IO act) -> (J.Callback (J.JSVal -> IO ()) -> nxt) -> Maker act nxt
     MkModelMVar :: (MVar mdl -> nxt) -> Maker act nxt
