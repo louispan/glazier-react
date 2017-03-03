@@ -68,9 +68,10 @@ data Command
     -- General Application level commands
     -- | DisposeCommand should run dispose on the SomeDisposable (eg. to release Callbacks)
     | DisposeCommand CD.SomeDisposable
+    -- | Runs maker widgets creations
+    | MakerCommand (F (R.Maker Action) Action)
 
     -- TodoMVC specific commands
-    | MkTodoCommand (F (R.Maker TD.Todo.Model Action) Action)
     | InputCommand TD.Input.Command
     | TodosCommand TodosCommand'
 
@@ -134,17 +135,8 @@ hasActiveTodos = not . null . filter (not . TD.Todo.completed) . fmap snd . fmap
 fireToggleCompleteAll' :: Applicative m => J.JSVal -> m Action
 fireToggleCompleteAll' = const $ pure ToggleCompleteAllAction
 
--- mapInputHandler :: (J.JSVal -> MaybeT IO TD.Input.Action) -> J.JSVal -> MaybeT IO Action
--- mapInputHandler f v = (review _InputAction) <$> f v
-
 mapInputHandler' :: TD.Input.Action -> Action
 mapInputHandler' = review _InputAction
-
--- mapTodoHandler :: Functor m => TodosKey -> (J.JSVal -> m TD.Todo.Action) -> J.JSVal -> m Action
--- mapTodoHandler k f v = (\a -> TodosAction (k, a)) <$> f v
-
-mapTodoHandler' :: TodosKey -> TD.Todo.Action -> Action
-mapTodoHandler' k a = TodosAction (k, a)
 
 -- | This is used by parent components to render this component
 window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
@@ -240,7 +232,7 @@ appGadget = do
         RequestNewTodoAction str -> do
             n <- use _todoSeqNum
             _todoSeqNum %= (+ 1)
-            pure $ D.singleton $ MkTodoCommand $ do
+            pure $ D.singleton $ MakerCommand $ do
                 (ms, s) <- hoistF (R.mapAction $ \act -> TodosAction (n, act)) $
                     R.mkMModel TD.Todo.mkCallbacks $ \cbs ->
                         TD.Todo.Model

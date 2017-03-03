@@ -21,7 +21,7 @@ mkActionCallback output handler =
             action <- handler evt
             lift $ void $ atomically $ PC.send output action
 
-runMaker :: PC.Output act -> R.Maker mdl act (IO a) -> IO a
+runMaker :: PC.Output act -> R.Maker act (IO a) -> IO a
 runMaker output (R.MkHandler handler g) = mkActionCallback output handler >>= g
 
 runMaker _ (R.MkModelMVar g) = newEmptyMVar >>= g

@@ -2,7 +2,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
 
 module Todo.Todo
  ( Command(..)
@@ -108,7 +107,7 @@ data Model = Model
 
 makeClassy_ ''Model
 
-mkCallbacks :: MonadFree (R.Maker Model Action) maker => MVar Model -> maker Callbacks
+mkCallbacks :: MonadFree (R.Maker Action) maker => MVar Model -> maker Callbacks
 mkCallbacks ms = Callbacks
     -- common widget callbacks
     <$> (R.mkRenderer ms render)

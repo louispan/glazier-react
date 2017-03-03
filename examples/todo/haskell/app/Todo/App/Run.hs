@@ -59,7 +59,7 @@ interpretCommand
     -> TD.App.Command
     -> io ()
 
-interpretCommand _ output (TD.App.MkTodoCommand mks) = do
+interpretCommand _ output (TD.App.MakerCommand mks) = do
     act <- liftIO $ iterM (R.runMaker output) mks
     liftIO $ void $ atomically $ PC.send output act
 
