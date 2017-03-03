@@ -68,14 +68,9 @@ data Command
     -- General Application level commands
     -- | DisposeCommand should run dispose on the SomeDisposable (eg. to release Callbacks)
     | DisposeCommand CD.SomeDisposable
-    -- | MakeCallbacksCommand should result in passing a callback factory into the argument function
-    -- which produces a cmd, then evaluating that resulting cmd.
-    | MakeCallbacksCommand (((J.JSVal -> MaybeT IO Action) -> IO (J.Callback (J.JSVal -> IO ()))) -> IO Command)
-    -- | Send the action to the application output address.
-    | SendActionCommand Action
-    | MkTodoCommand (F (R.Maker TD.Todo.Model Action) Action)
 
     -- TodoMVC specific commands
+    | MkTodoCommand (F (R.Maker TD.Todo.Model Action) Action)
     | InputCommand TD.Input.Command
     | TodosCommand TodosCommand'
 
@@ -132,9 +127,6 @@ mkCallbacks s f =
 
 mkInputCallbacks :: MVar TD.Input.Model -> ((J.JSVal -> MaybeT IO Action) -> IO (J.Callback (J.JSVal -> IO ()))) -> IO TD.Input.Callbacks
 mkInputCallbacks ms f = TD.Input.mkCallbacks ms (f . (\f' v -> mapInputHandler' <$> f' v))
-
-mkTodosCallbacks :: TodosKey -> MVar TD.Todo.Model -> ((J.JSVal -> MaybeT IO Action) -> IO (J.Callback (J.JSVal -> IO ()))) -> IO TD.Todo.Callbacks
-mkTodosCallbacks k ms f = TD.Todo.mkCallbacks ms (f . (\f' v -> mapTodoHandler' k <$> f' v))
 
 hasActiveTodos :: TodosModel' -> Bool
 hasActiveTodos = not . null . filter (not . TD.Todo.completed) . fmap snd . fmap snd . M.toList
@@ -245,26 +237,23 @@ appGadget = do
                 pure $ D.singleton RenderCommand
             maybe (pure mempty) pure ret
 
-        -- FIXME: Anyway to avoid IO?
-        -- FIXME: Can we put model creation in the widget?
         RequestNewTodoAction str -> do
             n <- use _todoSeqNum
             _todoSeqNum %= (+ 1)
-            pure $ D.singleton $ MakeCallbacksCommand $ \f -> do
-                ms <- newEmptyMVar
-                cbs <- mkTodosCallbacks n ms f
-                let s = TD.Todo.Model
-                        cbs
-                        (J.pack . show $ n)
-                        J.nullRef
-                        0
-                        mempty
-                        J.nullRef
-                        str
-                        False
-                        Nothing
-                putMVar ms s
-                pure . SendActionCommand $ AddNewTodoAction n (ms, s)
+            pure $ D.singleton $ MkTodoCommand $ do
+                (ms, s) <- hoistF (R.mapAction $ \act -> TodosAction (n, act)) $
+                    R.mkMModel TD.Todo.mkCallbacks $ \cbs ->
+                        TD.Todo.Model
+                            cbs
+                            (J.pack . show $ n)
+                            J.nullRef
+                            0
+                            mempty
+                            J.nullRef
+                            str
+                            False
+                            Nothing
+                pure $ AddNewTodoAction n (ms, s)
 
         AddNewTodoAction n v -> do
             _todosModel %= M.insert n v

@@ -75,13 +75,6 @@ interpretCommand ms _      TD.App.RenderCommand = do
 interpretCommand _ _                  (TD.App.DisposeCommand x) =
     liftIO $ CD.dispose x
 
-interpretCommand stateMVar output (TD.App.MakeCallbacksCommand f) = do
-    cmd <- liftIO $ f (mkActionCallback output)
-    interpretCommand stateMVar output cmd
-
-interpretCommand _ output             (TD.App.SendActionCommand a) = do
-    liftIO $ void $ atomically $ PC.send output a
-
 interpretCommand _ _      (TD.App.InputCommand (TD.Input.RenderCommand)) = do
     -- increment the sequence number if render is required
     TD.App._todoInput . _2 . TD.Input._frameNum  %= (+ 1)

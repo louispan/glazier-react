@@ -12,7 +12,6 @@ module Todo.Todo
  , Model(..)
  , HasModel(..)
  , mkCallbacks
- , mkCallbacks'
  , window
  , gadget
  ) where
@@ -109,27 +108,8 @@ data Model = Model
 
 makeClassy_ ''Model
 
-mkCallbacks
-    :: MVar Model
-    -> ((J.JSVal -> MaybeT IO Action) -> IO (J.Callback (J.JSVal -> IO ())))
-    -> IO Callbacks
-mkCallbacks s f =
-    Callbacks
-    -- common widget callbacks
-    <$> (J.syncCallback' $ R.onRender s render)
-    <*> (f $ R.onRef RefAction)
-    <*> (f $ R.onUpdated RenderedAction)
-    -- widget specific callbacks
-    <*> (f onInputRef')
-    <*> (f fireToggleComplete')
-    <*> (f fireStartEdit')
-    <*> (f fireDestroy')
-    <*> (f fireCancelEdit')
-    <*> (f onChange')
-    <*> (f onKeyDown')
-
-mkCallbacks' :: MonadFree (R.Maker Model Action) maker => MVar Model -> maker Callbacks
-mkCallbacks' ms = Callbacks
+mkCallbacks :: MonadFree (R.Maker Model Action) maker => MVar Model -> maker Callbacks
+mkCallbacks ms = Callbacks
     -- common widget callbacks
     <$> (R.mkRenderer ms render)
     <*> (R.mkHandler $ R.onRef RefAction)
