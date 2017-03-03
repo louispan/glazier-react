@@ -18,6 +18,7 @@ module Todo.App
     , HasModel(..)
     , window
     , gadget
+    , mkCallbacks
     , mkMModel
     ) where
 
@@ -25,6 +26,7 @@ import Control.Concurrent.MVar
 import qualified Control.Disposable as CD
 import Control.Lens
 import Control.Monad.Free.Church
+import Control.Monad.Free.Orphans
 import Control.Monad.Morph
 import Control.Monad.Reader
 import Control.Monad.State.Strict
@@ -113,7 +115,7 @@ data Model = Model
 
 makeClassy_ ''Model
 
-mkCallbacks :: MonadFree (R.Maker Action) maker => MVar Model -> maker Callbacks
+mkCallbacks :: MVar Model -> F (R.Maker Action) Callbacks
 mkCallbacks ms = Callbacks
     -- common widget callbacks
     <$> (R.mkRenderer ms render)
@@ -127,9 +129,9 @@ instance CD.Disposing Model where
                                  , CD.disposing $ snd $ todoInput s
                                  ]
 
-mkMModel :: J.JSString -> F (R.Maker Action) (MVar Model, Model)
+mkMModel :: MonadFree (R.Maker Action) m => J.JSString -> m (MVar Model, Model)
 mkMModel uid' = do
-    (minput, input) <- hoistF (R.mapAction $ review _InputAction) $
+    (minput, input) <- hoist (R.mapAction $ review _InputAction) $
         TD.Input.mkMModel "newtodo"
     R.mkMModel mkCallbacks $
         \cbs -> Model
@@ -243,7 +245,7 @@ appGadget = do
             n <- use _todoSeqNum
             _todoSeqNum %= (+ 1)
             pure $ D.singleton $ MakerCommand $ do
-                (ms, s) <- hoistF (R.mapAction $ \act -> TodosAction (n, act)) $
+                (ms, s) <- hoist (R.mapAction $ \act -> TodosAction (n, act)) $
                     TD.Todo.mkMModel (J.pack . show $ n) str
                 pure $ AddNewTodoAction n (ms, s)
 

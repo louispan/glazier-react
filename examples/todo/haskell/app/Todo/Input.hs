@@ -20,7 +20,6 @@ import Control.Applicative as A
 import Control.Concurrent.MVar
 import qualified Control.Disposable as CD
 import Control.Lens
-import Control.Monad.Free.Class
 import Control.Monad.Free.Church
 import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
@@ -100,7 +99,7 @@ makeClassy_ ''Model
 instance CD.Disposing Model where
     disposing = CD.disposing . callbacks
 
-mkCallbacks :: MonadFree (R.Maker Action) maker => MVar Model -> maker Callbacks
+mkCallbacks :: MVar Model -> F (R.Maker Action) Callbacks
 mkCallbacks ms = Callbacks
     -- common widget callbacks
     <$> (R.mkRenderer ms render)
@@ -110,7 +109,7 @@ mkCallbacks ms = Callbacks
     <*> (R.mkHandler onChange')
     <*> (R.mkHandler onKeyDown')
 
-mkMModel :: J.JSString -> F (R.Maker Action) (MVar Model, Model)
+mkMModel :: .JSString -> F (R.Maker Action) (MVar Model, Model)
 mkMModel uid' = R.mkMModel mkCallbacks $ \cbs ->
     Model
         cbs

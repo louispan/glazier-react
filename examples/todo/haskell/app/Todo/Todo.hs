@@ -17,7 +17,6 @@ module Todo.Todo
  ) where
 
 import Control.Applicative as A
-import Control.Monad.Free.Class
 import Control.Monad.Free.Church
 import Control.Concurrent.MVar
 import qualified Control.Disposable as CD
@@ -112,7 +111,7 @@ makeClassy_ ''Model
 instance CD.Disposing Model where
     disposing = CD.disposing . callbacks
 
-mkCallbacks :: MonadFree (R.Maker Action) maker => MVar Model -> maker Callbacks
+mkCallbacks :: MVar Model -> F (R.Maker Action) Callbacks
 mkCallbacks ms = Callbacks
     -- common widget callbacks
     <$> (R.mkRenderer ms render)
