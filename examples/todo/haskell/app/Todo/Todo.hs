@@ -1,6 +1,8 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
 
 module Todo.Todo
  ( Command(..)
@@ -10,12 +12,13 @@ module Todo.Todo
  , Model(..)
  , HasModel(..)
  , mkCallbacks
- , newModel
+ , mkCallbacks'
  , window
  , gadget
  ) where
 
 import Control.Applicative as A
+import Control.Monad.Free.Class
 import Control.Concurrent.MVar
 import qualified Control.Disposable as CD
 import Control.Lens
@@ -33,9 +36,10 @@ import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Nullable as J
 import qualified GHCJS.Types as J
 import qualified Glazier as G
+import qualified Glazier.React.Component as R
 import qualified Glazier.React.Event as R
+import qualified Glazier.React.Maker as R
 import qualified Glazier.React.Markup as R
-import qualified Glazier.React.Widget as R
 
 type FrameNum = Int
 
@@ -112,7 +116,7 @@ mkCallbacks
 mkCallbacks s f =
     Callbacks
     -- common widget callbacks
-    <$> (J.syncCallback' $ R.onRender render s)
+    <$> (J.syncCallback' $ R.onRender s render)
     <*> (f $ R.onRef RefAction)
     <*> (f $ R.onUpdated RenderedAction)
     -- widget specific callbacks
@@ -124,18 +128,20 @@ mkCallbacks s f =
     <*> (f onChange')
     <*> (f onKeyDown')
 
--- | Convenient constructor to create a new model
-newModel :: Callbacks -> J.JSString -> J.JSString -> Model
-newModel callbacks' uid' str = Model
-    callbacks'
-    uid'
-    J.nullRef
-    0
-    mempty
-    J.nullRef
-    str
-    False
-    Nothing
+mkCallbacks' :: MonadFree (R.Maker Model Action) maker => MVar Model -> maker Callbacks
+mkCallbacks' ms = Callbacks
+    -- common widget callbacks
+    <$> (R.mkRenderer ms render)
+    <*> (R.mkHandler $ R.onRef RefAction)
+    <*> (R.mkHandler $ R.onUpdated RenderedAction)
+    -- widget specific callbacks
+    <*> (R.mkHandler onInputRef')
+    <*> (R.mkHandler fireToggleComplete')
+    <*> (R.mkHandler fireStartEdit')
+    <*> (R.mkHandler fireDestroy')
+    <*> (R.mkHandler fireCancelEdit')
+    <*> (R.mkHandler onChange')
+    <*> (R.mkHandler onKeyDown')
 
 -- | This is used by parent components to render this component
 window :: Monad m => G.WindowT Model (R.ReactMlT m) ()

@@ -30,9 +30,9 @@ import qualified GHCJS.Marshal as J
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import qualified Glazier as G
+import qualified Glazier.React.Component as R
 import qualified Glazier.React.Event as R
 import qualified Glazier.React.Markup as R
-import qualified Glazier.React.Widget as R
 
 type FrameNum = Int
 
@@ -99,7 +99,7 @@ mkCallbacks
 mkCallbacks s f =
     Callbacks
     -- common widget callbacks
-    <$> (J.syncCallback' $ R.onRender render s)
+    <$> (J.syncCallback' $ R.onRender s render)
     <*> (f $ R.onRef RefAction)
     <*> (f $ R.onUpdated RenderedAction)
     -- widget specific callbacks

@@ -10,6 +10,7 @@ import Control.Concurrent.MVar
 import Control.Concurrent.STM
 import qualified Control.Disposable as CD
 import Control.Lens
+import Control.Monad.Free.Church
 import Control.Monad.IO.Class
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Maybe
@@ -19,7 +20,9 @@ import qualified Pipes.Concurrent as PC
 import qualified Todo.App as TD.App
 import qualified Todo.Input as TD.Input
 import qualified Todo.Todo as TD.Todo
+import qualified Glazier.React.Maker.Run as R
 
+-- FIXME: Move to Maker.Run.hs?
 mkActionCallback
     :: PC.Output TD.App.Action
     -> (J.JSVal -> MaybeT IO TD.App.Action)
@@ -48,12 +51,17 @@ foreign import javascript unsafe
 -- | Evaluate commands from gadgets here
 -- FIXME: Move ms to (ms, model)
 -- FIXME: Share render code
+-- FIXME: Remove MonadIO
 interpretCommand
     :: (MonadIO io, MonadState TD.App.Model io)
     => MVar TD.App.Model
     -> PC.Output TD.App.Action
     -> TD.App.Command
     -> io ()
+
+interpretCommand _ output (TD.App.MkTodoCommand mks) = do
+    act <- liftIO $ iterM (R.runMaker output) mks
+    liftIO $ void $ atomically $ PC.send output act
 
 interpretCommand ms _      TD.App.RenderCommand = do
     -- increment the sequence number if render is required

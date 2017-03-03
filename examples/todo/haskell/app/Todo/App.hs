@@ -26,6 +26,7 @@ module Todo.App
 import Control.Concurrent.MVar
 import qualified Control.Disposable as CD
 import Control.Lens
+import Control.Monad.Free.Church
 import Control.Monad.Morph
 import Control.Monad.Reader
 import Control.Monad.State.Strict
@@ -41,8 +42,9 @@ import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import qualified Glazier as G
+import qualified Glazier.React.Component as R
 import qualified Glazier.React.Markup as R
-import qualified Glazier.React.Widget as R
+import qualified Glazier.React.Maker as R
 import qualified Todo.Input as TD.Input
 import qualified Todo.Todo as TD.Todo
 
@@ -71,6 +73,7 @@ data Command
     | MakeCallbacksCommand (((J.JSVal -> MaybeT IO Action) -> IO (J.Callback (J.JSVal -> IO ()))) -> IO Command)
     -- | Send the action to the application output address.
     | SendActionCommand Action
+    | MkTodoCommand (F (R.Maker TD.Todo.Model Action) Action)
 
     -- TodoMVC specific commands
     | InputCommand TD.Input.Command
@@ -119,15 +122,13 @@ makeClassy_ ''Model
 mkCallbacks :: MVar Model -> ((J.JSVal -> MaybeT IO Action) -> IO (J.Callback (J.JSVal -> IO ()))) -> IO Callbacks
 mkCallbacks s f =
     Callbacks
-    <$> (J.syncCallback' $ R.onRender render s)
+    <$> (J.syncCallback' $ R.onRender s render)
     <*> (f $ R.onRef RefAction)
     <*> (f $ R.onUpdated RenderedAction)
     <*> (f fireToggleCompleteAll')
 
-
 -- mkCallbacks' :: (act -> Action) -> MVar s -> ((J.JSVal -> MaybeT IO Action) -> IO (J.Callback (J.JSVal -> IO ()))) -> IO cbs
 -- mkCallbacks' g ms f = TD.Input.mkCallbacks ms (f . (\f v -> g <$> f v))
-
 
 mkInputCallbacks :: MVar TD.Input.Model -> ((J.JSVal -> MaybeT IO Action) -> IO (J.Callback (J.JSVal -> IO ()))) -> IO TD.Input.Callbacks
 mkInputCallbacks ms f = TD.Input.mkCallbacks ms (f . (\f' v -> mapInputHandler' <$> f' v))
@@ -252,10 +253,16 @@ appGadget = do
             pure $ D.singleton $ MakeCallbacksCommand $ \f -> do
                 ms <- newEmptyMVar
                 cbs <- mkTodosCallbacks n ms f
-                let s = TD.Todo.newModel
+                let s = TD.Todo.Model
                         cbs
                         (J.pack . show $ n)
+                        J.nullRef
+                        0
+                        mempty
+                        J.nullRef
                         str
+                        False
+                        Nothing
                 putMVar ms s
                 pure . SendActionCommand $ AddNewTodoAction n (ms, s)
 

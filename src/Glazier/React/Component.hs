@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 -- | Contains commons utilities when defining your own widget
-module Glazier.React.Widget
+module Glazier.React.Component
   ( onRender
   , onRef
   , onUpdated
@@ -21,10 +21,10 @@ import qualified Glazier.React.Markup as R
 
 -- | This is called synchronously by React to render the DOM.
 -- This must not block!
-onRender :: G.WindowT s (R.ReactMlT IO) () -> MVar s -> IO J.JSVal
-onRender w s = do
-    s' <- readMVar s
-    J.pToJSVal <$> R.markedElement w s'
+onRender :: MVar s -> G.WindowT s (R.ReactMlT IO) () -> IO J.JSVal
+onRender ms wdw = do
+    s <- readMVar ms
+    J.pToJSVal <$> R.markedElement wdw s
 
 onRef :: (J.JSVal -> act) -> J.JSVal -> MaybeT IO act
 onRef f = pure . f

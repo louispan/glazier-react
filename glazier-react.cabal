@@ -19,24 +19,29 @@ library
   hs-source-dirs:      src
   js-sources:          jsbits/react.js
                        jsbits/registry.js
-  exposed-modules:     Glazier.React.Event
+  exposed-modules:     Glazier.React.Component
+                       Glazier.React.Event
                        Glazier.React.Element
                        Glazier.React.DOM
+                       Glazier.React.Maker
+                       Glazier.React.Maker.Run
                        Glazier.React.Markup
                        Glazier.React.ReactDOM
-                       Glazier.React.Widget
                        GHCJS.Extras
   build-depends:       base >= 4.7 && < 5
                      , containers >= 0.5 && < 0.6
                      , deepseq >= 1.4 && < 1.5
                      , disposable >= 0.1 && < 1
                      , dlist >= 0.8 && < 0.9
+                     , free >= 4.12 && < 5
                      , glazier >= 0.10 && < 1
                      , lens >= 4 && < 5
                      , mmorph >= 1 && < 2
                      , mtl >= 2 && < 3
+                     , pipes-concurrency >= 2 && < 3
                      , profunctors >= 5 && < 6
                      , semigroupoids >= 5 && < 6
+                     , stm >= 2.4 && < 3
                      , text >= 1.2 && < 1.3
                      , transformers >= 0.4 && < 0.6
                      , unordered-containers >= 0.2.7 && < 0.3
@@ -59,6 +64,7 @@ executable glazier-react-todo
                      , containers >= 0.5 && < 0.6
                      , disposable >= 0.1 && < 1
                      , dlist >= 0.8 && < 0.9
+                     , free >= 4.12 && < 5
                      , ghcjs-prim >= 0.1 && < 0.2
                      , glazier >= 0.10 && < 1
                      , glazier-pipes >= 0.1.5 && < 0.2
