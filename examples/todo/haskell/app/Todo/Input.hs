@@ -91,6 +91,7 @@ data Model = Model
     , frameNum :: FrameNum -- ^ frameNum is incremented by RenderCommand interpreter
     , deferredCommands :: M.Map FrameNum (D.DList Command)
     -- widget specifc model
+    , placeholder :: J.JSString
     , value :: J.JSString
     }
 
@@ -109,14 +110,15 @@ mkCallbacks ms = Callbacks
     <*> (R.mkHandler onChange')
     <*> (R.mkHandler onKeyDown')
 
-mkMModel :: .JSString -> F (R.Maker Action) (MVar Model, Model)
-mkMModel uid' = R.mkMModel mkCallbacks $ \cbs ->
+mkMModel :: J.JSString -> J.JSString -> F (R.Maker Action) (MVar Model, Model)
+mkMModel uid' placeholder' = R.mkMModel mkCallbacks $ \cbs ->
     Model
         cbs
         uid'
         J.nullRef
         0
         mempty
+        placeholder'
         mempty
 
 -- | This is used by parent components to render this component
@@ -135,7 +137,7 @@ render = do
     s <- ask
     lift $ R.lf (E.strval "input")
                     [ ("className", E.strval "new-todo")
-                    , ("placeholder", E.strval "What needs to be done?") -- FIXME: add to model
+                    , ("placeholder", J.jsval $ placeholder s)
                     , ("value", J.jsval $ value s)
                     , ("autoFocus", J.pToJSVal True)
                     , ("onChange", J.jsval . onChange $ callbacks s)

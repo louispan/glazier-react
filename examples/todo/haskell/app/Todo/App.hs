@@ -26,7 +26,6 @@ import Control.Concurrent.MVar
 import qualified Control.Disposable as CD
 import Control.Lens
 import Control.Monad.Free.Church
-import Control.Monad.Free.Orphans
 import Control.Monad.Morph
 import Control.Monad.Reader
 import Control.Monad.State.Strict
@@ -129,10 +128,10 @@ instance CD.Disposing Model where
                                  , CD.disposing $ snd $ todoInput s
                                  ]
 
-mkMModel :: MonadFree (R.Maker Action) m => J.JSString -> m (MVar Model, Model)
+mkMModel :: J.JSString -> F (R.Maker Action) (MVar Model, Model)
 mkMModel uid' = do
-    (minput, input) <- hoist (R.mapAction $ review _InputAction) $
-        TD.Input.mkMModel "newtodo"
+    (minput, input) <- hoistF (R.mapAction $ review _InputAction) $
+        TD.Input.mkMModel "newtodo" "What needs to be done?"
     R.mkMModel mkCallbacks $
         \cbs -> Model
                 cbs
@@ -245,7 +244,7 @@ appGadget = do
             n <- use _todoSeqNum
             _todoSeqNum %= (+ 1)
             pure $ D.singleton $ MakerCommand $ do
-                (ms, s) <- hoist (R.mapAction $ \act -> TodosAction (n, act)) $
+                (ms, s) <- hoistF (R.mapAction $ \act -> TodosAction (n, act)) $
                     TD.Todo.mkMModel (J.pack . show $ n) str
                 pure $ AddNewTodoAction n (ms, s)
 
