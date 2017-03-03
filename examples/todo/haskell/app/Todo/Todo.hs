@@ -107,6 +107,9 @@ data Model = Model
 
 makeClassy_ ''Model
 
+instance CD.Disposing Model where
+    disposing = CD.disposing . callbacks
+
 mkCallbacks :: MonadFree (R.Maker Action) maker => MVar Model -> maker Callbacks
 mkCallbacks ms = Callbacks
     -- common widget callbacks

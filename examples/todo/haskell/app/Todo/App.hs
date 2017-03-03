@@ -19,8 +19,7 @@ module Todo.App
     , window
     , gadget
     , mkCallbacks
-    -- FIXME: Can we avoid exposing this?
-    , mkInputCallbacks
+    , mkMModel
     ) where
 
 import Control.Concurrent.MVar
@@ -115,28 +114,47 @@ data Model = Model
 
 makeClassy_ ''Model
 
-mkCallbacks :: MVar Model -> ((J.JSVal -> MaybeT IO Action) -> IO (J.Callback (J.JSVal -> IO ()))) -> IO Callbacks
-mkCallbacks s f =
-    Callbacks
-    <$> (J.syncCallback' $ R.onRender s render)
-    <*> (f $ R.onRef RefAction)
-    <*> (f $ R.onUpdated RenderedAction)
-    <*> (f fireToggleCompleteAll')
+mkCallbacks :: MonadFree (R.Maker Action) maker => MVar Model -> maker Callbacks
+mkCallbacks ms = Callbacks
+    -- common widget callbacks
+    <$> (R.mkRenderer ms render)
+    <*> (R.mkHandler $ R.onRef RefAction)
+    <*> (R.mkHandler $ R.onUpdated RenderedAction)
+    -- widget specific callbacks
+    <*> (R.mkHandler fireToggleCompleteAll')
 
--- mkCallbacks' :: (act -> Action) -> MVar s -> ((J.JSVal -> MaybeT IO Action) -> IO (J.Callback (J.JSVal -> IO ()))) -> IO cbs
--- mkCallbacks' g ms f = TD.Input.mkCallbacks ms (f . (\f v -> g <$> f v))
+instance CD.Disposing Model where
+    disposing s = CD.DisposeList [ CD.disposing $ callbacks s
+                                 , CD.disposing $ snd $ todoInput s
+                                 ]
 
-mkInputCallbacks :: MVar TD.Input.Model -> ((J.JSVal -> MaybeT IO Action) -> IO (J.Callback (J.JSVal -> IO ()))) -> IO TD.Input.Callbacks
-mkInputCallbacks ms f = TD.Input.mkCallbacks ms (f . (\f' v -> mapInputHandler' <$> f' v))
+mkMModel :: J.JSString -> F (R.Maker Action) (MVar Model, Model)
+mkMModel uid' = do
+    (minput, input) <- hoistF (R.mapAction $ review _InputAction) $
+        R.mkMModel TD.Input.mkCallbacks $
+        \cbs -> TD.Input.Model
+                cbs
+                "newtodo"
+                J.nullRef
+                0
+                mempty
+                mempty
+    R.mkMModel mkCallbacks $
+        \cbs -> Model
+                cbs
+                uid'
+                J.nullRef
+                0
+                mempty
+                0
+                (minput, input)
+                mempty
 
 hasActiveTodos :: TodosModel' -> Bool
 hasActiveTodos = not . null . filter (not . TD.Todo.completed) . fmap snd . fmap snd . M.toList
 
 fireToggleCompleteAll' :: Applicative m => J.JSVal -> m Action
 fireToggleCompleteAll' = const $ pure ToggleCompleteAllAction
-
-mapInputHandler' :: TD.Input.Action -> Action
-mapInputHandler' = review _InputAction
 
 -- | This is used by parent components to render this component
 window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
@@ -220,7 +238,7 @@ appGadget = do
             ts <- use _todosModel
             ret <- runMaybeT $ do
                 (_, todoModel) <- MaybeT $ pure $ M.lookup k ts
-                let junk = CD.disposing (TD.Todo.callbacks todoModel)
+                let junk = CD.disposing todoModel
                 i <- use _frameNum
                 _deferredCommands %= (M.alter (addCommand $ DisposeCommand junk) i)
                 -- Remove the todo from the model

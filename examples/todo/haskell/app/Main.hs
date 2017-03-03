@@ -9,7 +9,7 @@ module Main (main) where
 import Control.Concurrent.MVar
 import Control.Concurrent.STM
 import qualified Control.Disposable as CD
-import Control.Monad
+import Control.Monad.Free.Church
 import Control.Monad.IO.Class
 import Control.Monad.Morph
 import Control.Monad.State.Strict
@@ -18,8 +18,8 @@ import Data.Foldable
 import qualified Data.JSString as J
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Prim as J
-import qualified GHCJS.Types as J
 import qualified Glazier as G
+import qualified Glazier.React.Maker.Run as R
 import qualified Glazier.React.Markup as R
 import qualified Glazier.React.ReactDOM as RD
 import qualified Pipes as P
@@ -29,7 +29,6 @@ import qualified Pipes.Misc as PM
 import qualified Pipes.Prelude as PP
 import qualified Todo.App as TD.App
 import qualified Todo.App.Run as TD.App.Run
-import qualified Todo.Input as TD.Input
 
 -- | 'main' is used to create React classes and setup callbacks to be used externally by the browser.
 -- GHCJS runs 'main' lazily.
@@ -42,68 +41,24 @@ main = do
     -- blocked events are kept by the GHCJCS runtime.
     (output, input) <- liftIO . PC.spawn $ PC.unbounded
 
-    -- Input Model
-    inputMModel <- newEmptyMVar
-    inputCallbacks <- TD.App.mkInputCallbacks inputMModel (TD.App.Run.mkActionCallback output)
-    let inputModel = TD.Input.Model
-            inputCallbacks
-            "new-input"
-            J.nullRef
-            0
-            mempty
-            mempty
-
-    putMVar inputMModel inputModel
-
     -- App Model
-    appMModel <- newEmptyMVar
-    appCallbacks <- TD.App.mkCallbacks appMModel (TD.App.Run.mkActionCallback output)
-    let appModel = TD.App.Model
-            appCallbacks
-            "todos"
-            J.nullRef
-            0
-            mempty
-            0
-            (inputMModel, inputModel)
-            mempty -- todosModel
-
-    putMVar appMModel appModel
-
-    -- -- Setup the render callback
-    -- -- render <- syncCallback1' (view G._WindowT' (jsval <$> counterWindow) . R.unsafeCoerceReactElement)
-    -- doRender <- J.syncCallback1' $ \_ -> do
-    --     s <- readMVar currentState
-    --     J.pToJSVal <$> R.markedElement TD.App.window s
-    -- void $ js_globalListen "renderHaskell" doRender
-
-    -- -- Setup the callback garbage collection callback
-    -- doRenderUpdated <- J.asyncCallback1 $ \seqNum -> void . runMaybeT $ do
-    --     seqNum' <- MaybeT $ J.fromJSVal seqNum
-    --     MaybeT . fmap guard . atomically . PC.send output $ TD.App.RenderUpdatedAction seqNum'
-    -- void $ js_globalListen "renderUpdated" doRenderUpdated
-
-    -- -- trigger a render now that the render callback is initialized
-    -- js_globalShout "forceRender" (J.pToJSVal $ TD.App.renderSeqNum initialState)
+    (ms, s) <- liftIO $ iterM (R.runMaker output) (TD.App.mkMModel "todos")
 
     -- Start the App render
     root <- js_getElementById "root"
-    e <- R.markedElement TD.App.window appModel
+    e <- R.markedElement TD.App.window s
     RD.render (J.pToJSVal e) root
 
     -- Run the gadget effect which reads actions from 'Pipes.Concurrent.Input'
     -- and notifies html React of any state changes.
     -- runEffect will only stop if input is finished (which in this example never does).
-    void . P.runEffect $ appEffect appMModel output input
+    s <- P.runEffect $ appEffect ms output input
 
     -- Cleanup
     -- We actually never get here because in this example runEffect never quits
     -- but in other apps, gadgetEffect might be quit-able (eg with MaybeT)
     -- so let's add the cleanup code here to be explicit.
-    -- J.releaseCallback doRender
-    -- J.releaseCallback doRenderUpdated
-    CD.dispose (CD.disposing appCallbacks)
-    CD.dispose (CD.disposing inputCallbacks)
+    CD.dispose (CD.disposing s)
 
 foreign import javascript unsafe
   "$r = document.getElementById($1);"

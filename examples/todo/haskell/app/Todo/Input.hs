@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
@@ -18,6 +19,7 @@ import Control.Applicative as A
 import Control.Concurrent.MVar
 import qualified Control.Disposable as CD
 import Control.Lens
+import Control.Monad.Free.Class
 import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
 import qualified Data.DList as D
@@ -32,6 +34,7 @@ import qualified GHCJS.Types as J
 import qualified Glazier as G
 import qualified Glazier.React.Component as R
 import qualified Glazier.React.Event as R
+import qualified Glazier.React.Maker as R
 import qualified Glazier.React.Markup as R
 
 type FrameNum = Int
@@ -92,19 +95,18 @@ data Model = Model
 
 makeClassy_ ''Model
 
-mkCallbacks
-    :: MVar Model
-    -> ((J.JSVal -> MaybeT IO Action) -> IO (J.Callback (J.JSVal -> IO ())))
-    -> IO Callbacks
-mkCallbacks s f =
-    Callbacks
+instance CD.Disposing Model where
+    disposing = CD.disposing . callbacks
+
+mkCallbacks :: MonadFree (R.Maker Action) maker => MVar Model -> maker Callbacks
+mkCallbacks ms = Callbacks
     -- common widget callbacks
-    <$> (J.syncCallback' $ R.onRender s render)
-    <*> (f $ R.onRef RefAction)
-    <*> (f $ R.onUpdated RenderedAction)
+    <$> (R.mkRenderer ms render)
+    <*> (R.mkHandler $ R.onRef RefAction)
+    <*> (R.mkHandler $ R.onUpdated RenderedAction)
     -- widget specific callbacks
-    <*> (f onChange')
-    <*> (f onKeyDown')
+    <*> (R.mkHandler onChange')
+    <*> (R.mkHandler onKeyDown')
 
 -- | This is used by parent components to render this component
 window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
