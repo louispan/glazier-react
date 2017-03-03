@@ -11,12 +11,14 @@ module Todo.Todo
  , Model(..)
  , HasModel(..)
  , mkCallbacks
+ , mkMModel
  , window
  , gadget
  ) where
 
 import Control.Applicative as A
 import Control.Monad.Free.Class
+import Control.Monad.Free.Church
 import Control.Concurrent.MVar
 import qualified Control.Disposable as CD
 import Control.Lens
@@ -124,6 +126,19 @@ mkCallbacks ms = Callbacks
     <*> (R.mkHandler fireCancelEdit')
     <*> (R.mkHandler onChange')
     <*> (R.mkHandler onKeyDown')
+
+mkMModel :: J.JSString -> J.JSString -> F (R.Maker Action) (MVar Model, Model)
+mkMModel uid' str = R.mkMModel mkCallbacks $ \cbs ->
+    Model
+        cbs
+        uid'
+        J.nullRef
+        0
+        mempty
+        J.nullRef
+        str
+        False
+        Nothing
 
 -- | This is used by parent components to render this component
 window :: Monad m => G.WindowT Model (R.ReactMlT m) ()

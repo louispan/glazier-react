@@ -11,6 +11,7 @@ module Todo.Input
  , Model(..)
  , HasModel(..)
  , mkCallbacks
+ , mkMModel
  , window
  , gadget
  ) where
@@ -20,6 +21,7 @@ import Control.Concurrent.MVar
 import qualified Control.Disposable as CD
 import Control.Lens
 import Control.Monad.Free.Class
+import Control.Monad.Free.Church
 import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
 import qualified Data.DList as D
@@ -108,6 +110,16 @@ mkCallbacks ms = Callbacks
     <*> (R.mkHandler onChange')
     <*> (R.mkHandler onKeyDown')
 
+mkMModel :: J.JSString -> F (R.Maker Action) (MVar Model, Model)
+mkMModel uid' = R.mkMModel mkCallbacks $ \cbs ->
+    Model
+        cbs
+        uid'
+        J.nullRef
+        0
+        mempty
+        mempty
+
 -- | This is used by parent components to render this component
 window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
 window = do
@@ -124,7 +136,7 @@ render = do
     s <- ask
     lift $ R.lf (E.strval "input")
                     [ ("className", E.strval "new-todo")
-                    , ("placeholder", E.strval "What needs to be done?")
+                    , ("placeholder", E.strval "What needs to be done?") -- FIXME: add to model
                     , ("value", J.jsval $ value s)
                     , ("autoFocus", J.pToJSVal True)
                     , ("onChange", J.jsval . onChange $ callbacks s)

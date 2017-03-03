@@ -18,7 +18,6 @@ module Todo.App
     , HasModel(..)
     , window
     , gadget
-    , mkCallbacks
     , mkMModel
     ) where
 
@@ -131,14 +130,7 @@ instance CD.Disposing Model where
 mkMModel :: J.JSString -> F (R.Maker Action) (MVar Model, Model)
 mkMModel uid' = do
     (minput, input) <- hoistF (R.mapAction $ review _InputAction) $
-        R.mkMModel TD.Input.mkCallbacks $
-        \cbs -> TD.Input.Model
-                cbs
-                "newtodo"
-                J.nullRef
-                0
-                mempty
-                mempty
+        TD.Input.mkMModel "newtodo"
     R.mkMModel mkCallbacks $
         \cbs -> Model
                 cbs
@@ -252,17 +244,7 @@ appGadget = do
             _todoSeqNum %= (+ 1)
             pure $ D.singleton $ MakerCommand $ do
                 (ms, s) <- hoistF (R.mapAction $ \act -> TodosAction (n, act)) $
-                    R.mkMModel TD.Todo.mkCallbacks $ \cbs ->
-                        TD.Todo.Model
-                            cbs
-                            (J.pack . show $ n)
-                            J.nullRef
-                            0
-                            mempty
-                            J.nullRef
-                            str
-                            False
-                            Nothing
+                    TD.Todo.mkMModel (J.pack . show $ n) str
                 pure $ AddNewTodoAction n (ms, s)
 
         AddNewTodoAction n v -> do

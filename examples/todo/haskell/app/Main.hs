@@ -52,13 +52,13 @@ main = do
     -- Run the gadget effect which reads actions from 'Pipes.Concurrent.Input'
     -- and notifies html React of any state changes.
     -- runEffect will only stop if input is finished (which in this example never does).
-    s <- P.runEffect $ appEffect ms output input
+    s' <- P.runEffect $ appEffect ms output input
 
     -- Cleanup
     -- We actually never get here because in this example runEffect never quits
     -- but in other apps, gadgetEffect might be quit-able (eg with MaybeT)
     -- so let's add the cleanup code here to be explicit.
-    CD.dispose (CD.disposing s)
+    CD.dispose (CD.disposing s')
 
 foreign import javascript unsafe
   "$r = document.getElementById($1);"
