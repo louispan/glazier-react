@@ -13,7 +13,6 @@ import Control.Monad.Free.Church
 import Control.Monad.IO.Class
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Maybe
-import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
 import qualified Pipes.Concurrent as PC
 import qualified Todo.App as TD.App
@@ -50,25 +49,29 @@ runCommand output (TD.App.MakerCommand mks) = do
     liftIO $ void $ atomically $ PC.send output act
 
 runCommand _      TD.App.RenderCommand = do
-    -- increment the sequence number if render is required
-    TD.App.model . TD.App.frameNum  %= (+ 1)
-    (ms, s) <- get
-    liftIO . void $ swapMVar ms s -- ^ so that the render callback can use the latest state
-    let i = s ^. TD.App.model . TD.App.frameNum
-    ref <- use (TD.App.model . TD.App.ref)
-    liftIO $ js_setStateFrameNum ref i -- ^ notify React that the specific component has changed
+    sm <- use id
+    R.reactSetState
+        id
+        TD.App.mModel
+        TD.App.cModel
+        (TD.App.model . TD.App.frameNum)
+        (TD.App.model . TD.App.frameNum)
+        (TD.App.model . TD.App.ref)
+        sm
 
 runCommand _                  (TD.App.DisposeCommand x) =
     liftIO $ CD.dispose x
 
 runCommand _      (TD.App.InputCommand (TD.Input.RenderCommand)) = do
-    -- increment the sequence number if render is required
-    TD.App.todoInput . TD.Input.model . TD.Input.frameNum  %= (+ 1)
-    (ms, s) <- use TD.App.todoInput
-    liftIO . void $ swapMVar ms s -- ^ so that the render callback can use the latest state
-    let i = s ^. TD.Input.model . TD.Input.frameNum
-    ref <- use (TD.App.todoInput . TD.Input.model . TD.Input.ref)
-    liftIO $ js_setStateFrameNum ref i -- ^ notify React that the specific component has changed
+    sm <- use TD.App.todoInput
+    R.reactSetState
+        TD.App.todoInput
+        TD.Input.mModel
+        TD.Input.cModel
+        (TD.Input.model . TD.Input.frameNum)
+        (TD.Input.model . TD.Input.frameNum)
+        (TD.Input.model . TD.Input.ref)
+        sm
 
 runCommand output             (TD.App.InputCommand (TD.Input.SubmitCommand str)) = do
     liftIO $ void $ atomically $ PC.send output (TD.App.RequestNewTodoAction str)
@@ -77,15 +80,17 @@ runCommand _         (TD.App.InputCommand (TD.Input.SetSelectionCommand n ss se 
     liftIO $ js_setSelectionRange n ss se sd
 
 runCommand _      (TD.App.TodosCommand (k, TD.Todo.RenderCommand)) = void $ runMaybeT $ do
-    (ms, s) <- MaybeT $ use (TD.App.model . TD.App.todosModel . at k)
-    let s' = s & TD.Todo.model . TD.Todo.frameNum %~ (+ 1)
-    (TD.App.model . TD.App.todosModel . at k) .= Just (ms, s')
-    liftIO . void $ swapMVar ms s' -- ^ so that the render callback can use the latest state
-    let i = s' ^. TD.Todo.model . TD.Todo.frameNum
-        ref = s' ^. TD.Todo.model . TD.Todo.ref
-    liftIO $ js_setStateFrameNum ref i -- ^ notify React that the specific component has changed
+    sm <- MaybeT $ preuse (TD.App.model . TD.App.todosModel . at k . _Just)
+    R.reactSetState
+        (TD.App.model . TD.App.todosModel . at k . _Just)
+        TD.Todo.mModel
+        TD.Todo.cModel
+        (TD.Todo.model . TD.Todo.frameNum)
+        (TD.Todo.model . TD.Todo.frameNum)
+        (TD.Todo.model . TD.Todo.ref)
+        sm
 
-runCommand output             (TD.App.TodosCommand (k, TD.Todo.DestroyCommand)) =
+runCommand output             (TD.App.TodosCommand (k, TD.Todo.DestroyCommand)) = do
     liftIO $ void $ atomically $ PC.send output (TD.App.DestroyTodoAction k)
 
 runCommand _                  (TD.App.TodosCommand (_, TD.Todo.FocusNodeCommand node)) =

@@ -299,6 +299,8 @@ gadget = do
             ref .= node
             pure mempty
 
+        -- FIXME: Share this code
+        -- FIXME: detect wraparound integers
         RenderedAction n -> do
             -- Run delayed commands that need to wait until a particular frame is rendered
             -- Eg focusing after other rendering changes
