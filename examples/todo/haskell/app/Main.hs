@@ -6,7 +6,6 @@
 
 module Main (main) where
 
-import Control.Concurrent.MVar
 import Control.Concurrent.STM
 import qualified Control.Disposable as CD
 import Control.Lens
@@ -43,17 +42,17 @@ main = do
     (output, input) <- liftIO . PC.spawn $ PC.unbounded
 
     -- App Model
-    (ms, s) <- liftIO $ iterM (R.runMaker output) (TD.App.mkMModel "todos")
+    s <- liftIO $ iterM (R.runMaker output) (TD.App.mkMModel "todos")
 
     -- Start the App render
     root <- js_getElementById "root"
-    e <- R.markedElement TD.App.window s
+    e <- R.markedElement TD.App.window (s ^. _2) -- FIXME: HasCModel
     RD.render (J.pToJSVal e) root
 
     -- Run the gadget effect which reads actions from 'Pipes.Concurrent.Input'
     -- and notifies html React of any state changes.
     -- runEffect will only stop if input is finished (which in this example never does).
-    s' <- P.runEffect $ appEffect ms output input
+    s' <- P.runEffect $ appEffect s output input
 
     -- Cleanup
     -- We actually never get here because in this example runEffect never quits
@@ -75,35 +74,32 @@ foreign import javascript unsafe
 
 appEffect
     :: MonadIO io
-    => MVar TD.App.CModel
+    => TD.App.MModel
     -> PC.Output TD.App.Action
     -> PC.Input TD.App.Action
-    -> P.Effect io TD.App.CModel
-appEffect stateMVar output input = do
-    s <- liftIO $ readMVar stateMVar
+    -> P.Effect io TD.App.MModel
+appEffect s output input = do
     PL.execStateP s $
         producerIO input P.>->
-        interpretCommandsPipe stateMVar output P.>->
+        interpretCommandsPipe output P.>->
         PP.drain
 
-producerIO :: MonadIO io => PC.Input TD.App.Action -> P.Producer' (D.DList TD.App.Command) (StateT TD.App.CModel io) ()
+producerIO :: MonadIO io => PC.Input TD.App.Action -> P.Producer' (D.DList TD.App.Command) (StateT TD.App.MModel io) ()
 producerIO input = hoist (hoist (liftIO . atomically)) (producer input)
 
-producer :: PC.Input TD.App.Action -> P.Producer' (D.DList TD.App.Command) (StateT TD.App.CModel STM) ()
+producer :: PC.Input TD.App.Action -> P.Producer' (D.DList TD.App.Command) (StateT TD.App.MModel STM) ()
 producer input = PM.execInput input (G.runGadgetT (zoom TD.App.model TD.App.gadget))
 
 interpretCommandsPipe
-    :: (MonadState TD.App.CModel io, MonadIO io)
-    => MVar TD.App.CModel
-    -> PC.Output TD.App.Action
+    :: (MonadState TD.App.MModel io, MonadIO io)
+    => PC.Output TD.App.Action
     -> P.Pipe (D.DList TD.App.Command) () io ()
-interpretCommandsPipe stateMVar output = PP.mapM (interpretCommands stateMVar output)
+interpretCommandsPipe output = PP.mapM (interpretCommands output)
 
 interpretCommands
-    :: (Foldable t, MonadState TD.App.CModel io, MonadIO io)
-    => MVar TD.App.CModel
-    -> PC.Output TD.App.Action
+    :: (Foldable t, MonadState TD.App.MModel io, MonadIO io)
+    => PC.Output TD.App.Action
     -> t TD.App.Command
     -> io ()
-interpretCommands stateMVar output =
-    traverse_ (TD.App.Run.interpretCommand stateMVar output)
+interpretCommands output =
+    traverse_ (TD.App.Run.interpretCommand output)

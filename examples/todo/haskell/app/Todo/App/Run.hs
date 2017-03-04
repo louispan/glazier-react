@@ -49,33 +49,30 @@ foreign import javascript unsafe
 
 
 -- | Evaluate commands from gadgets here
--- FIXME: Move ms to (ms, model)
 -- FIXME: Share render code
--- FIXME: Remove MonadIO
 interpretCommand
-    :: (MonadIO io, MonadState TD.App.CModel io)
-    => MVar TD.App.CModel
-    -> PC.Output TD.App.Action
+    :: (MonadIO io, MonadState TD.App.MModel io)
+    => PC.Output TD.App.Action
     -> TD.App.Command
     -> io ()
 
-interpretCommand _ output (TD.App.MakerCommand mks) = do
+interpretCommand output (TD.App.MakerCommand mks) = do
     act <- liftIO $ iterM (R.runMaker output) mks
     liftIO $ void $ atomically $ PC.send output act
 
-interpretCommand ms _      TD.App.RenderCommand = do
+interpretCommand _      TD.App.RenderCommand = do
     -- increment the sequence number if render is required
     TD.App.model . TD.App.frameNum  %= (+ 1)
-    s <- get
+    (ms, s) <- get
     liftIO . void $ swapMVar ms s -- ^ so that the render callback can use the latest state
     let i = s ^. TD.App.model . TD.App.frameNum
     ref <- use (TD.App.model . TD.App.ref)
     liftIO $ js_setStateFrameNum ref i -- ^ notify React that the specific component has changed
 
-interpretCommand _ _                  (TD.App.DisposeCommand x) =
+interpretCommand _                  (TD.App.DisposeCommand x) =
     liftIO $ CD.dispose x
 
-interpretCommand _ _      (TD.App.InputCommand (TD.Input.RenderCommand)) = do
+interpretCommand _      (TD.App.InputCommand (TD.Input.RenderCommand)) = do
     -- increment the sequence number if render is required
     TD.App.todoInput . TD.Input.model . TD.Input.frameNum  %= (+ 1)
     (ms, s) <- use TD.App.todoInput
@@ -84,13 +81,13 @@ interpretCommand _ _      (TD.App.InputCommand (TD.Input.RenderCommand)) = do
     ref <- use (TD.App.todoInput . TD.Input.model . TD.Input.ref)
     liftIO $ js_setStateFrameNum ref i -- ^ notify React that the specific component has changed
 
-interpretCommand _ output             (TD.App.InputCommand (TD.Input.SubmitCommand str)) = do
+interpretCommand output             (TD.App.InputCommand (TD.Input.SubmitCommand str)) = do
     liftIO $ void $ atomically $ PC.send output (TD.App.RequestNewTodoAction str)
 
-interpretCommand _ _         (TD.App.InputCommand (TD.Input.SetSelectionCommand n ss se sd)) =
+interpretCommand _         (TD.App.InputCommand (TD.Input.SetSelectionCommand n ss se sd)) =
     liftIO $ js_setSelectionRange n ss se sd
 
-interpretCommand _ _      (TD.App.TodosCommand (k, TD.Todo.RenderCommand)) = void $ runMaybeT $ do
+interpretCommand _      (TD.App.TodosCommand (k, TD.Todo.RenderCommand)) = void $ runMaybeT $ do
     (ms, s) <- MaybeT $ use (TD.App.model . TD.App.todosModel . at k)
     let s' = s & TD.Todo.model . TD.Todo.frameNum %~ (+ 1)
     (TD.App.model . TD.App.todosModel . at k) .= Just (ms, s')
@@ -99,11 +96,11 @@ interpretCommand _ _      (TD.App.TodosCommand (k, TD.Todo.RenderCommand)) = voi
         ref = s' ^. TD.Todo.model . TD.Todo.ref
     liftIO $ js_setStateFrameNum ref i -- ^ notify React that the specific component has changed
 
-interpretCommand _ output             (TD.App.TodosCommand (k, TD.Todo.DestroyCommand)) =
+interpretCommand output             (TD.App.TodosCommand (k, TD.Todo.DestroyCommand)) =
     liftIO $ void $ atomically $ PC.send output (TD.App.DestroyTodoAction k)
 
-interpretCommand _ _                  (TD.App.TodosCommand (_, TD.Todo.FocusNodeCommand node)) =
+interpretCommand _                  (TD.App.TodosCommand (_, TD.Todo.FocusNodeCommand node)) =
     liftIO $ js_focus node
 
-interpretCommand _ _                  (TD.App.TodosCommand (_, TD.Todo.SetSelectionCommand n ss se sd)) =
+interpretCommand _                  (TD.App.TodosCommand (_, TD.Todo.SetSelectionCommand n ss se sd)) =
     liftIO $ js_setSelectionRange n ss se sd
