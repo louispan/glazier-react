@@ -18,7 +18,7 @@ class Shim extends React.PureComponent {
 
     render() {
         if (this.props['render'])
-            return this.props['render']();
+            return this.props['render'](this.state);
         return null;
     }
 }

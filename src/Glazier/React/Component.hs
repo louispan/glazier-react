@@ -2,15 +2,17 @@
 
 -- | Contains commons utilities when defining your own widget
 module Glazier.React.Component
-  ( onRender
-  , onRef
-  , onUpdated
-  , shimComponent
-  ) where
+    ( classNames
+    , onRender
+    , onRef
+    , onUpdated
+    , shimComponent
+    ) where
 
 import Control.Concurrent.MVar
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
+import qualified Data.JSString as J
 import qualified GHCJS.Extras as E
 import qualified GHCJS.Marshal as J
 import qualified GHCJS.Marshal.Pure as J
@@ -19,12 +21,16 @@ import qualified Glazier as G
 import qualified Glazier.React.Event as R
 import qualified Glazier.React.Markup as R
 
+-- | Creates a space delimited list of classnames for all tuple with true.
+classNames :: [(J.JSString, Bool)] -> J.JSVal
+classNames = J.jsval . J.unwords . fmap fst . filter snd
+
 -- | This is called synchronously by React to render the DOM.
 -- This must not block!
-onRender :: MVar s -> G.WindowT s (R.ReactMlT IO) () -> IO J.JSVal
-onRender ms wdw = do
+onRender :: MVar s -> (J.JSVal -> G.WindowT s (R.ReactMlT IO) ()) -> J.JSVal -> IO J.JSVal
+onRender ms wdw v = do
     s <- readMVar ms
-    J.pToJSVal <$> R.markedElement wdw s
+    J.pToJSVal <$> R.markedElement (wdw v) s
 
 onRef :: (J.JSVal -> act) -> J.JSVal -> MaybeT IO act
 onRef f = pure . f

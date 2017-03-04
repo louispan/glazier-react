@@ -26,6 +26,8 @@ runMaker output (R.MkHandler handler g) = mkActionCallback output handler >>= g
 
 runMaker _ (R.MkModelMVar g) = newEmptyMVar >>= g
 
-runMaker _ (R.MkRenderer ms render g) = J.syncCallback' (R.onRender ms (hoist (hoist generalize) render)) >>= g
+runMaker _ (R.MkRenderer ms render g) = J.syncCallback1' (R.onRender ms render') >>= g
+  where
+    render' v = hoist (hoist generalize) (render v)
 
 runMaker _ (R.PutModelMVar ms s g) = putMVar ms s >> g

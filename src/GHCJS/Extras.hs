@@ -4,11 +4,17 @@ module GHCJS.Extras
     , getProperty
     , classNames
     , PureJSVal(..)
+    , Property
+    , toMaybeJSObject
+    , toJSObject
     ) where
 
-import qualified GHCJS.Types as J
+import Data.Foldable
 import qualified Data.JSString as J
+import qualified Data.Text as T
 import qualified GHCJS.Marshal.Pure as J
+import qualified GHCJS.Types as J
+import qualified JavaScript.Object as JO
 
 -- | This makes it easier to use OverloadedStrings with inputs that accept a JSVal that could be a JSString
 strval :: J.JSString -> J.JSVal
@@ -23,9 +29,6 @@ getProperty :: J.JSString -> J.JSVal -> IO J.JSVal
 getProperty _ x | J.isUndefined x || J.isNull x = pure x
 getProperty p x = js_unsafeGetProp p x
 
-classNames :: [(J.JSString, Bool)] -> J.JSVal
-classNames = J.jsval . J.unwords . fmap fst . filter snd
-
 -- | This is to enable conversion between equivalent classes 'IsJSVal' and 'PToJSVal'
 -- Eg. You can convert ((PureJSVal Object) to JSVal with pToJSVal without requiring IO)
 newtype PureJSVal a = PureJSVal a
@@ -33,3 +36,16 @@ newtype PureJSVal a = PureJSVal a
 
 instance J.IsJSVal a => J.PToJSVal (PureJSVal a) where
     pToJSVal (PureJSVal a) = J.jsval a
+
+type Property = (T.Text, J.JSVal)
+
+toMaybeJSObject :: [Property] -> IO (Maybe JO.Object)
+toMaybeJSObject [] = pure Nothing
+toMaybeJSObject xs = Just <$> toJSObject xs
+
+toJSObject :: [Property] -> IO JO.Object
+toJSObject [] = JO.create
+toJSObject xs = do
+    obj <- JO.create
+    traverse_ (\(k, v) -> JO.unsafeSetProp (J.textToJSString k) v obj) xs
+    pure obj

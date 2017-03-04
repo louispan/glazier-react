@@ -46,18 +46,9 @@ import qualified Glazier.React.Event as R
 import qualified Glazier.React.Maker as R
 import qualified Glazier.React.Markup as R
 
-type FrameNum = Int
-
 data Command
     -- Common widget commands
-    -- | This should result in frameNum incremented by one;
-    -- the model to be stored in the render TMVar;
-    -- and the following pseudo javascript to notify React of the state change:
-    -- ref.setState({frameNum: i})
-    -- NB. the seqNum are incremented by the interpreter because incrementing the seqNum
-    -- is an indication that a render request to React has been sent (not just requested).
-    -- Incrementing the seqNum on the gadget side may result React not rendering a stale state.
-    = RenderCommand
+    = RenderCommand [E.Property] J.JSVal
     -- widget specific commands
     | SubmitCommand J.JSString
 
@@ -71,7 +62,8 @@ makeClassyPrisms ''Action
 
 data Callbacks = Callbacks
     -- common widget callbacks
-    { _onRender :: J.Callback (IO J.JSVal)
+    { _onRender :: J.Callback (J.JSVal ->
+                               IO J.JSVal)
     , _onRef :: J.Callback (J.JSVal -> IO ())
     -- widget specific callbacks
     , _onKeyDown :: J.Callback (J.JSVal -> IO ())
@@ -85,7 +77,7 @@ data Model = Model
     -- common widget model
     { _uid :: J.JSString
     , _ref :: J.JSVal -- ^ ref to react component object
-    , _frameNum :: FrameNum -- ^ frameNum is incremented by RenderCommand interpreter
+    , _frameNum :: Int
     -- widget specifc model
     , _placeholder :: J.JSString
     , _defaultValue :: J.JSString
@@ -157,7 +149,7 @@ instance CD.Disposing SuperModel where
 mkCallbacks :: MVar CModel -> F (R.Maker Action) Callbacks
 mkCallbacks ms = Callbacks
     -- common widget callbacks
-    <$> (R.mkRenderer ms render)
+    <$> (R.mkRenderer ms (const render))
     <*> (R.mkHandler $ R.onRef RefAction)
     -- widget specific callbacks
     <*> (R.mkHandler onKeyDown')
@@ -228,4 +220,8 @@ gadget = do
             let v' = J.strip v
             if J.null v'
                 then pure mempty
-                else pure (D.fromList [SubmitCommand v, RenderCommand])
+                else do
+                    frameNum %= (+ 1)
+                    i <- J.pToJSVal <$> use frameNum
+                    r <- use ref
+                    pure (D.fromList [SubmitCommand v, RenderCommand [("frameNum", i)] r])

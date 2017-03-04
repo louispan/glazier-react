@@ -12,6 +12,8 @@ import Control.Monad.Free.Church
 import Control.Monad.IO.Class
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Maybe
+import qualified GHCJS.Extras as E
+import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import qualified Pipes.Concurrent as PC
 import qualified Todo.App as TD.App
@@ -29,6 +31,10 @@ foreign import javascript unsafe
   "if ($1 && $1['setSelectionRange']) { $1['setSelectionRange']($2, $3, $4); }"
   js_setSelectionRange :: J.JSVal -> Int -> Int -> J.JSString -> IO ()
 
+
+foreign import javascript unsafe
+  "if ($2 && $2['setState']) { $2['setState']($1); }"
+  js_setState :: J.JSVal -> J.JSVal -> IO ()
 
 -- | Evaluate commands from gadgets here
 -- FIXME: Share render code - Share HasCModel classes!
@@ -56,16 +62,19 @@ runCommand _      TD.App.RenderCommand = do
 runCommand _                  (TD.App.DisposeCommand x) =
     liftIO $ CD.dispose x
 
-runCommand _      (TD.App.InputCommand (TD.Input.RenderCommand)) = do
-    sm <- use TD.App.todoInput
-    R.reactSetState
-        TD.App.todoInput
-        TD.Input.mModel
-        TD.Input.cModel
-        (TD.Input.model . TD.Input.frameNum)
-        (TD.Input.model . TD.Input.frameNum)
-        (TD.Input.model . TD.Input.ref)
-        sm
+runCommand _      (TD.App.InputCommand (TD.Input.RenderCommand props n)) = do
+    dict <- liftIO $ E.toMaybeJSObject props
+    let dict' = J.pToJSVal $ E.PureJSVal <$> dict
+    liftIO $ js_setState dict' n
+    -- sm <- use TD.App.todoInput
+    -- R.reactSetState
+    --     TD.App.todoInput
+    --     TD.Input.mModel
+    --     TD.Input.cModel
+    --     (TD.Input.model . TD.Input.frameNum)
+    --     (TD.Input.model . TD.Input.frameNum)
+    --     (TD.Input.model . TD.Input.ref)
+    --     sm
 
 runCommand output             (TD.App.InputCommand (TD.Input.SubmitCommand str)) =
     liftIO $ void $ atomically $ PC.send output (TD.App.RequestNewTodoAction str)

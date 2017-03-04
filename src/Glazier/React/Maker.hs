@@ -22,7 +22,7 @@ import qualified Glazier.React.Markup as R
 data Maker act nxt where
     MkHandler :: (J.JSVal -> MaybeT IO act) -> (J.Callback (J.JSVal -> IO ()) -> nxt) -> Maker act nxt
     MkModelMVar :: (MVar mdl -> nxt) -> Maker act nxt
-    MkRenderer :: MVar mdl -> (G.WindowT mdl (R.ReactMl) ()) -> (J.Callback (IO J.JSVal) -> nxt) -> Maker act nxt
+    MkRenderer :: MVar mdl -> (J.JSVal -> G.WindowT mdl (R.ReactMl) ()) -> (J.Callback (J.JSVal -> IO J.JSVal) -> nxt) -> Maker act nxt
     PutModelMVar :: MVar mdl -> mdl -> nxt -> Maker act nxt
 
 instance Functor (Maker act) where

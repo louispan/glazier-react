@@ -9,17 +9,12 @@ module Glazier.React.Element
     , mkLeafElement
     , textElement
     , mkCombinedElements
-    , Properties
     ) where
 
-import qualified Data.HashMap.Strict as HM
 import qualified GHCJS.Extras as E
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import qualified JavaScript.Array as JA
-import qualified JavaScript.Object as JO
-import qualified Data.JSString.Text as J
-import qualified Data.Text as T
 
 newtype ReactElement = ReactElement J.JSVal
 instance J.IsJSVal ReactElement
@@ -47,27 +42,16 @@ foreign import javascript unsafe
 unsafeCoerceElement :: J.JSVal -> ReactElement
 unsafeCoerceElement = ReactElement
 
-type Properties = HM.HashMap T.Text J.JSVal
-
--- | Create a JS Object from a HashMap
-toJSProps :: Properties -> IO (Maybe JO.Object)
-toJSProps m | HM.null m = pure Nothing
-toJSProps m | otherwise = do
-                    obj <- JO.create
-                    HM.foldlWithKey' (\action k v -> action
-                                        >> JO.unsafeSetProp (J.textToJSString k) v obj) (pure ()) m
-                    pure (Just obj)
-
 -- | Create a react element (with children) from a HashMap of properties
-mkBranchElement :: J.JSVal -> Properties -> [ReactElement] -> IO ReactElement
+mkBranchElement :: J.JSVal -> [E.Property] -> [ReactElement] -> IO ReactElement
 mkBranchElement n props xs = do
-    props' <- toJSProps props
+    props' <- E.toMaybeJSObject props
     js_mkBranchElement n (J.pToJSVal (E.PureJSVal <$> props')) (JA.fromList $ J.jsval <$> xs)
 
 -- | Create a react element (with no children) from a HashMap of properties
-mkLeafElement :: J.JSVal -> Properties -> IO ReactElement
+mkLeafElement :: J.JSVal -> [E.Property] -> IO ReactElement
 mkLeafElement n props = do
-    props' <- toJSProps props
+    props' <- E.toMaybeJSObject props
     js_mkLeafElement n (J.pToJSVal (E.PureJSVal <$> props'))
 
 foreign import javascript unsafe

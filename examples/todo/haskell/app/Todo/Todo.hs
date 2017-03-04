@@ -36,7 +36,6 @@ import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
 import qualified Data.DList as D
 import qualified Data.JSString as J
-import qualified Data.Map.Strict as M
 import Data.Maybe
 import qualified GHC.Generics as G
 import qualified GHCJS.Extras as E
@@ -88,7 +87,7 @@ makeClassyPrisms ''Action
 
 data Callbacks = Callbacks
     -- common widget callbacks
-    { _onRender :: J.Callback (IO J.JSVal)
+    { _onRender :: J.Callback (J.JSVal -> IO J.JSVal)
     , _onRef :: J.Callback (J.JSVal -> IO ())
     , _onUpdated :: J.Callback (J.JSVal -> IO ())
     -- widget specific callbacks
@@ -110,7 +109,7 @@ data Model = Model
     { _uid :: J.JSString
     , _ref :: J.JSVal -- ^ ref to react component object
     , _frameNum :: FrameNum -- ^ frameNum is incremented by RenderCommand interpreter
-    , _deferredCommands :: M.Map FrameNum (D.DList Command)
+    , _deferredCommands :: D.DList Command
     -- widget specifc model
     , _inputRef :: J.JSVal
     , _value :: J.JSString
@@ -184,7 +183,7 @@ instance CD.Disposing SuperModel where
 mkCallbacks :: MVar CModel -> F (R.Maker Action) Callbacks
 mkCallbacks ms = Callbacks
     -- common widget callbacks
-    <$> (R.mkRenderer ms render)
+    <$> (R.mkRenderer ms (const render))
     <*> (R.mkHandler $ R.onRef RefAction)
     <*> (R.mkHandler $ R.onUpdated RenderedAction)
     -- widget specific callbacks
@@ -301,15 +300,14 @@ gadget = do
 
         -- FIXME: Share this code
         -- FIXME: detect wraparound integers
-        RenderedAction n -> do
+        RenderedAction _ -> do
             -- Run delayed commands that need to wait until a particular frame is rendered
             -- Eg focusing after other rendering changes
             -- All deferred commands with renderSeqNum lower than the rendered SeqNum is
             -- safe to run
             cmds <- use deferredCommands
-            let (cmds', leftoverCmds) = M.partitionWithKey (\k _ -> k < n) cmds
-            deferredCommands .= leftoverCmds
-            pure . foldMap snd . M.toList $ cmds'
+            deferredCommands .= mempty
+            pure cmds
 
         -- widget specific actions
 
@@ -328,9 +326,7 @@ gadget = do
                 value' <- use value
                 editText .= Just value'
                 -- Need to delay focusing until after the next render
-                let cmd = FocusNodeCommand input'
-                i <- use frameNum
-                deferredCommands %= (M.alter (addCommand cmd) i)
+                deferredCommands %= (`D.snoc` FocusNodeCommand input')
                 pure $ D.singleton RenderCommand
 
             maybe (pure mempty) pure ret
@@ -344,9 +340,7 @@ gadget = do
         ChangeAction n ss se sd str -> do
             editText .= Just str
             -- Need to delay set cursor position until after the next render
-            let cmd = SetSelectionCommand n ss se sd
-            i <- use frameNum
-            deferredCommands %= (M.alter (addCommand cmd) i)
+            deferredCommands %= (`D.snoc` SetSelectionCommand n ss se sd)
             pure $ D.singleton RenderCommand
 
         SubmitAction -> do
@@ -358,6 +352,3 @@ gadget = do
             if J.null v'
                 then pure $ D.singleton DestroyCommand
                 else pure $ D.singleton RenderCommand
-  where
-    addCommand cmd Nothing = Just $ D.singleton cmd
-    addCommand cmd (Just cmds') = Just (cmds' `D.snoc` cmd)

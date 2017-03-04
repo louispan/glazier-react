@@ -100,7 +100,7 @@ makeClassyPrisms ''Action
 
 data Callbacks = Callbacks
     -- Common widget callbacks
-    { _onRender :: J.Callback (IO J.JSVal)
+    { _onRender :: J.Callback (J.JSVal -> IO J.JSVal)
     , _onRef :: J.Callback (J.JSVal -> IO ())
     , _onUpdated :: J.Callback (J.JSVal -> IO ())
     -- TodoMVC specific callbacks
@@ -192,7 +192,7 @@ instance CD.Disposing SuperModel where
 mkCallbacks :: MVar CModel -> F (R.Maker Action) Callbacks
 mkCallbacks ms = Callbacks
     -- common widget callbacks
-    <$> (R.mkRenderer ms render)
+    <$> (R.mkRenderer ms (const render))
     <*> (R.mkHandler $ R.onRef RefAction)
     <*> (R.mkHandler $ R.onUpdated RenderedAction)
     -- widget specific callbacks
