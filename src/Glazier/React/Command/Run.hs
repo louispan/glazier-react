@@ -16,17 +16,6 @@ foreign import javascript unsafe
   "if ($1 && $1['setState']) { $1['setState']({ frameNum : $2 }); }"
   js_setStateFrameNum :: J.JSVal -> Int -> IO ()
 
--- maybeReactSetState maybeSuperModel mModel cModel model frameNum ref = void $ runMaybeT $ do
---     sm <- MaybeT $ preuse maybeSuperModel
---     let sm' = sm & model . frameNum %~ (+ 1)
---         mm = sm' ^. mModel
---         cm = sm' ^. cModel
---     liftIO . void $ swapMVar mm cm -- ^ so that the render callback can use the latest state
---     let s = sm ^. model
---         i = s ^. frameNum
---         ref = s ^. ref
---     liftIO $ js_setStateFrameNum ref i -- ^ notify React that the specific component has changed
-
 reactSetState
     :: (MonadIO io, MonadState t io)
     => Setter' t sm
@@ -38,7 +27,6 @@ reactSetState
     -> sm
     -> io ()
 reactSetState superModel mModel cModel modelFrameNum modelFrameNum' modelRef sm = do
-    -- sm <- use superModel
     -- increment the sequence number if render is required
     let sm' = sm & modelFrameNum %~ (+ 1)
         mm = sm' ^. mModel
