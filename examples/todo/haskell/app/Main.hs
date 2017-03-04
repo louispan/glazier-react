@@ -42,7 +42,7 @@ main = do
     (output, input) <- liftIO . PC.spawn $ PC.unbounded
 
     -- App Model
-    s <- liftIO $ iterM (R.runMaker output) (TD.App.mkMModel "todos")
+    s <- liftIO $ iterM (R.runMaker output) (TD.App.mkSuperModel "todos")
 
     -- Start the App render
     root <- js_getElementById "root"
@@ -66,30 +66,30 @@ foreign import javascript unsafe
 
 appEffect
     :: MonadIO io
-    => TD.App.MModel
+    => TD.App.SuperModel
     -> PC.Output TD.App.Action
     -> PC.Input TD.App.Action
-    -> P.Effect io TD.App.MModel
+    -> P.Effect io TD.App.SuperModel
 appEffect s output input = do
     PL.execStateP s $
         producerIO input P.>->
         interpretCommandsPipe output P.>->
         PP.drain
 
-producerIO :: MonadIO io => PC.Input TD.App.Action -> P.Producer' (D.DList TD.App.Command) (StateT TD.App.MModel io) ()
+producerIO :: MonadIO io => PC.Input TD.App.Action -> P.Producer' (D.DList TD.App.Command) (StateT TD.App.SuperModel io) ()
 producerIO input = hoist (hoist (liftIO . atomically)) (producer input)
 
-producer :: PC.Input TD.App.Action -> P.Producer' (D.DList TD.App.Command) (StateT TD.App.MModel STM) ()
+producer :: PC.Input TD.App.Action -> P.Producer' (D.DList TD.App.Command) (StateT TD.App.SuperModel STM) ()
 producer input = PM.execInput input (G.runGadgetT (zoom TD.App.model TD.App.gadget))
 
 interpretCommandsPipe
-    :: (MonadState TD.App.MModel io, MonadIO io)
+    :: (MonadState TD.App.SuperModel io, MonadIO io)
     => PC.Output TD.App.Action
     -> P.Pipe (D.DList TD.App.Command) () io ()
 interpretCommandsPipe output = PP.mapM (interpretCommands output)
 
 interpretCommands
-    :: (Foldable t, MonadState TD.App.MModel io, MonadIO io)
+    :: (Foldable t, MonadState TD.App.SuperModel io, MonadIO io)
     => PC.Output TD.App.Action
     -> t TD.App.Command
     -> io ()

@@ -51,7 +51,7 @@ foreign import javascript unsafe
 -- | Evaluate commands from gadgets here
 -- FIXME: Share render code
 interpretCommand
-    :: (MonadIO io, MonadState TD.App.MModel io)
+    :: (MonadIO io, MonadState TD.App.SuperModel io)
     => PC.Output TD.App.Action
     -> TD.App.Command
     -> io ()
@@ -63,7 +63,7 @@ interpretCommand output (TD.App.MakerCommand mks) = do
 interpretCommand _      TD.App.RenderCommand = do
     -- increment the sequence number if render is required
     TD.App.model . TD.App.frameNum  %= (+ 1)
-    TD.App.MModel (ms, s) <- get
+    (ms, s) <- get
     liftIO . void $ swapMVar ms s -- ^ so that the render callback can use the latest state
     let i = s ^. TD.App.model . TD.App.frameNum
     ref <- use (TD.App.model . TD.App.ref)
@@ -75,7 +75,7 @@ interpretCommand _                  (TD.App.DisposeCommand x) =
 interpretCommand _      (TD.App.InputCommand (TD.Input.RenderCommand)) = do
     -- increment the sequence number if render is required
     TD.App.todoInput . TD.Input.model . TD.Input.frameNum  %= (+ 1)
-    TD.Input.MModel (ms, s) <- use TD.App.todoInput
+    (ms, s) <- use TD.App.todoInput
     liftIO . void $ swapMVar ms s -- ^ so that the render callback can use the latest state
     let i = s ^. TD.Input.model . TD.Input.frameNum
     ref <- use (TD.App.todoInput . TD.Input.model . TD.Input.ref)
@@ -88,9 +88,9 @@ interpretCommand _         (TD.App.InputCommand (TD.Input.SetSelectionCommand n 
     liftIO $ js_setSelectionRange n ss se sd
 
 interpretCommand _      (TD.App.TodosCommand (k, TD.Todo.RenderCommand)) = void $ runMaybeT $ do
-    TD.Todo.MModel (ms, s) <- MaybeT $ use (TD.App.model . TD.App.todosModel . at k)
+    (ms, s) <- MaybeT $ use (TD.App.model . TD.App.todosModel . at k)
     let s' = s & TD.Todo.model . TD.Todo.frameNum %~ (+ 1)
-    (TD.App.model . TD.App.todosModel . at k) .= Just (TD.Todo.MModel (ms, s'))
+    (TD.App.model . TD.App.todosModel . at k) .= Just (ms, s')
     liftIO . void $ swapMVar ms s' -- ^ so that the render callback can use the latest state
     let i = s' ^. TD.Todo.model . TD.Todo.frameNum
         ref = s' ^. TD.Todo.model . TD.Todo.ref

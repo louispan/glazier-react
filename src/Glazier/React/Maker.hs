@@ -40,8 +40,8 @@ mapAction _ (MkModelMVar g) = MkModelMVar g
 mapAction _ (MkRenderer ms render g) = MkRenderer ms render g
 mapAction _ (PutModelMVar ms s x) = PutModelMVar ms s x
 
-mkMModel :: MonadFree (Maker act) m => (MVar mdl -> m cbs) -> (cbs -> mdl) -> m (MVar mdl, mdl)
-mkMModel makeCallbacks createModel = do
+mkSuperModel :: MonadFree (Maker act) m => (MVar mdl -> m cbs) -> (cbs -> mdl) -> m (MVar mdl, mdl)
+mkSuperModel makeCallbacks createModel = do
     ms <- mkModelMVar
     cbs <- makeCallbacks ms
     let s = createModel cbs

@@ -5,6 +5,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 
 module Todo.Todo
     ( Command(..)
@@ -15,11 +16,13 @@ module Todo.Todo
     , mkCallbacks
     , Model(..)
     , HasModel(..)
-    , CModel(..)
+    , CModel
     , HasCModel(..)
-    , MModel(..)
+    , MModel
     , HasMModel(..)
-    , mkMModel
+    , SuperModel
+    , HasSuperModel(..)
+    , mkSuperModel
     , window
     , gadget
     ) where
@@ -121,16 +124,20 @@ makeClassy ''Model
 instance CD.Disposing Model where
     disposing _ = CD.DisposeNone
 
-newtype CModel = CModel (Callbacks, Model)
+-- | Callbacks and pure state
+type CModel = (Callbacks, Model)
 
-makeClassy ''CModel
-makeWrapped ''CModel
+class HasCModel s where
+    cModel :: Lens' s CModel
+
+instance HasCModel CModel where
+    cModel = id
 
 instance HasCallbacks CModel where
-    callbacks = _Wrapped' . _1
+    callbacks = _1
 
 instance HasModel CModel where
-    model = _Wrapped' . _2
+    model = _2
 
 instance CD.Disposing CModel where
     disposing s = CD.DisposeList
@@ -138,21 +145,37 @@ instance CD.Disposing CModel where
         , s ^. model . to CD.disposing
         ]
 
-newtype MModel = MModel (MVar CModel, CModel)
+-- | Mutable model for rendering callback
+type MModel = MVar CModel
 
-makeClassy ''MModel
-makeWrapped ''MModel
+class HasMModel s where
+    mModel :: Lens' s MModel
 
-instance HasCModel MModel where
-    cModel = _Wrapped' . _2
+instance HasMModel MModel where
+    mModel = id
 
-instance HasCallbacks MModel where
+-- | Contains MModel and CModel
+type SuperModel = (MModel, CModel)
+
+class HasSuperModel s where
+    superModel :: Lens' s SuperModel
+
+instance HasSuperModel SuperModel where
+  superModel = id
+
+instance HasMModel SuperModel where
+    mModel = _1
+
+instance HasCModel SuperModel where
+    cModel = _2
+
+instance HasCallbacks SuperModel where
     callbacks = cModel . callbacks
 
-instance HasModel MModel where
+instance HasModel SuperModel where
     model = cModel . model
 
-instance CD.Disposing MModel where
+instance CD.Disposing SuperModel where
     disposing s = CD.DisposeList
         [ s ^. callbacks . to CD.disposing
         , s ^. model . to CD.disposing
@@ -173,8 +196,8 @@ mkCallbacks ms = Callbacks
     <*> (R.mkHandler onChange')
     <*> (R.mkHandler onKeyDown')
 
-mkMModel :: Model -> F (R.Maker Action) MModel
-mkMModel s = MModel <$> (R.mkMModel mkCallbacks $ \cbs -> CModel (cbs, s))
+mkSuperModel :: Model -> F (R.Maker Action) SuperModel
+mkSuperModel s = R.mkSuperModel mkCallbacks $ \cbs -> (cbs, s)
 
 -- | This is used by parent components to render this component
 window :: Monad m => G.WindowT CModel (R.ReactMlT m) ()
