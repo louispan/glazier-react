@@ -46,7 +46,7 @@ main = do
 
     -- Start the App render
     root <- js_getElementById "root"
-    e <- R.markedElement TD.App.window (s ^. TD.App.cModel) -- FIXME: HasCModel
+    e <- R.markedElement TD.App.window (s ^. TD.App.cModel)
     RD.render (J.pToJSVal e) root
 
     -- Run the gadget effect which reads actions from 'Pipes.Concurrent.Input'
@@ -73,7 +73,7 @@ appEffect
 appEffect s output input = do
     PL.execStateP s $
         producerIO input P.>->
-        interpretCommandsPipe output P.>->
+        runCommandsPipe output P.>->
         PP.drain
 
 producerIO :: MonadIO io => PC.Input TD.App.Action -> P.Producer' (D.DList TD.App.Command) (StateT TD.App.SuperModel io) ()
@@ -82,16 +82,16 @@ producerIO input = hoist (hoist (liftIO . atomically)) (producer input)
 producer :: PC.Input TD.App.Action -> P.Producer' (D.DList TD.App.Command) (StateT TD.App.SuperModel STM) ()
 producer input = PM.execInput input (G.runGadgetT (zoom TD.App.model TD.App.gadget))
 
-interpretCommandsPipe
+runCommandsPipe
     :: (MonadState TD.App.SuperModel io, MonadIO io)
     => PC.Output TD.App.Action
     -> P.Pipe (D.DList TD.App.Command) () io ()
-interpretCommandsPipe output = PP.mapM (interpretCommands output)
+runCommandsPipe output = PP.mapM (runCommands output)
 
-interpretCommands
+runCommands
     :: (Foldable t, MonadState TD.App.SuperModel io, MonadIO io)
     => PC.Output TD.App.Action
     -> t TD.App.Command
     -> io ()
-interpretCommands output =
-    traverse_ (TD.App.Run.interpretCommand output)
+runCommands output =
+    traverse_ (TD.App.Run.runCommand output)

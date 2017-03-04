@@ -2,8 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Todo.App.Run
-    ( interpretCommand
-    , mkActionCallback
+    ( runCommand
     ) where
 
 import Control.Concurrent.MVar
@@ -21,17 +20,7 @@ import qualified Todo.App as TD.App
 import qualified Todo.Input as TD.Input
 import qualified Todo.Todo as TD.Todo
 import qualified Glazier.React.Maker.Run as R
-
--- FIXME: Move to Maker.Run.hs?
-mkActionCallback
-    :: PC.Output TD.App.Action
-    -> (J.JSVal -> MaybeT IO TD.App.Action)
-    -> IO (J.Callback (J.JSVal -> IO ()))
-mkActionCallback output handler =
-    J.syncCallback1 J.ContinueAsync $ \evt ->
-        void $ runMaybeT $ do
-            action <- handler evt
-            lift $ void $ atomically $ PC.send output action
+import qualified Glazier.React.Command.Run as R
 
 foreign import javascript unsafe
   "if ($1 && $1['focus']) { $1['focus'](); }"
@@ -50,17 +39,17 @@ foreign import javascript unsafe
 
 -- | Evaluate commands from gadgets here
 -- FIXME: Share render code
-interpretCommand
+runCommand
     :: (MonadIO io, MonadState TD.App.SuperModel io)
     => PC.Output TD.App.Action
     -> TD.App.Command
     -> io ()
 
-interpretCommand output (TD.App.MakerCommand mks) = do
+runCommand output (TD.App.MakerCommand mks) = do
     act <- liftIO $ iterM (R.runMaker output) mks
     liftIO $ void $ atomically $ PC.send output act
 
-interpretCommand _      TD.App.RenderCommand = do
+runCommand _      TD.App.RenderCommand = do
     -- increment the sequence number if render is required
     TD.App.model . TD.App.frameNum  %= (+ 1)
     (ms, s) <- get
@@ -69,10 +58,10 @@ interpretCommand _      TD.App.RenderCommand = do
     ref <- use (TD.App.model . TD.App.ref)
     liftIO $ js_setStateFrameNum ref i -- ^ notify React that the specific component has changed
 
-interpretCommand _                  (TD.App.DisposeCommand x) =
+runCommand _                  (TD.App.DisposeCommand x) =
     liftIO $ CD.dispose x
 
-interpretCommand _      (TD.App.InputCommand (TD.Input.RenderCommand)) = do
+runCommand _      (TD.App.InputCommand (TD.Input.RenderCommand)) = do
     -- increment the sequence number if render is required
     TD.App.todoInput . TD.Input.model . TD.Input.frameNum  %= (+ 1)
     (ms, s) <- use TD.App.todoInput
@@ -81,13 +70,13 @@ interpretCommand _      (TD.App.InputCommand (TD.Input.RenderCommand)) = do
     ref <- use (TD.App.todoInput . TD.Input.model . TD.Input.ref)
     liftIO $ js_setStateFrameNum ref i -- ^ notify React that the specific component has changed
 
-interpretCommand output             (TD.App.InputCommand (TD.Input.SubmitCommand str)) = do
+runCommand output             (TD.App.InputCommand (TD.Input.SubmitCommand str)) = do
     liftIO $ void $ atomically $ PC.send output (TD.App.RequestNewTodoAction str)
 
-interpretCommand _         (TD.App.InputCommand (TD.Input.SetSelectionCommand n ss se sd)) =
+runCommand _         (TD.App.InputCommand (TD.Input.SetSelectionCommand n ss se sd)) =
     liftIO $ js_setSelectionRange n ss se sd
 
-interpretCommand _      (TD.App.TodosCommand (k, TD.Todo.RenderCommand)) = void $ runMaybeT $ do
+runCommand _      (TD.App.TodosCommand (k, TD.Todo.RenderCommand)) = void $ runMaybeT $ do
     (ms, s) <- MaybeT $ use (TD.App.model . TD.App.todosModel . at k)
     let s' = s & TD.Todo.model . TD.Todo.frameNum %~ (+ 1)
     (TD.App.model . TD.App.todosModel . at k) .= Just (ms, s')
@@ -96,11 +85,11 @@ interpretCommand _      (TD.App.TodosCommand (k, TD.Todo.RenderCommand)) = void 
         ref = s' ^. TD.Todo.model . TD.Todo.ref
     liftIO $ js_setStateFrameNum ref i -- ^ notify React that the specific component has changed
 
-interpretCommand output             (TD.App.TodosCommand (k, TD.Todo.DestroyCommand)) =
+runCommand output             (TD.App.TodosCommand (k, TD.Todo.DestroyCommand)) =
     liftIO $ void $ atomically $ PC.send output (TD.App.DestroyTodoAction k)
 
-interpretCommand _                  (TD.App.TodosCommand (_, TD.Todo.FocusNodeCommand node)) =
+runCommand _                  (TD.App.TodosCommand (_, TD.Todo.FocusNodeCommand node)) =
     liftIO $ js_focus node
 
-interpretCommand _                  (TD.App.TodosCommand (_, TD.Todo.SetSelectionCommand n ss se sd)) =
+runCommand _                  (TD.App.TodosCommand (_, TD.Todo.SetSelectionCommand n ss se sd)) =
     liftIO $ js_setSelectionRange n ss se sd
