@@ -322,13 +322,13 @@ gadget = do
             pure mempty
 
         StartEditAction -> do
-            n <- use inputRef
+            input <- use inputRef
             ret <- runMaybeT $ do
-                n' <- MaybeT $ pure $ J.nullableToMaybe (J.Nullable n)
+                input' <- MaybeT $ pure $ J.nullableToMaybe (J.Nullable input)
                 value' <- use value
                 editText .= Just value'
                 -- Need to delay focusing until after the next render
-                let cmd = FocusNodeCommand n'
+                let cmd = FocusNodeCommand input'
                 i <- use frameNum
                 deferredCommands %= (M.alter (addCommand cmd) i)
                 pure $ D.singleton RenderCommand

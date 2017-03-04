@@ -5,7 +5,6 @@ module Todo.App.Run
     ( runCommand
     ) where
 
-import Control.Concurrent.MVar
 import Control.Concurrent.STM
 import qualified Control.Disposable as CD
 import Control.Lens
@@ -31,13 +30,8 @@ foreign import javascript unsafe
   js_setSelectionRange :: J.JSVal -> Int -> Int -> J.JSString -> IO ()
 
 
-foreign import javascript unsafe
-  "if ($1 && $1['setState']) { $1['setState']({ frameNum : $2 }); }"
-  js_setStateFrameNum :: J.JSVal -> Int -> IO ()
-
-
 -- | Evaluate commands from gadgets here
--- FIXME: Share render code
+-- FIXME: Share render code - Share HasCModel classes!
 runCommand
     :: (MonadIO io, MonadState TD.App.SuperModel io)
     => PC.Output TD.App.Action
@@ -73,11 +67,8 @@ runCommand _      (TD.App.InputCommand (TD.Input.RenderCommand)) = do
         (TD.Input.model . TD.Input.ref)
         sm
 
-runCommand output             (TD.App.InputCommand (TD.Input.SubmitCommand str)) = do
+runCommand output             (TD.App.InputCommand (TD.Input.SubmitCommand str)) =
     liftIO $ void $ atomically $ PC.send output (TD.App.RequestNewTodoAction str)
-
-runCommand _         (TD.App.InputCommand (TD.Input.SetSelectionCommand n ss se sd)) =
-    liftIO $ js_setSelectionRange n ss se sd
 
 runCommand _      (TD.App.TodosCommand (k, TD.Todo.RenderCommand)) = void $ runMaybeT $ do
     sm <- MaybeT $ preuse (TD.App.model . TD.App.todosModel . at k . _Just)

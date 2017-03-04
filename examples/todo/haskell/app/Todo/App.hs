@@ -205,7 +205,6 @@ mkSuperModel uid' = do
             "newtodo"
             J.nullRef
             0
-            mempty
             "What needs to be done?"
             J.empty
     R.mkSuperModel mkCallbacks $ \cbs -> (cbs, Model
