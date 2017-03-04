@@ -53,8 +53,8 @@ foreign import javascript unsafe
 -- FIXME: Share render code
 -- FIXME: Remove MonadIO
 interpretCommand
-    :: (MonadIO io, MonadState TD.App.Model io)
-    => MVar TD.App.Model
+    :: (MonadIO io, MonadState TD.App.CModel io)
+    => MVar TD.App.CModel
     -> PC.Output TD.App.Action
     -> TD.App.Command
     -> io ()
@@ -65,11 +65,11 @@ interpretCommand _ output (TD.App.MakerCommand mks) = do
 
 interpretCommand ms _      TD.App.RenderCommand = do
     -- increment the sequence number if render is required
-    TD.App._frameNum  %= (+ 1)
+    TD.App.model . TD.App.frameNum  %= (+ 1)
     s <- get
     liftIO . void $ swapMVar ms s -- ^ so that the render callback can use the latest state
-    let i = TD.App.frameNum s
-    ref <- use (TD.App._ref)
+    let i = s ^. TD.App.model . TD.App.frameNum
+    ref <- use (TD.App.model . TD.App.ref)
     liftIO $ js_setStateFrameNum ref i -- ^ notify React that the specific component has changed
 
 interpretCommand _ _                  (TD.App.DisposeCommand x) =
@@ -77,11 +77,11 @@ interpretCommand _ _                  (TD.App.DisposeCommand x) =
 
 interpretCommand _ _      (TD.App.InputCommand (TD.Input.RenderCommand)) = do
     -- increment the sequence number if render is required
-    TD.App._todoInput . TD.Input.model . TD.Input.frameNum  %= (+ 1)
-    (ms, s) <- use TD.App._todoInput
+    TD.App.todoInput . TD.Input.model . TD.Input.frameNum  %= (+ 1)
+    (ms, s) <- use TD.App.todoInput
     liftIO . void $ swapMVar ms s -- ^ so that the render callback can use the latest state
     let i = s ^. TD.Input.model . TD.Input.frameNum
-    ref <- use (TD.App._todoInput . TD.Input.model . TD.Input.ref)
+    ref <- use (TD.App.todoInput . TD.Input.model . TD.Input.ref)
     liftIO $ js_setStateFrameNum ref i -- ^ notify React that the specific component has changed
 
 interpretCommand _ output             (TD.App.InputCommand (TD.Input.SubmitCommand str)) = do
@@ -91,12 +91,12 @@ interpretCommand _ _         (TD.App.InputCommand (TD.Input.SetSelectionCommand 
     liftIO $ js_setSelectionRange n ss se sd
 
 interpretCommand _ _      (TD.App.TodosCommand (k, TD.Todo.RenderCommand)) = void $ runMaybeT $ do
-    (ms, s) <- MaybeT $ use (TD.App._todosModel . at k)
-    let s' = s & TD.Todo._frameNum %~ (+ 1)
-    (TD.App._todosModel . at k) .= Just (ms, s')
+    (ms, s) <- MaybeT $ use (TD.App.model . TD.App.todosModel . at k)
+    let s' = s & TD.Todo.model . TD.Todo.frameNum %~ (+ 1)
+    (TD.App.model . TD.App.todosModel . at k) .= Just (ms, s')
     liftIO . void $ swapMVar ms s' -- ^ so that the render callback can use the latest state
-    let i = TD.Todo.frameNum s'
-        ref = TD.Todo.ref s'
+    let i = s' ^. TD.Todo.model . TD.Todo.frameNum
+        ref = s' ^. TD.Todo.model . TD.Todo.ref
     liftIO $ js_setStateFrameNum ref i -- ^ notify React that the specific component has changed
 
 interpretCommand _ output             (TD.App.TodosCommand (k, TD.Todo.DestroyCommand)) =

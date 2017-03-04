@@ -1,24 +1,25 @@
-{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 
 module Todo.Input
- ( Command(..)
- , Action(..)
- , AsAction(..)
- , Callbacks(..)
- , Model(..)
- , CModel
- , HasModel(..)
- , HasCallbacks(..)
- , mkCallbacks
- , mkMModel
- , window
- , gadget
- ) where
+    ( Command(..)
+    , Action(..)
+    , AsAction(..)
+    , Callbacks(..)
+    , HasCallbacks(..)
+    , mkCallbacks
+    , Model(..)
+    , HasModel(..)
+    , CModel
+    , MModel
+    , mkMModel
+    , window
+    , gadget
+    ) where
 
 import Control.Applicative as A
 import Control.Concurrent.MVar
@@ -105,8 +106,15 @@ makeClassy ''Model
 
 type CModel = (Callbacks, Model)
 
+-- | This might be different per widget
+instance CD.Disposing Model where
+    disposing _ = CD.DisposeNone
+
 instance CD.Disposing CModel where
-    disposing = CD.disposing . fst
+    disposing s = CD.DisposeList
+        [ s ^. callbacks . to CD.disposing
+        , s ^. model . to CD.disposing
+        ]
 
 instance HasCallbacks CModel where
     callbacks = _1
@@ -117,7 +125,10 @@ instance HasModel CModel where
 type MModel = (MVar CModel, CModel)
 
 instance CD.Disposing MModel where
-    disposing = CD.disposing . snd
+    disposing s = CD.DisposeList
+        [ s ^. callbacks . to CD.disposing
+        , s ^. model . to CD.disposing
+        ]
 
 instance HasCallbacks MModel where
     callbacks = _2 . callbacks
@@ -135,25 +146,18 @@ mkCallbacks ms = Callbacks
     <*> (R.mkHandler onChange')
     <*> (R.mkHandler onKeyDown')
 
-mkMModel :: J.JSString -> J.JSString -> F (R.Maker Action) MModel
-mkMModel uid' placeholder' = R.mkMModel mkCallbacks $ \cbs ->
-    (cbs, Model
-        uid'
-        J.nullRef
-        0
-        mempty
-        placeholder'
-        mempty)
+mkMModel :: Model -> F (R.Maker Action) MModel
+mkMModel s = R.mkMModel mkCallbacks $ \cbs -> (cbs, s)
 
 -- | This is used by parent components to render this component
 window :: Monad m => G.WindowT CModel (R.ReactMlT m) ()
 window = do
     s <- ask
     lift $ R.lf R.shimComponent
-        [ ("key",  s ^. _2 . uid . to J.jsval)
-        , ("render", s ^. _1 . onRender . to E.PureJSVal . to J.pToJSVal)
-        , ("ref", s ^. _1 . onRef . to E.PureJSVal . to J.pToJSVal)
-        , ("updated", s ^. _1 . onUpdated . to E.PureJSVal . to J.pToJSVal)
+        [ ("key",  s ^. model . uid . to J.jsval)
+        , ("render", s ^. callbacks . onRender . to E.PureJSVal . to J.pToJSVal)
+        , ("ref", s ^. callbacks . onRef . to E.PureJSVal . to J.pToJSVal)
+        , ("updated", s ^. callbacks . onUpdated . to E.PureJSVal . to J.pToJSVal)
         ]
 
 -- | This is used by the React render callback
@@ -162,11 +166,11 @@ render = do
     s <- ask
     lift $ R.lf (E.strval "input")
                     [ ("className", E.strval "new-todo")
-                    , ("placeholder", s ^. _2 . placeholder . to J.jsval)
-                    , ("value", s ^. _2 . value . to J.jsval)
+                    , ("placeholder", s ^. model . placeholder . to J.jsval)
+                    , ("value", s ^. model . value . to J.jsval)
                     , ("autoFocus", J.pToJSVal True)
-                    , ("onChange", s ^. _1 . onChange . to J.jsval)
-                    , ("onKeyDown", s ^. _1 . onKeyDown . to J.jsval)
+                    , ("onChange", s ^. callbacks . onChange . to J.jsval)
+                    , ("onKeyDown", s ^. callbacks . onKeyDown . to J.jsval)
                     ]
 
 onChange' :: J.JSVal -> MaybeT IO Action

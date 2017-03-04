@@ -1,20 +1,25 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 
 module Todo.Todo
- ( Command(..)
- , Action(..)
- , AsAction(..)
- , Callbacks(..)
- , Model(..)
- , HasModel(..)
- , mkCallbacks
- , mkMModel
- , window
- , gadget
- ) where
+    ( Command(..)
+    , Action(..)
+    , AsAction(..)
+    , Callbacks(..)
+    , HasCallbacks(..)
+    , mkCallbacks
+    , Model(..)
+    , HasModel(..)
+    , CModel
+    , MModel
+    , mkMModel
+    , window
+    , gadget
+    ) where
 
 import Control.Applicative as A
 import Control.Monad.Free.Church
@@ -77,41 +82,71 @@ makeClassyPrisms ''Action
 
 data Callbacks = Callbacks
     -- common widget callbacks
-    { onRender :: J.Callback (IO J.JSVal)
-    , onRef :: J.Callback (J.JSVal -> IO ())
-    , onUpdated :: J.Callback (J.JSVal -> IO ())
+    { _onRender :: J.Callback (IO J.JSVal)
+    , _onRef :: J.Callback (J.JSVal -> IO ())
+    , _onUpdated :: J.Callback (J.JSVal -> IO ())
     -- widget specific callbacks
-    , onInputRef :: J.Callback (J.JSVal -> IO ())
-    , fireToggleComplete :: J.Callback (J.JSVal -> IO ())
-    , fireStartEdit :: J.Callback (J.JSVal -> IO ())
-    , fireDestroy :: J.Callback (J.JSVal -> IO ())
-    , fireCancelEdit :: J.Callback (J.JSVal -> IO ())
-    , onChange :: J.Callback (J.JSVal -> IO ())
-    , onKeyDown :: J.Callback (J.JSVal -> IO ())
+    , _onInputRef :: J.Callback (J.JSVal -> IO ())
+    , _fireToggleComplete :: J.Callback (J.JSVal -> IO ())
+    , _fireStartEdit :: J.Callback (J.JSVal -> IO ())
+    , _fireDestroy :: J.Callback (J.JSVal -> IO ())
+    , _fireCancelEdit :: J.Callback (J.JSVal -> IO ())
+    , _onChange :: J.Callback (J.JSVal -> IO ())
+    , _onKeyDown :: J.Callback (J.JSVal -> IO ())
     } deriving G.Generic
 
 instance CD.Disposing Callbacks
 
+makeClassy ''Callbacks
+
 data Model = Model
     -- common widget model
-    { callbacks :: Callbacks
-    , uid :: J.JSString
-    , ref :: J.JSVal -- ^ ref to react component object
-    , frameNum :: FrameNum -- ^ frameNum is incremented by RenderCommand interpreter
-    , deferredCommands :: M.Map FrameNum (D.DList Command)
+    { _uid :: J.JSString
+    , _ref :: J.JSVal -- ^ ref to react component object
+    , _frameNum :: FrameNum -- ^ frameNum is incremented by RenderCommand interpreter
+    , _deferredCommands :: M.Map FrameNum (D.DList Command)
     -- widget specifc model
-    , inputRef :: J.JSVal
-    , value :: J.JSString
-    , completed :: Bool
-    , editText :: Maybe J.JSString
+    , _inputRef :: J.JSVal
+    , _value :: J.JSString
+    , _completed :: Bool
+    , _editText :: Maybe J.JSString
     }
 
-makeClassy_ ''Model
+makeClassy ''Model
 
+type CModel = (Callbacks, Model)
+
+-- | This might be different per widget
 instance CD.Disposing Model where
-    disposing = CD.disposing . callbacks
+    disposing _ = CD.DisposeNone
 
-mkCallbacks :: MVar Model -> F (R.Maker Action) Callbacks
+instance CD.Disposing CModel where
+    disposing s = CD.DisposeList
+        [ s ^. callbacks . to CD.disposing
+        , s ^. model . to CD.disposing
+        ]
+
+instance HasCallbacks CModel where
+    callbacks = _1
+
+instance HasModel CModel where
+    model = _2
+
+type MModel = (MVar CModel, CModel)
+
+instance CD.Disposing MModel where
+    disposing s = CD.DisposeList
+        [ s ^. callbacks . to CD.disposing
+        , s ^. model . to CD.disposing
+        ]
+
+instance HasCallbacks MModel where
+    callbacks = _2 . callbacks
+
+instance HasModel MModel where
+    model = _2 . model
+
+mkCallbacks :: MVar CModel -> F (R.Maker Action) Callbacks
 mkCallbacks ms = Callbacks
     -- common widget callbacks
     <$> (R.mkRenderer ms render)
@@ -126,30 +161,21 @@ mkCallbacks ms = Callbacks
     <*> (R.mkHandler onChange')
     <*> (R.mkHandler onKeyDown')
 
-mkMModel :: J.JSString -> J.JSString -> F (R.Maker Action) (MVar Model, Model)
-mkMModel uid' str = R.mkMModel mkCallbacks $ \cbs ->
-    Model
-        cbs
-        uid'
-        J.nullRef
-        0
-        mempty
-        J.nullRef
-        str
-        False
-        Nothing
+mkMModel :: Model -> F (R.Maker Action) MModel
+mkMModel s = R.mkMModel mkCallbacks $ \cbs -> (cbs, s)
 
 -- | This is used by parent components to render this component
-window :: Monad m => G.WindowT Model (R.ReactMlT m) ()
+window :: Monad m => G.WindowT CModel (R.ReactMlT m) ()
 window = do
     s <- ask
     lift $ R.lf R.shimComponent
-        [ ("key",  J.jsval $ uid s)
-        , ("render", J.pToJSVal . E.PureJSVal . onRender . callbacks $ s)
-        , ("ref", J.pToJSVal . E.PureJSVal . onRef . callbacks $ s)
-        , ("updated", J.pToJSVal . E.PureJSVal . onUpdated . callbacks $ s) ]
+        [ ("key",  s ^. model . uid . to J.jsval)
+        , ("render", s ^. callbacks . onRender . to E.PureJSVal . to J.pToJSVal)
+        , ("ref", s ^. callbacks . onRef . to E.PureJSVal . to J.pToJSVal)
+        , ("updated", s ^. callbacks . onUpdated . to E.PureJSVal . to J.pToJSVal)
+        ]
 
-render :: Monad m => G.WindowT Model (R.ReactMlT m) ()
+render :: Monad m => G.WindowT CModel (R.ReactMlT m) ()
 render = do
     s <- ask
     lift $ R.bh (E.strval "li") [("className", cns s)] $ do
@@ -159,27 +185,27 @@ render = do
             R.lf (E.strval "input") [ ("key", E.strval "toggle")
                                     , ("className", E.strval "toggle")
                                     , ("type", E.strval "checkbox")
-                                    , ("checked", J.pToJSVal $ completed s)
-                                    , ("onChange", J.jsval $ s ^. _callbacks . to fireToggleComplete)
+                                    , ("checked", s ^. model . completed . to J.pToJSVal)
+                                    , ("onChange", s ^. callbacks . fireToggleComplete . to J.jsval)
                                     ]
             R.bh (E.strval "label")  [ ("key", E.strval "label")
-                                     , ("onDoubleClick", J.jsval $ s ^. _callbacks . to fireStartEdit)
-                                     ] (R.txt $ value s)
+                                     , ("onDoubleClick", s ^. callbacks . fireStartEdit. to J.jsval)
+                                     ] (s ^. model . value . to R.txt)
             R.lf (E.strval "button") [ ("key", E.strval "destroy")
                                      , ("className", E.strval "destroy")
-                                     , ("onClick", J.jsval $ s ^. _callbacks . to fireDestroy)
+                                     , ("onClick", s ^. callbacks . fireDestroy . to J.jsval)
                                      ]
         R.lf (E.strval "input") [ ("key", E.strval "todo-input")
-                                , ("ref", J.jsval $ s ^. _callbacks . to onInputRef)
+                                , ("ref", s ^. callbacks . onInputRef . to J.jsval)
                                 , ("className", E.strval "edit")
-                                , ("value", J.jsval $ fromMaybe J.empty $ editText s)
-                                , ("checked", J.pToJSVal $ completed s)
-                                , ("onBlur", J.jsval $ s ^. _callbacks . to fireCancelEdit)
-                                , ("onChange", J.jsval $ s ^. _callbacks . to onChange)
-                                , ("onKeyDown", J.jsval $ s ^. _callbacks . to onKeyDown)
+                                , ("value", s ^. model . editText . to (fromMaybe J.empty) . to J.jsval)
+                                , ("checked", s ^. model . completed . to J.pToJSVal)
+                                , ("onBlur", s ^. callbacks . fireCancelEdit . to J.jsval)
+                                , ("onChange", s ^. callbacks . onChange . to J.jsval)
+                                , ("onKeyDown", s ^. callbacks . onKeyDown . to J.jsval)
                                 ]
   where
-    cns s = E.classNames [("completed", completed s), ("editing", isJust $ editText s)]
+    cns s = E.classNames [("completed", s ^. model . completed), ("editing", s ^. model . editText . to isJust)]
 
 onInputRef' :: Monad m => J.JSVal -> m Action
 onInputRef' v = pure $ InputRefAction v
@@ -235,7 +261,7 @@ gadget = do
         -- common widget actions
 
         RefAction node -> do
-            _ref .= node
+            ref .= node
             pure mempty
 
         RenderedAction n -> do
@@ -243,31 +269,31 @@ gadget = do
             -- Eg focusing after other rendering changes
             -- All deferred commands with renderSeqNum lower than the rendered SeqNum is
             -- safe to run
-            cmds <- use _deferredCommands
+            cmds <- use deferredCommands
             let (cmds', leftoverCmds) = M.partitionWithKey (\k _ -> k < n) cmds
-            _deferredCommands .= leftoverCmds
+            deferredCommands .= leftoverCmds
             pure . foldMap snd . M.toList $ cmds'
 
         -- widget specific actions
 
         ToggleCompleteAction -> do
-            _completed %= not
+            completed %= not
             pure $ D.singleton RenderCommand
 
         InputRefAction v -> do
-            _inputRef .= v
+            inputRef .= v
             pure mempty
 
         StartEditAction -> do
-            n <- use _inputRef
+            n <- use inputRef
             ret <- runMaybeT $ do
                 n' <- MaybeT $ pure $ J.nullableToMaybe (J.Nullable n)
-                value' <- use _value
-                _editText .= Just value'
+                value' <- use value
+                editText .= Just value'
                 -- Need to delay focusing until after the next render
                 let cmd = FocusNodeCommand n'
-                i <- use _frameNum
-                _deferredCommands %= (M.alter (addCommand cmd) i)
+                i <- use frameNum
+                deferredCommands %= (M.alter (addCommand cmd) i)
                 pure $ D.singleton RenderCommand
 
             maybe (pure mempty) pure ret
@@ -275,23 +301,23 @@ gadget = do
         DestroyAction -> pure $ D.singleton DestroyCommand
 
         CancelEditAction -> do
-            _editText .= Nothing
+            editText .= Nothing
             pure $ D.singleton RenderCommand
 
         ChangeAction n ss se sd str -> do
-            _editText .= Just str
+            editText .= Just str
             -- Need to delay set cursor position until after the next render
             let cmd = SetSelectionCommand n ss se sd
-            i <- use _frameNum
-            _deferredCommands %= (M.alter (addCommand cmd) i)
+            i <- use frameNum
+            deferredCommands %= (M.alter (addCommand cmd) i)
             pure $ D.singleton RenderCommand
 
         SubmitAction -> do
             -- trim the text
-            v <- (fmap J.strip) <$> use _editText
+            v <- (fmap J.strip) <$> use editText
             let v' = fromMaybe J.empty v
-            _value .= v'
-            _editText .= Nothing
+            value .= v'
+            editText .= Nothing
             if J.null v'
                 then pure $ D.singleton DestroyCommand
                 else pure $ D.singleton RenderCommand

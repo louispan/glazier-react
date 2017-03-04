@@ -9,6 +9,7 @@ module Main (main) where
 import Control.Concurrent.MVar
 import Control.Concurrent.STM
 import qualified Control.Disposable as CD
+import Control.Lens
 import Control.Monad.Free.Church
 import Control.Monad.IO.Class
 import Control.Monad.Morph
@@ -74,10 +75,10 @@ foreign import javascript unsafe
 
 appEffect
     :: MonadIO io
-    => MVar TD.App.Model
+    => MVar TD.App.CModel
     -> PC.Output TD.App.Action
     -> PC.Input TD.App.Action
-    -> P.Effect io TD.App.Model
+    -> P.Effect io TD.App.CModel
 appEffect stateMVar output input = do
     s <- liftIO $ readMVar stateMVar
     PL.execStateP s $
@@ -85,22 +86,22 @@ appEffect stateMVar output input = do
         interpretCommandsPipe stateMVar output P.>->
         PP.drain
 
-producerIO :: MonadIO io => PC.Input TD.App.Action -> P.Producer' (D.DList TD.App.Command) (StateT TD.App.Model io) ()
+producerIO :: MonadIO io => PC.Input TD.App.Action -> P.Producer' (D.DList TD.App.Command) (StateT TD.App.CModel io) ()
 producerIO input = hoist (hoist (liftIO . atomically)) (producer input)
 
-producer :: PC.Input TD.App.Action -> P.Producer' (D.DList TD.App.Command) (StateT TD.App.Model STM) ()
-producer input = PM.execInput input (G.runGadgetT TD.App.gadget)
+producer :: PC.Input TD.App.Action -> P.Producer' (D.DList TD.App.Command) (StateT TD.App.CModel STM) ()
+producer input = PM.execInput input (G.runGadgetT (zoom TD.App.model TD.App.gadget))
 
 interpretCommandsPipe
-    :: (MonadState TD.App.Model io, MonadIO io)
-    => MVar TD.App.Model
+    :: (MonadState TD.App.CModel io, MonadIO io)
+    => MVar TD.App.CModel
     -> PC.Output TD.App.Action
     -> P.Pipe (D.DList TD.App.Command) () io ()
 interpretCommandsPipe stateMVar output = PP.mapM (interpretCommands stateMVar output)
 
 interpretCommands
-    :: (Foldable t, MonadState TD.App.Model io, MonadIO io)
-    => MVar TD.App.Model
+    :: (Foldable t, MonadState TD.App.CModel io, MonadIO io)
+    => MVar TD.App.CModel
     -> PC.Output TD.App.Action
     -> t TD.App.Command
     -> io ()
