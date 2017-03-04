@@ -46,7 +46,7 @@ main = do
 
     -- Start the App render
     root <- js_getElementById "root"
-    e <- R.markedElement TD.App.window (s ^. _2) -- FIXME: HasCModel
+    e <- R.markedElement TD.App.window (s ^. TD.App.cModel) -- FIXME: HasCModel
     RD.render (J.pToJSVal e) root
 
     -- Run the gadget effect which reads actions from 'Pipes.Concurrent.Input'
@@ -63,14 +63,6 @@ main = do
 foreign import javascript unsafe
   "$r = document.getElementById($1);"
   js_getElementById :: J.JSString -> IO J.JSVal
-
--- foreign import javascript unsafe
---   "hgr$todo$registry['listen']($1, $2);"
---   js_globalListen :: J.JSString -> J.Callback a -> IO ()
-
--- foreign import javascript unsafe
---   "hgr$todo$registry['shout']($1, $2);"
---   js_globalShout :: J.JSString -> J.JSVal -> IO ()
 
 appEffect
     :: MonadIO io

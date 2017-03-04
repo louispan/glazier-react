@@ -1,9 +1,10 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Todo.Todo
     ( Command(..)
@@ -14,8 +15,10 @@ module Todo.Todo
     , mkCallbacks
     , Model(..)
     , HasModel(..)
-    , CModel
-    , MModel
+    , CModel(..)
+    , HasCModel(..)
+    , MModel(..)
+    , HasMModel(..)
     , mkMModel
     , window
     , gadget
@@ -114,11 +117,20 @@ data Model = Model
 
 makeClassy ''Model
 
-type CModel = (Callbacks, Model)
-
 -- | This might be different per widget
 instance CD.Disposing Model where
     disposing _ = CD.DisposeNone
+
+newtype CModel = CModel (Callbacks, Model)
+
+makeClassy ''CModel
+makeWrapped ''CModel
+
+instance HasCallbacks CModel where
+    callbacks = _Wrapped' . _1
+
+instance HasModel CModel where
+    model = _Wrapped' . _2
 
 instance CD.Disposing CModel where
     disposing s = CD.DisposeList
@@ -126,25 +138,25 @@ instance CD.Disposing CModel where
         , s ^. model . to CD.disposing
         ]
 
-instance HasCallbacks CModel where
-    callbacks = _1
+newtype MModel = MModel (MVar CModel, CModel)
 
-instance HasModel CModel where
-    model = _2
+makeClassy ''MModel
+makeWrapped ''MModel
 
-type MModel = (MVar CModel, CModel)
+instance HasCModel MModel where
+    cModel = _Wrapped' . _2
+
+instance HasCallbacks MModel where
+    callbacks = cModel . callbacks
+
+instance HasModel MModel where
+    model = cModel . model
 
 instance CD.Disposing MModel where
     disposing s = CD.DisposeList
         [ s ^. callbacks . to CD.disposing
         , s ^. model . to CD.disposing
         ]
-
-instance HasCallbacks MModel where
-    callbacks = _2 . callbacks
-
-instance HasModel MModel where
-    model = _2 . model
 
 mkCallbacks :: MVar CModel -> F (R.Maker Action) Callbacks
 mkCallbacks ms = Callbacks
@@ -162,7 +174,7 @@ mkCallbacks ms = Callbacks
     <*> (R.mkHandler onKeyDown')
 
 mkMModel :: Model -> F (R.Maker Action) MModel
-mkMModel s = R.mkMModel mkCallbacks $ \cbs -> (cbs, s)
+mkMModel s = MModel <$> (R.mkMModel mkCallbacks $ \cbs -> CModel (cbs, s))
 
 -- | This is used by parent components to render this component
 window :: Monad m => G.WindowT CModel (R.ReactMlT m) ()

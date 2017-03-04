@@ -1,10 +1,11 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Todo.App
     ( TodosKey
@@ -20,8 +21,10 @@ module Todo.App
     , mkCallbacks
     , Model(..)
     , HasModel(..)
-    , CModel
-    , MModel
+    , CModel(..)
+    , HasCModel(..)
+    , MModel(..)
+    , HasMModel(..)
     , mkMModel
     , window
     , gadget
@@ -114,13 +117,11 @@ data Model = Model
     , _deferredCommands :: M.Map FrameNum (D.DList Command)
     -- TodoMVC specifc model
     , _todoSeqNum :: TodosKey
-    , _todoInput :: (MVar TD.Input.CModel, TD.Input.CModel)
+    , _todoInput :: TD.Input.MModel
     , _todosModel :: TodosModel'
     }
 
 makeClassy ''Model
-
-type CModel = (Callbacks, Model)
 
 -- | This might be different per widget
 instance CD.Disposing Model where
@@ -128,31 +129,42 @@ instance CD.Disposing Model where
         CD.disposing (s ^. todoInput)
         : s ^. todosModel . to (fmap (CD.disposing . snd) . M.toList)
 
+newtype CModel = CModel (Callbacks, Model)
+
+makeClassy ''CModel
+makeWrapped ''CModel
+
+instance HasCallbacks CModel where
+    callbacks = _Wrapped' . _1
+
+instance HasModel CModel where
+    model = _Wrapped' . _2
+
 instance CD.Disposing CModel where
     disposing s = CD.DisposeList
         [ s ^. callbacks . to CD.disposing
         , s ^. model . to CD.disposing
         ]
 
-instance HasCallbacks CModel where
-    callbacks = _1
+newtype MModel = MModel (MVar CModel, CModel)
 
-instance HasModel CModel where
-    model = _2
+makeClassy ''MModel
+makeWrapped ''MModel
 
-type MModel = (MVar CModel, CModel)
+instance HasCModel MModel where
+    cModel = _Wrapped' . _2
+
+instance HasCallbacks MModel where
+    callbacks = cModel . callbacks
+
+instance HasModel MModel where
+    model = cModel . model
 
 instance CD.Disposing MModel where
     disposing s = CD.DisposeList
         [ s ^. callbacks . to CD.disposing
         , s ^. model . to CD.disposing
         ]
-
-instance HasCallbacks MModel where
-    callbacks = _2 . callbacks
-
-instance HasModel MModel where
-    model = _2 . model
 
 mkCallbacks :: MVar CModel -> F (R.Maker Action) Callbacks
 mkCallbacks ms = Callbacks
@@ -173,14 +185,14 @@ mkMModel uid' = do
             mempty
             "What needs to be done?"
             J.empty
-    R.mkMModel mkCallbacks $ \cbs -> (cbs, Model
+    MModel <$> (R.mkMModel mkCallbacks $ \cbs -> CModel (cbs, Model
         uid'
         J.nullRef
         0
         mempty
         0
         minput
-        mempty)
+        mempty))
 
 hasActiveTodos :: TodosModel' -> Bool
 hasActiveTodos = not . null . filter (not . TD.Todo._completed) . fmap (view TD.Todo.model . snd) . M.toList
@@ -230,7 +242,7 @@ mainWindow = do
 
 todoListWindow :: Monad m => G.WindowT CModel (R.ReactMlT m) ()
 todoListWindow = do
-    todos <- fmap (snd . snd) . M.toList <$> view todosModel -- FIXME: HasCModel ?!
+    todos <- fmap (view TD.Todo.cModel . snd) . M.toList <$> view todosModel
     lift $ R.bh (E.strval "ul") [ ("key", E.strval "todo-list")
                                 , ("className", E.strval "todo-list")
                                 ] $
@@ -270,7 +282,7 @@ appGadget = do
             -- queue up callbacks to be released after rerendering
             ts <- use todosModel
             ret <- runMaybeT $ do
-                (_, todoModel) <- MaybeT $ pure $ M.lookup k ts
+                TD.Todo.MModel (_, todoModel) <- MaybeT $ pure $ M.lookup k ts
                 let junk = CD.disposing todoModel
                 i <- use frameNum
                 deferredCommands %= (M.alter (addCommand $ DisposeCommand junk) i)
@@ -284,7 +296,7 @@ appGadget = do
             n <- use todoSeqNum
             todoSeqNum %= (+ 1)
             pure $ D.singleton $ MakerCommand $ do
-                (ms, s) <- hoistF (R.mapAction $ \act -> TodosAction (n, act)) $
+                ms <- hoistF (R.mapAction $ \act -> TodosAction (n, act)) $
                     TD.Todo.mkMModel $ TD.Todo.Model
                         (J.pack . show $ n)
                         J.nullRef
@@ -294,7 +306,7 @@ appGadget = do
                         str
                         False
                         Nothing
-                pure $ AddNewTodoAction n (ms, s)
+                pure $ AddNewTodoAction n ms
 
         AddNewTodoAction n v -> do
             todosModel %= M.insert n v
@@ -311,16 +323,16 @@ appGadget = do
         :: Bool
         -> D.DList Command
         -> TodosKey
-        -> (a, TD.Todo.CModel)
-        -> (D.DList Command, (a, TD.Todo.CModel))
-    toggleCompleteAll b cmds k (a, s) =
+        -> TD.Todo.MModel
+        -> (D.DList Command, TD.Todo.MModel)
+    toggleCompleteAll b cmds k (TD.Todo.MModel (a, s)) =
         if (s ^. (TD.Todo.model . TD.Todo.completed) /= b)
             then ( cmds `D.snoc` TodosCommand (k, TD.Todo.RenderCommand)
-                 , (a, s & TD.Todo.model . TD.Todo.completed .~ b))
-            else (cmds, (a, s))
+                 , TD.Todo.MModel (a, s & TD.Todo.model . TD.Todo.completed .~ b))
+            else (cmds, TD.Todo.MModel (a, s))
 
 inputWindow :: Monad m => G.WindowT CModel (R.ReactMlT m) ()
-inputWindow = magnify (todoInput . _2) TD.Input.window -- HasCModel
+inputWindow = magnify (todoInput . TD.Input.cModel) TD.Input.window
 
 inputGadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
 inputGadget = fmap InputCommand <$> zoom (todoInput . TD.Input.model) (magnify _InputAction TD.Input.gadget)
@@ -332,13 +344,13 @@ todosGadget = do
     x <- get
     case M.lookup k x of
         Nothing -> pure mempty
-        Just (mcs, cs) -> do
+        Just (TD.Todo.MModel (mcs, cs)) -> do
             -- run the todo gadget logic
             let s = cs ^. TD.Todo.model
             (cmds, s') <- lift $ view G._GadgetT TD.Todo.gadget a s
             let cs' = cs & TD.Todo.model .~ s'
             -- replace the todo state in the map
-            put $ M.insert k (mcs, cs') x
+            put $ M.insert k (TD.Todo.MModel (mcs, cs')) x
             -- annotate cmd with the key
             pure $ (\cmd -> (k, cmd)) <$> cmds
 
