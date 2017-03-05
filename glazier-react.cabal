@@ -19,7 +19,8 @@ library
   hs-source-dirs:      src
   js-sources:          jsbits/react.js
                        jsbits/registry.js
-  exposed-modules:     Glazier.React.Command.Run
+  exposed-modules:     Glazier.React.Command
+                       Glazier.React.Command.Run
                        Glazier.React.Component
                        Glazier.React.Event
                        Glazier.React.Element

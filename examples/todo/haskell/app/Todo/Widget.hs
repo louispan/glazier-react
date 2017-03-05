@@ -1,11 +1,15 @@
 {-# LANGUAGE OverloadedStrings #-}
+
 module Todo.Widget where
 
 import Control.Applicative as A
+import Control.Lens
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
+import Control.Monad.State.Strict
 import qualified GHCJS.Extras as E
 import qualified GHCJS.Marshal as J
+import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import qualified Glazier.React.Event as R
 

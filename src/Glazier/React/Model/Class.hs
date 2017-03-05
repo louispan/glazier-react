@@ -14,4 +14,4 @@ class HasMModel c cm | c -> cm where
 class HasCModel c cm | c -> cm where
     cModel :: Lens' c cm
 
-class (HasMModel c cm, HasCModel c cm) => HasSuperModel c cm | c -> cm
+-- class (HasMModel c cm, HasCModel c cm) => HasSuperModel c cm | c -> cm

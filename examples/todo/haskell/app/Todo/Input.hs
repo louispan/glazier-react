@@ -83,6 +83,7 @@ makeClassyPrisms ''Action
 makeClassy ''Callbacks
 makeClassy ''Model
 instance CD.Disposing Callbacks
+-- CModel
 instance R.HasCModel CModel CModel where
     cModel = id
 instance HasCallbacks CModel where
@@ -94,8 +95,11 @@ instance CD.Disposing CModel where
         [ s ^. callbacks . to CD.disposing
         , s ^. model . to CD.disposing
         ]
+-- MModel
 instance R.HasMModel MModel CModel where
     mModel = id
+-- SuperModel
+instance R.HasSuperModel SuperModel CModel
 instance R.HasMModel SuperModel CModel where
     mModel = _1
 instance R.HasCModel SuperModel CModel where
