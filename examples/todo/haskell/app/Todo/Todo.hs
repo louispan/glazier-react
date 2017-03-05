@@ -190,10 +190,10 @@ window :: Monad m => G.WindowT CModel (R.ReactMlT m) ()
 window = do
     s <- ask
     lift $ R.lf R.shimComponent
-        [ ("key",  s ^. model . uid . to J.jsval)
-        , ("render", s ^. callbacks . onRender . to E.PureJSVal . to J.pToJSVal)
-        , ("ref", s ^. callbacks . onComponentRef . to E.PureJSVal . to J.pToJSVal)
-        , ("componentDidUpdate", s ^. callbacks . onComponentDidUpdate . to E.PureJSVal . to J.pToJSVal)
+        [ ("key",  s ^. uid . to J.jsval)
+        , ("render", s ^. onRender . to E.PureJSVal . to J.pToJSVal)
+        , ("ref", s ^. onComponentRef . to E.PureJSVal . to J.pToJSVal)
+        , ("componentDidUpdate", s ^. onComponentDidUpdate . to E.PureJSVal . to J.pToJSVal)
         ]
 
 render :: Monad m => G.WindowT CModel (R.ReactMlT m) ()
@@ -206,27 +206,27 @@ render = do
             R.lf (E.strval "input") [ ("key", E.strval "toggle")
                                     , ("className", E.strval "toggle")
                                     , ("type", E.strval "checkbox")
-                                    , ("checked", s ^. model . completed . to J.pToJSVal)
-                                    , ("onChange", s ^. callbacks . fireToggleComplete . to J.jsval)
+                                    , ("checked", s ^. completed . to J.pToJSVal)
+                                    , ("onChange", s ^. fireToggleComplete . to J.jsval)
                                     ]
             R.bh (E.strval "label")  [ ("key", E.strval "label")
-                                     , ("onDoubleClick", s ^. callbacks . fireStartEdit. to J.jsval)
-                                     ] (s ^. model . value . to R.txt)
+                                     , ("onDoubleClick", s ^. fireStartEdit. to J.jsval)
+                                     ] (s ^. value . to R.txt)
             R.lf (E.strval "button") [ ("key", E.strval "destroy")
                                      , ("className", E.strval "destroy")
-                                     , ("onClick", s ^. callbacks . fireDestroy . to J.jsval)
+                                     , ("onClick", s ^. fireDestroy . to J.jsval)
                                      ]
         -- For uncontrolled components, we need to generate a new key per render
         -- in for react to use the new defaultValue
         R.lf (E.strval "input") [ ("key", J.jsval $
-                                          (s ^. model . uid) `mappend`
-                                          (s ^. model . frameNum . to show . to J.pack))
-                                , ("ref", s ^. callbacks . onEditRef . to J.jsval)
+                                          (s ^. uid) `mappend`
+                                          (s ^.  frameNum . to show . to J.pack))
+                                , ("ref", s ^.  onEditRef . to J.jsval)
                                 , ("className", E.strval "edit")
-                                , ("defaultValue", s ^. model . value . to J.jsval)
-                                , ("checked", s ^. model . completed . to J.pToJSVal)
-                                , ("onBlur", s ^. callbacks . fireCancelEdit . to J.jsval)
-                                , ("onKeyDown", s ^. callbacks . onEditKeyDown . to J.jsval)
+                                , ("defaultValue", s ^. value . to J.jsval)
+                                , ("checked", s ^. completed . to J.pToJSVal)
+                                , ("onBlur", s ^. fireCancelEdit . to J.jsval)
+                                , ("onKeyDown", s ^. onEditKeyDown . to J.jsval)
                                 ]
   where
     cns s = R.classNames [("completed", s ^. completed), ("editing", s ^. editing)]
@@ -304,10 +304,11 @@ gadget = do
                 then pure $ D.singleton DestroyCommand
                 else D.singleton <$> renderCmd
 
+-- | Just change the state to something different so the React pureComponent will call render()
 renderCmd :: Monad m => G.GadgetT Action SuperModel m Command
 renderCmd = do
-    model . frameNum %= (+ 1)
-    i <- J.pToJSVal <$> use (model . frameNum)
+    frameNum %= (\i -> (i + 1) `mod` 100)
+    i <- J.pToJSVal <$> use frameNum
     r <- use (model . componentRef)
     sm <- use superModel
     pure $ RenderCommand sm [("frameNum", i)] r

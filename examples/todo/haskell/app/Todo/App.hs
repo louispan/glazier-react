@@ -219,10 +219,10 @@ window :: Monad m => G.WindowT CModel (R.ReactMlT m) ()
 window = do
     s <- ask
     lift $ R.lf R.shimComponent
-        [ ("key",  s ^. model . uid . to J.jsval)
-        , ("render", s ^. callbacks . onRender . to E.PureJSVal . to J.pToJSVal)
-        , ("ref", s ^. callbacks . onComponentRef . to E.PureJSVal . to J.pToJSVal)
-        , ("componentDidUpdate", s ^. callbacks . onComponentDidUpdate . to E.PureJSVal . to J.pToJSVal)
+        [ ("key",  s ^. uid . to J.jsval)
+        , ("render", s ^. onRender . to E.PureJSVal . to J.pToJSVal)
+        , ("ref", s ^. onComponentRef . to E.PureJSVal . to J.pToJSVal)
+        , ("componentDidUpdate", s ^. onComponentDidUpdate . to E.PureJSVal . to J.pToJSVal)
         ]
 
 -- | This is used by the React render callback
@@ -250,7 +250,7 @@ mainWindow = do
                         , ("className", E.strval "toggle-all")
                         , ("type", E.strval "checkbox")
                         , ("checked", s ^. todosModel . to (J.pToJSVal . not . hasActiveTodos))
-                        , ("onChange", s ^. callbacks . fireToggleCompleteAll . to J.jsval)
+                        , ("onChange", s ^. fireToggleCompleteAll . to J.jsval)
                         ]
             view G._WindowT todoListWindow s
 
@@ -272,38 +272,38 @@ appGadget = do
     a <- ask
     case a of
         ComponentRefAction node -> do
-            model . componentRef .= node
+            componentRef .= node
             pure mempty
 
         ComponentDidUpdateAction -> do
             -- Run delayed commands that need to wait until frame is re-rendered
             -- Eg focusing after other rendering changes
-            cmds <- use (model . deferredCommands)
-            (model . deferredCommands) .= mempty
+            cmds <- use deferredCommands
+            deferredCommands .= mempty
             pure cmds
 
         ToggleCompleteAllAction -> do
-            s <- use (model . todosModel)
+            s <- use todosModel
             let b = hasActiveTodos s
             let acts = M.foldMapWithKey (toggleCompleteAll b) s
             pure $ D.singleton $ SendActionsCommand (D.toList acts)
 
         DestroyTodoAction k -> do
             -- queue up callbacks to be released after rerendering
-            ts <- use (model . todosModel)
+            ts <- use todosModel
             ret <- runMaybeT $ do
                 (_, todoModel) <- MaybeT $ pure $ M.lookup k ts
                 let junk = CD.disposing todoModel
-                (model . deferredCommands) %= (`D.snoc` DisposeCommand junk)
+                deferredCommands %= (`D.snoc` DisposeCommand junk)
                 -- Remove the todo from the model
-                (model . todosModel) %= M.delete k
+                todosModel %= M.delete k
                 -- on re-render the todo Shim will not get rendered and will be removed by react
                 lift $ D.singleton <$> renderCmd
             maybe (pure mempty) pure ret
 
         RequestNewTodoAction str -> do
-            n <- use (model . todoSeqNum)
-            (model . todoSeqNum) %= (+ 1)
+            n <- use todoSeqNum
+            todoSeqNum %= (+ 1)
             pure $ D.singleton $ MakerCommand $ do
                 ms <- hoistF (R.mapAction $ \act -> TodosAction (n, act)) $
                     TD.Todo.mkSuperModel $ TD.Todo.Model
@@ -318,7 +318,7 @@ appGadget = do
                 pure $ AddNewTodoAction n ms
 
         AddNewTodoAction n v -> do
-            (model . todosModel) %= M.insert n v
+            todosModel %= M.insert n v
             D.singleton <$> renderCmd
 
         -- these will be handled by monoidally appending other gadgets
@@ -359,10 +359,11 @@ todosGadget = do
 todosGadget' :: Monad m => G.GadgetT Action SuperModel m (D.DList Command)
 todosGadget' = fmap TodosCommand <$> zoom todosModel (magnify _TodosAction todosGadget)
 
+-- | Just change the state to something different so the React pureComponent will call render()
 renderCmd :: Monad m => G.GadgetT Action SuperModel m Command
 renderCmd = do
-    model . frameNum %= (+ 1)
-    i <- J.pToJSVal <$> use (model . frameNum)
-    r <- use (model . componentRef)
+    frameNum %= (\i -> (i + 1) `mod` 100)
+    i <- J.pToJSVal <$> use frameNum
+    r <- use componentRef
     sm <- use superModel
     pure $ RenderCommand sm [("frameNum", i)] r

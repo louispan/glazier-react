@@ -156,8 +156,8 @@ window :: Monad m => G.WindowT CModel (R.ReactMlT m) ()
 window = do
     s <- ask
     lift $ R.lf R.shimComponent
-        [ ("key",  s ^. model . uid . to J.jsval)
-        , ("render", s ^. callbacks . onRender . to E.PureJSVal . to J.pToJSVal)
+        [ ("key",  s ^. uid . to J.jsval)
+        , ("render", s ^. onRender . to E.PureJSVal . to J.pToJSVal)
         ]
 
 -- | This is used by the React render callback
@@ -168,13 +168,13 @@ render = do
     -- in for react to use the new defaultValue
     lift $ R.lf (E.strval "input")
                     [ ("key", J.jsval $
-                                          (s ^. model . uid) `mappend`
-                                          (s ^. model . defaultValue))
+                                          (s ^. uid) `mappend`
+                                          (s ^. defaultValue))
                     , ("className", E.strval "new-todo")
-                    , ("placeholder", s ^. model . placeholder . to J.jsval)
-                    , ("defaultValue", s ^. model . defaultValue . to J.jsval)
+                    , ("placeholder", s ^. placeholder . to J.jsval)
+                    , ("defaultValue", s ^. defaultValue . to J.jsval)
                     , ("autoFocus", J.pToJSVal True)
-                    , ("onKeyDown", s ^. callbacks . onKeyDown . to J.jsval)
+                    , ("onKeyDown", s ^. onKeyDown . to J.jsval)
                     ]
 
 onKeyDown' :: J.JSVal -> MaybeT IO [Action]
