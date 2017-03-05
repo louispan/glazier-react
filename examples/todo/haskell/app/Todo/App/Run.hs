@@ -9,7 +9,6 @@ import Control.Concurrent.STM
 import qualified Control.Disposable as CD
 import Control.Monad.Free.Church
 import Control.Monad.State.Strict
-import qualified Data.JSString as J
 import qualified GHCJS.Extras as E
 import qualified GHCJS.Types as J
 import qualified Glazier.React.Command.Run as R

@@ -313,7 +313,7 @@ appGadget = do
                         J.nullRef
                         str
                         False
-                        Nothing
+                        False
                 pure $ AddNewTodoAction n ms
 
         AddNewTodoAction n v -> do

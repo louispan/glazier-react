@@ -82,7 +82,7 @@ data Model = Model
     , _editRef :: J.JSVal
     , _value :: J.JSString
     , _completed :: Bool
-    , _editText :: Maybe J.JSString
+    , _editing :: Bool
     }
 
 data Callbacks = Callbacks
@@ -215,16 +215,18 @@ render = do
                                      , ("className", E.strval "destroy")
                                      , ("onClick", s ^. callbacks . fireDestroy . to J.jsval)
                                      ]
-        R.lf (E.strval "input") [ ("key", E.strval "todo-input")
+        -- For uncontrolled components, we need to generate a new key per render
+        -- in for react to use the new defaultValue
+        R.lf (E.strval "input") [ ("key", s ^. model . frameNum . to show . to J.pack . to J.jsval)
                                 , ("ref", s ^. callbacks . onEditRef . to J.jsval)
                                 , ("className", E.strval "edit")
-                                , ("defaultValue", s ^. model . editText . to (fromMaybe J.empty) . to J.jsval)
+                                , ("defaultValue", s ^. model . value . to J.jsval)
                                 , ("checked", s ^. model . completed . to J.pToJSVal)
                                 , ("onBlur", s ^. callbacks . fireCancelEdit . to J.jsval)
                                 , ("onKeyDown", s ^. callbacks . onEditKeyDown . to J.jsval)
                                 ]
   where
-    cns s = R.classNames [("completed", s ^. model . completed), ("editing", s ^. model . editText . to isJust)]
+    cns s = R.classNames [("completed", s ^. completed), ("editing", s ^. editing)]
 
 onEditKeyDown' :: J.JSVal -> MaybeT IO [Action]
 onEditKeyDown' = R.eventHandlerM TD.onInputKeyDown goLazy
@@ -241,53 +243,52 @@ gadget = do
         -- common widget actions
 
         ComponentRefAction node -> do
-            model . componentRef .= node
+            componentRef .= node
             pure mempty
 
         ComponentDidUpdateAction -> do
             -- Run delayed commands that need to wait until frame is re-rendered
             -- Eg focusing after other rendering changes
             cmds <- use deferredCommands
-            model . deferredCommands .= mempty
+            deferredCommands .= mempty
             pure cmds
 
         SendCommandAction cmd -> pure $ D.singleton cmd
 
         -- widget specific actions
         EditRefAction v -> do
-            model . editRef .= v
+            editRef .= v
             pure mempty
 
         ToggleCompletedAction -> do
-            model . completed %= not
+            completed %= not
             D.singleton <$> renderCmd
 
         SetCompletedAction b -> do
-            model . completed .= b
+            completed .= b
             D.singleton <$> renderCmd
 
         StartEditAction -> do
             input <- use editRef
             ret <- runMaybeT $ do
                 input' <- MaybeT $ pure $ J.nullableToMaybe (J.Nullable input)
-                value' <- use (model . value)
-                editText .= Just value'
+                editing .= True
                 -- Need to delay focusing until after the next render
-                model . deferredCommands %= (`D.snoc` FocusNodeCommand input')
+                deferredCommands %= (`D.snoc` FocusNodeCommand input')
                 lift $ D.singleton <$> renderCmd
             maybe (pure mempty) pure ret
 
         DestroyAction -> pure $ D.singleton DestroyCommand
 
         CancelEditAction -> do
-            model . editText .= Nothing
+            editing .= False
             D.singleton <$> renderCmd
 
         SubmitAction v -> do
             -- trim the text
             let v' = J.strip v
-            model . value .= v'
-            model . editText .= Nothing
+            value .= v'
+            editing .= False
             if J.null v'
                 then pure $ D.singleton DestroyCommand
                 else D.singleton <$> renderCmd
