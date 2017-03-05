@@ -24,6 +24,8 @@ foreign import javascript unsafe
   "if ($1 && $1['focus']) { $1['focus'](); }"
   js_focus :: J.JSVal -> IO ()
 
+
+-- FIXME: Is it possible to split this out for individual gadgets?
 -- | Evaluate commands from gadgets here
 runCommand
     :: PC.Output TD.App.Action

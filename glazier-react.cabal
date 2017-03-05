@@ -25,6 +25,7 @@ library
                        Glazier.React.Element
                        Glazier.React.Maker
                        Glazier.React.Maker.Run
+                       Glazier.React.Model.Class
                        Glazier.React.Markup
                        Glazier.React.ReactDOM
                        Glazier.React.Util

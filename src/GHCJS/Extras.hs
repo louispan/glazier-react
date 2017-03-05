@@ -1,4 +1,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+
+-- FIXME: Rename and move to Javascript.Extras
 module GHCJS.Extras
     ( strval
     , Property

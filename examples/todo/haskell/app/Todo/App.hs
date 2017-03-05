@@ -22,11 +22,8 @@ module Todo.App
     , Model(..)
     , HasModel(..)
     , CModel
-    , HasCModel(..)
     , MModel
-    , HasMModel(..)
     , SuperModel
-    , HasSuperModel(..)
     , mkSuperModel
     , window
     , gadget
@@ -54,6 +51,7 @@ import qualified Glazier as G
 import qualified Glazier.React.Component as R
 import qualified Glazier.React.Markup as R
 import qualified Glazier.React.Maker as R
+import qualified Glazier.React.Model.Class as R
 import qualified Todo.Input as TD.Input
 import qualified Todo.Todo as TD.Todo
 
@@ -116,84 +114,53 @@ data Callbacks = Callbacks
     , _fireToggleCompleteAll :: J.Callback (J.JSVal -> IO ())
     } deriving (G.Generic)
 
+
+----------------------------------------------------------
+-- The following should be the same per widget
 -- | Callbacks and pure state
 type CModel = (Callbacks, Model)
-
 -- | Mutable model for rendering callback
 type MModel = MVar CModel
-
 -- | Contains MModel and CModel
 type SuperModel = (MModel, CModel)
-
 makeClassyPrisms ''Action
-
 makeClassy ''Callbacks
-
 makeClassy ''Model
-
 instance CD.Disposing Callbacks
+instance R.HasCModel CModel CModel where
+    cModel = id
+instance HasCallbacks CModel where
+    callbacks = _1
+instance HasModel CModel where
+    model = _2
+instance CD.Disposing CModel where
+    disposing s = CD.DisposeList
+        [ s ^. callbacks . to CD.disposing
+        , s ^. model . to CD.disposing
+        ]
+instance R.HasMModel MModel CModel where
+    mModel = id
+instance R.HasMModel SuperModel CModel where
+    mModel = _1
+instance R.HasCModel SuperModel CModel where
+    cModel = _2
+instance HasCallbacks SuperModel where
+    callbacks = R.cModel . callbacks
+instance HasModel SuperModel where
+    model = R.cModel . model
+instance CD.Disposing SuperModel where
+    disposing s = CD.DisposeList
+        [ s ^. callbacks . to CD.disposing
+        , s ^. model . to CD.disposing
+        ]
+-- End same code per widget
+----------------------------------------------------------
 
 -- | This might be different per widget
 instance CD.Disposing Model where
     disposing s = CD.DisposeList $
         CD.disposing (s ^. todoInput)
         : foldr ((:) . CD.disposing) [] (s ^. todosModel)
-
-class HasCModel s where
-    cModel :: Lens' s CModel
-
-instance HasCModel CModel where
-    cModel = id
-
-instance HasCallbacks CModel where
-    callbacks = _1
-
-instance HasModel CModel where
-    model = _2
-
-instance CD.Disposing CModel where
-    disposing s = CD.DisposeList
-        [ s ^. callbacks . to CD.disposing
-        , s ^. model . to CD.disposing
-        ]
-class HasMModel s where
-    mModel :: Lens' s MModel
-
-instance HasMModel MModel where
-    mModel = id
-
-class HasSuperModel s where
-    superModel :: Lens' s SuperModel
-
-instance HasSuperModel SuperModel where
-  superModel = id
-
-instance HasMModel SuperModel where
-    mModel = _1
-
-instance HasCModel SuperModel where
-    cModel = _2
-
-instance HasCallbacks SuperModel where
-    callbacks = cModel . callbacks
-
-instance HasModel SuperModel where
-    model = cModel . model
-
-instance CD.Disposing SuperModel where
-    disposing s = CD.DisposeList
-        [ s ^. callbacks . to CD.disposing
-        , s ^. model . to CD.disposing
-        ]
-
-mkCallbacks :: MVar CModel -> F (R.Maker Action) Callbacks
-mkCallbacks ms = Callbacks
-    -- common widget callbacks
-    <$> (R.mkRenderer ms (const render))
-    <*> (R.mkHandler $ pure . pure . ComponentRefAction)
-    <*> (R.mkHandler $ pure . pure . const ComponentDidUpdateAction)
-    -- widget specific callbacks
-    <*> (R.mkHandler $ pure . pure . const ToggleCompleteAllAction)
 
 mkSuperModel :: J.JSString -> F (R.Maker Action) SuperModel
 mkSuperModel uid' = do
@@ -210,6 +177,18 @@ mkSuperModel uid' = do
         0
         minput
         mempty)
+
+-- End similar code per widget
+----------------------------------------------------------
+
+mkCallbacks :: MVar CModel -> F (R.Maker Action) Callbacks
+mkCallbacks ms = Callbacks
+    -- common widget callbacks
+    <$> (R.mkRenderer ms (const render))
+    <*> (R.mkHandler $ pure . pure . ComponentRefAction)
+    <*> (R.mkHandler $ pure . pure . const ComponentDidUpdateAction)
+    -- widget specific callbacks
+    <*> (R.mkHandler $ pure . pure . const ToggleCompleteAllAction)
 
 hasActiveTodos :: TodosModel' -> Bool
 hasActiveTodos = getAny . foldMap (view (TD.Todo.model . TD.Todo.completed . to not . to Any))
@@ -256,7 +235,7 @@ mainWindow = do
 
 todoListWindow :: Monad m => G.WindowT CModel (R.ReactMlT m) ()
 todoListWindow = do
-    todos <- fmap (view TD.Todo.cModel . snd) . M.toList <$> view todosModel
+    todos <- fmap (view R.cModel . snd) . M.toList <$> view todosModel
     lift $ R.bh (E.strval "ul") [ ("key", E.strval "todo-list")
                                 , ("className", E.strval "todo-list")
                                 ] $
@@ -336,7 +315,7 @@ appGadget = do
             else mempty
 
 inputWindow :: Monad m => G.WindowT CModel (R.ReactMlT m) ()
-inputWindow = magnify (todoInput . TD.Input.cModel) TD.Input.window
+inputWindow = magnify (todoInput . R.cModel) TD.Input.window
 
 inputGadget :: Monad m => G.GadgetT Action SuperModel m (D.DList Command)
 inputGadget = fmap InputCommand <$> zoom todoInput (magnify _InputAction TD.Input.gadget)
@@ -365,5 +344,5 @@ renderCmd = do
     frameNum %= (\i -> (i + 1) `mod` 100)
     i <- J.pToJSVal <$> use frameNum
     r <- use componentRef
-    sm <- use superModel
+    sm <- get
     pure $ RenderCommand sm [("frameNum", i)] r

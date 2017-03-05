@@ -17,25 +17,23 @@ module Todo.Todo
     , Model(..)
     , HasModel(..)
     , CModel
-    , HasCModel(..)
     , MModel
-    , HasMModel(..)
     , SuperModel
-    , HasSuperModel(..)
     , mkSuperModel
     , window
     , gadget
     ) where
 
-import Control.Monad.Free.Church
 import Control.Concurrent.MVar
 import qualified Control.Disposable as CD
 import Control.Lens
+import Control.Monad.Free.Church
 import Control.Monad.Reader
+import Control.Monad.State.Strict
 import Control.Monad.Trans.Maybe
 import qualified Data.DList as D
-import qualified Data.JSString as J
 import Data.Foldable
+import qualified Data.JSString as J
 import qualified GHC.Generics as G
 import qualified GHCJS.Extras as E
 import qualified GHCJS.Foreign.Callback as J
@@ -47,6 +45,7 @@ import qualified Glazier.React.Component as R
 import qualified Glazier.React.Event as R
 import qualified Glazier.React.Maker as R
 import qualified Glazier.React.Markup as R
+import qualified Glazier.React.Model.Class as R
 import qualified Glazier.React.Util as R
 import qualified Todo.Widget as TD
 
@@ -100,73 +99,56 @@ data Callbacks = Callbacks
     , _onEditKeyDown :: J.Callback (J.JSVal -> IO ())
     } deriving G.Generic
 
+----------------------------------------------------------
+-- The following should be the same per widget
 -- | Callbacks and pure state
 type CModel = (Callbacks, Model)
-
 -- | Mutable model for rendering callback
 type MModel = MVar CModel
-
 -- | Contains MModel and CModel
 type SuperModel = (MModel, CModel)
-
 makeClassyPrisms ''Action
-
-instance CD.Disposing Callbacks
-
 makeClassy ''Callbacks
-
 makeClassy ''Model
-
--- | This might be different per widget
-instance CD.Disposing Model where
-    disposing _ = CD.DisposeNone
-
-class HasCModel s where
-    cModel :: Lens' s CModel
-
-instance HasCModel CModel where
+instance CD.Disposing Callbacks
+instance R.HasCModel CModel CModel where
     cModel = id
-
 instance HasCallbacks CModel where
     callbacks = _1
-
 instance HasModel CModel where
     model = _2
-
 instance CD.Disposing CModel where
     disposing s = CD.DisposeList
         [ s ^. callbacks . to CD.disposing
         , s ^. model . to CD.disposing
         ]
-class HasMModel s where
-    mModel :: Lens' s MModel
-
-instance HasMModel MModel where
+instance R.HasMModel MModel CModel where
     mModel = id
-
-class HasSuperModel s where
-    superModel :: Lens' s SuperModel
-
-instance HasSuperModel SuperModel where
-  superModel = id
-
-instance HasMModel SuperModel where
+instance R.HasMModel SuperModel CModel where
     mModel = _1
-
-instance HasCModel SuperModel where
+instance R.HasCModel SuperModel CModel where
     cModel = _2
-
 instance HasCallbacks SuperModel where
-    callbacks = cModel . callbacks
-
+    callbacks = R.cModel . callbacks
 instance HasModel SuperModel where
-    model = cModel . model
-
+    model = R.cModel . model
 instance CD.Disposing SuperModel where
     disposing s = CD.DisposeList
         [ s ^. callbacks . to CD.disposing
         , s ^. model . to CD.disposing
         ]
+-- End same code per widget
+----------------------------------------------------------
+
+-- | This might be different per widget
+instance CD.Disposing Model where
+    disposing _ = CD.DisposeNone
+
+mkSuperModel :: Model -> F (R.Maker Action) SuperModel
+mkSuperModel s = R.mkSuperModel mkCallbacks $ \cbs -> (cbs, s)
+
+-- End similar code per widget
+----------------------------------------------------------
 
 mkCallbacks :: MVar CModel -> F (R.Maker Action) Callbacks
 mkCallbacks ms = Callbacks
@@ -181,9 +163,6 @@ mkCallbacks ms = Callbacks
     <*> (R.mkHandler $ pure . pure . const DestroyAction)
     <*> (R.mkHandler $ pure . pure . const CancelEditAction)
     <*> (R.mkHandler onEditKeyDown')
-
-mkSuperModel :: Model -> F (R.Maker Action) SuperModel
-mkSuperModel s = R.mkSuperModel mkCallbacks $ \cbs -> (cbs, s)
 
 -- | This is used by parent components to render this component
 window :: Monad m => G.WindowT CModel (R.ReactMlT m) ()
@@ -310,5 +289,5 @@ renderCmd = do
     frameNum %= (\i -> (i + 1) `mod` 100)
     i <- J.pToJSVal <$> use frameNum
     r <- use (model . componentRef)
-    sm <- use superModel
+    sm <- get
     pure $ RenderCommand sm [("frameNum", i)] r

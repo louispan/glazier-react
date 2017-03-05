@@ -22,6 +22,7 @@ import qualified Glazier as G
 import qualified Glazier.React.Maker.Run as R
 import qualified Glazier.React.Markup as R
 import qualified Glazier.React.ReactDOM as RD
+import qualified Glazier.React.Model.Class as R
 import qualified Pipes as P
 import qualified Pipes.Concurrent as PC
 import qualified Pipes.Lift as PL
@@ -46,7 +47,7 @@ main = do
 
     -- Start the App render
     root <- js_getElementById "root"
-    e <- R.markedElement TD.App.window (s ^. TD.App.cModel)
+    e <- R.markedElement TD.App.window (s ^. R.cModel)
     RD.render (J.pToJSVal e) root
 
     -- Run the gadget effect which reads actions from 'Pipes.Concurrent.Input'

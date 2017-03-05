@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-
 module Todo.Widget where
 
 import Control.Applicative as A
