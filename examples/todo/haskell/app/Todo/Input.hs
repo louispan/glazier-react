@@ -99,7 +99,6 @@ instance CD.Disposing CModel where
 instance R.HasMModel MModel CModel where
     mModel = id
 -- SuperModel
-instance R.HasSuperModel SuperModel CModel
 instance R.HasMModel SuperModel CModel where
     mModel = _1
 instance R.HasCModel SuperModel CModel where

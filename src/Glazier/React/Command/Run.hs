@@ -17,7 +17,7 @@ foreign import javascript unsafe
   "if ($2 && $2['setState']) { $2['setState']($1); }"
   js_componentSetState :: J.JSVal -> J.JSVal -> IO ()
 
-componentSetState :: (R.HasCModel sm cm, R.HasMModel sm cm) => sm -> [E.Property] -> J.JSVal -> IO ()
+componentSetState :: R.HasSuperModel sm cm => sm -> [E.Property] -> J.JSVal -> IO ()
 componentSetState sm props j = do
     let cm = sm ^. R.cModel
         mm = sm ^. R.mModel
