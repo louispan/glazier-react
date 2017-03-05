@@ -27,7 +27,6 @@ module Todo.Todo
     , gadget
     ) where
 
-import Control.Applicative as A
 import Control.Monad.Free.Church
 import Control.Concurrent.MVar
 import qualified Control.Disposable as CD
@@ -40,7 +39,6 @@ import Data.Maybe
 import qualified GHC.Generics as G
 import qualified GHCJS.Extras as E
 import qualified GHCJS.Foreign.Callback as J
-import qualified GHCJS.Marshal as J
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Nullable as J
 import qualified GHCJS.Types as J
@@ -49,82 +47,78 @@ import qualified Glazier.React.Component as R
 import qualified Glazier.React.Event as R
 import qualified Glazier.React.Maker as R
 import qualified Glazier.React.Markup as R
-
-type FrameNum = Int
+import qualified Glazier.React.Util as R
+import qualified Todo.Widget as TD
 
 data Command
     -- Common widget commands
-    -- | This should result in frameNum incremented by one;
-    -- the model to be stored in the render TMVar;
-    -- and the following pseudo javascript to notify React of the state change:
-    -- ref.setState({frameNum: i})
-    -- NB. the seqNum are incremented by the interpreter because incrementing the seqNum
-    -- is an indication that a render request to React has been sent (not just requested).
-    -- Incrementing the seqNum on the gadget side may result React not rendering a stale state.
-    = RenderCommand
+    = RenderCommand SuperModel [E.Property] J.JSVal
+    | SetPropertyCommand E.Property J.JSVal
     -- widget specific commands
     | DestroyCommand
     | FocusNodeCommand J.JSVal
-    | SetSelectionCommand J.JSVal
-                          Int
-                          Int
-                          J.JSString
 
 data Action
     -- Common widget actions
-    = RefAction J.JSVal
-    | RenderedAction FrameNum
+    = ComponentRefAction J.JSVal
+    | ComponentDidUpdateAction
+    | SendCommandAction Command
     -- widget specific actions
-    | InputRefAction J.JSVal
+    | EditRefAction J.JSVal
     | StartEditAction
-    | ToggleCompleteAction
+    | ToggleCompletedAction
+    | SetCompletedAction Bool
     | DestroyAction
     | CancelEditAction
-    | SubmitAction
-    | ChangeAction J.JSVal Int Int J.JSString J.JSString
-
-makeClassyPrisms ''Action
-
-data Callbacks = Callbacks
-    -- common widget callbacks
-    { _onRender :: J.Callback (J.JSVal -> IO J.JSVal)
-    , _onRef :: J.Callback (J.JSVal -> IO ())
-    , _onUpdated :: J.Callback (J.JSVal -> IO ())
-    -- widget specific callbacks
-    , _onInputRef :: J.Callback (J.JSVal -> IO ())
-    , _fireToggleComplete :: J.Callback (J.JSVal -> IO ())
-    , _fireStartEdit :: J.Callback (J.JSVal -> IO ())
-    , _fireDestroy :: J.Callback (J.JSVal -> IO ())
-    , _fireCancelEdit :: J.Callback (J.JSVal -> IO ())
-    , _onChange :: J.Callback (J.JSVal -> IO ())
-    , _onKeyDown :: J.Callback (J.JSVal -> IO ())
-    } deriving G.Generic
-
-instance CD.Disposing Callbacks
-
-makeClassy ''Callbacks
+    | SubmitAction J.JSString
 
 data Model = Model
     -- common widget model
     { _uid :: J.JSString
-    , _ref :: J.JSVal -- ^ ref to react component object
-    , _frameNum :: FrameNum -- ^ frameNum is incremented by RenderCommand interpreter
+    , _componentRef :: J.JSVal
+    , _frameNum :: Int
     , _deferredCommands :: D.DList Command
     -- widget specifc model
-    , _inputRef :: J.JSVal
+    , _editRef :: J.JSVal
     , _value :: J.JSString
     , _completed :: Bool
     , _editText :: Maybe J.JSString
     }
+
+data Callbacks = Callbacks
+    -- common widget callbacks
+    { _onRender :: J.Callback (J.JSVal -> IO J.JSVal)
+    , _onComponentRef :: J.Callback (J.JSVal -> IO ())
+    , _onComponentDidUpdate :: J.Callback (J.JSVal -> IO ())
+    -- widget specific callbacks
+    , _onEditRef :: J.Callback (J.JSVal -> IO ())
+    , _fireToggleComplete :: J.Callback (J.JSVal -> IO ())
+    , _fireStartEdit :: J.Callback (J.JSVal -> IO ())
+    , _fireDestroy :: J.Callback (J.JSVal -> IO ())
+    , _fireCancelEdit :: J.Callback (J.JSVal -> IO ())
+    , _onEditKeyDown :: J.Callback (J.JSVal -> IO ())
+    } deriving G.Generic
+
+-- | Callbacks and pure state
+type CModel = (Callbacks, Model)
+
+-- | Mutable model for rendering callback
+type MModel = MVar CModel
+
+-- | Contains MModel and CModel
+type SuperModel = (MModel, CModel)
+
+makeClassyPrisms ''Action
+
+instance CD.Disposing Callbacks
+
+makeClassy ''Callbacks
 
 makeClassy ''Model
 
 -- | This might be different per widget
 instance CD.Disposing Model where
     disposing _ = CD.DisposeNone
-
--- | Callbacks and pure state
-type CModel = (Callbacks, Model)
 
 class HasCModel s where
     cModel :: Lens' s CModel
@@ -143,18 +137,11 @@ instance CD.Disposing CModel where
         [ s ^. callbacks . to CD.disposing
         , s ^. model . to CD.disposing
         ]
-
--- | Mutable model for rendering callback
-type MModel = MVar CModel
-
 class HasMModel s where
     mModel :: Lens' s MModel
 
 instance HasMModel MModel where
     mModel = id
-
--- | Contains MModel and CModel
-type SuperModel = (MModel, CModel)
 
 class HasSuperModel s where
     superModel :: Lens' s SuperModel
@@ -183,17 +170,16 @@ instance CD.Disposing SuperModel where
 mkCallbacks :: MVar CModel -> F (R.Maker Action) Callbacks
 mkCallbacks ms = Callbacks
     -- common widget callbacks
-    <$> (R.mkRenderer ms (const render))
-    <*> (R.mkHandler $ R.onRef RefAction)
-    <*> (R.mkHandler $ R.onUpdated RenderedAction)
+    <$> (R.mkRenderer ms $ const render)
+    <*> (R.mkHandler $ pure . pure . ComponentRefAction)
+    <*> (R.mkHandler $ pure . pure . const ComponentDidUpdateAction)
     -- widget specific callbacks
-    <*> (R.mkHandler onInputRef')
-    <*> (R.mkHandler fireToggleComplete')
-    <*> (R.mkHandler fireStartEdit')
-    <*> (R.mkHandler fireDestroy')
-    <*> (R.mkHandler fireCancelEdit')
-    <*> (R.mkHandler onChange')
-    <*> (R.mkHandler onKeyDown')
+    <*> (R.mkHandler $ pure . pure . EditRefAction)
+    <*> (R.mkHandler $ pure . pure . const ToggleCompletedAction)
+    <*> (R.mkHandler $ pure . pure . const StartEditAction)
+    <*> (R.mkHandler $ pure . pure . const DestroyAction)
+    <*> (R.mkHandler $ pure . pure . const CancelEditAction)
+    <*> (R.mkHandler onEditKeyDown')
 
 mkSuperModel :: Model -> F (R.Maker Action) SuperModel
 mkSuperModel s = R.mkSuperModel mkCallbacks $ \cbs -> (cbs, s)
@@ -205,8 +191,8 @@ window = do
     lift $ R.lf R.shimComponent
         [ ("key",  s ^. model . uid . to J.jsval)
         , ("render", s ^. callbacks . onRender . to E.PureJSVal . to J.pToJSVal)
-        , ("ref", s ^. callbacks . onRef . to E.PureJSVal . to J.pToJSVal)
-        , ("updated", s ^. callbacks . onUpdated . to E.PureJSVal . to J.pToJSVal)
+        , ("ref", s ^. callbacks . onComponentRef . to E.PureJSVal . to J.pToJSVal)
+        , ("componentDidUpdate", s ^. callbacks . onComponentDidUpdate . to E.PureJSVal . to J.pToJSVal)
         ]
 
 render :: Monad m => G.WindowT CModel (R.ReactMlT m) ()
@@ -230,125 +216,86 @@ render = do
                                      , ("onClick", s ^. callbacks . fireDestroy . to J.jsval)
                                      ]
         R.lf (E.strval "input") [ ("key", E.strval "todo-input")
-                                , ("ref", s ^. callbacks . onInputRef . to J.jsval)
+                                , ("ref", s ^. callbacks . onEditRef . to J.jsval)
                                 , ("className", E.strval "edit")
-                                , ("value", s ^. model . editText . to (fromMaybe J.empty) . to J.jsval)
+                                , ("defaultValue", s ^. model . editText . to (fromMaybe J.empty) . to J.jsval)
                                 , ("checked", s ^. model . completed . to J.pToJSVal)
                                 , ("onBlur", s ^. callbacks . fireCancelEdit . to J.jsval)
-                                , ("onChange", s ^. callbacks . onChange . to J.jsval)
-                                , ("onKeyDown", s ^. callbacks . onKeyDown . to J.jsval)
+                                , ("onKeyDown", s ^. callbacks . onEditKeyDown . to J.jsval)
                                 ]
   where
-    cns s = E.classNames [("completed", s ^. model . completed), ("editing", s ^. model . editText . to isJust)]
+    cns s = R.classNames [("completed", s ^. model . completed), ("editing", s ^. model . editText . to isJust)]
 
-onInputRef' :: Monad m => J.JSVal -> m Action
-onInputRef' v = pure $ InputRefAction v
+onEditKeyDown' :: J.JSVal -> MaybeT IO [Action]
+onEditKeyDown' = R.eventHandlerM TD.onInputKeyDown goLazy
+  where
+    goLazy :: (Maybe J.JSString, J.JSVal) -> MaybeT IO [Action]
+    goLazy (ms, j) = pure $
+        (SendCommandAction $ SetPropertyCommand ("value", J.pToJSVal J.empty) j)
+        : maybe [CancelEditAction] (pure . SubmitAction) ms
 
-fireToggleComplete' :: Applicative m => J.JSVal -> m Action
-fireToggleComplete' = const $ pure ToggleCompleteAction
-
-fireStartEdit' :: Applicative m => J.JSVal -> m Action
-fireStartEdit' = const $ pure StartEditAction
-
-fireDestroy' :: Applicative m => J.JSVal -> m Action
-fireDestroy' = const $ pure DestroyAction
-
-fireCancelEdit' :: Applicative m => J.JSVal -> m Action
-fireCancelEdit' = const $ pure CancelEditAction
-
-onChange' :: J.JSVal -> MaybeT IO Action
-onChange' = R.eventHandlerM goStrict goLazy
-    where
-      goStrict :: J.JSVal -> MaybeT IO (J.JSVal, Int, Int, J.JSString, J.JSString)
-      goStrict evt = do
-          evt' <- MaybeT $ pure $ R.castSyntheticEvent evt
-          -- target is the "input" DOM
-          input <- lift $ pure . J.jsval . R.target . R.parseEvent $ evt'
-          ss <- MaybeT $ E.getProperty "selectionStart" input >>= J.fromJSVal
-          se <- MaybeT $ E.getProperty "selectionEnd" input >>= J.fromJSVal
-          sd <- MaybeT $ E.getProperty "selectionDirection" input >>= J.fromJSVal
-          v <- MaybeT $ E.getProperty "value" input >>= J.fromJSVal
-          pure $ (input, ss, se, sd, v)
-
-      goLazy :: (J.JSVal, Int, Int, J.JSString, J.JSString) -> MaybeT IO Action
-      goLazy (n, ss, se, sd, v) = pure $ ChangeAction n ss se sd v
-
-onKeyDown' :: J.JSVal -> MaybeT IO Action
-onKeyDown' = R.eventHandlerM goStrict goLazy
-    where
-      goStrict :: J.JSVal -> MaybeT IO Int
-      goStrict evt = do
-          evt' <- MaybeT $ pure $ R.castSyntheticEvent evt
-          evt'' <- MaybeT $ pure $ R.parseKeyboardEvent evt'
-          pure $ R.keyCode evt''
-
-      goLazy :: Int -> MaybeT IO Action
-      goLazy keyCode = case keyCode of
-                           13 -> pure SubmitAction -- FIXME: ENTER_KEY
-                           27 -> pure CancelEditAction -- FIXME: ESCAPE_KEY
-                           _ -> A.empty
-
-gadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
+gadget :: Monad m => G.GadgetT Action SuperModel m (D.DList Command)
 gadget = do
     a <- ask
     case a of
         -- common widget actions
 
-        RefAction node -> do
-            ref .= node
+        ComponentRefAction node -> do
+            model . componentRef .= node
             pure mempty
 
-        -- FIXME: Share this code
-        -- FIXME: detect wraparound integers
-        RenderedAction _ -> do
-            -- Run delayed commands that need to wait until a particular frame is rendered
+        ComponentDidUpdateAction -> do
+            -- Run delayed commands that need to wait until frame is re-rendered
             -- Eg focusing after other rendering changes
-            -- All deferred commands with renderSeqNum lower than the rendered SeqNum is
-            -- safe to run
             cmds <- use deferredCommands
-            deferredCommands .= mempty
+            model . deferredCommands .= mempty
             pure cmds
 
+        SendCommandAction cmd -> pure $ D.singleton cmd
+
         -- widget specific actions
-
-        ToggleCompleteAction -> do
-            completed %= not
-            pure $ D.singleton RenderCommand
-
-        InputRefAction v -> do
-            inputRef .= v
+        EditRefAction v -> do
+            model . editRef .= v
             pure mempty
 
+        ToggleCompletedAction -> do
+            model . completed %= not
+            D.singleton <$> renderCmd
+
+        SetCompletedAction b -> do
+            model . completed .= b
+            D.singleton <$> renderCmd
+
         StartEditAction -> do
-            input <- use inputRef
+            input <- use editRef
             ret <- runMaybeT $ do
                 input' <- MaybeT $ pure $ J.nullableToMaybe (J.Nullable input)
-                value' <- use value
+                value' <- use (model . value)
                 editText .= Just value'
                 -- Need to delay focusing until after the next render
-                deferredCommands %= (`D.snoc` FocusNodeCommand input')
-                pure $ D.singleton RenderCommand
-
+                model . deferredCommands %= (`D.snoc` FocusNodeCommand input')
+                lift $ D.singleton <$> renderCmd
             maybe (pure mempty) pure ret
 
         DestroyAction -> pure $ D.singleton DestroyCommand
 
         CancelEditAction -> do
-            editText .= Nothing
-            pure $ D.singleton RenderCommand
+            model . editText .= Nothing
+            D.singleton <$> renderCmd
 
-        ChangeAction n ss se sd str -> do
-            editText .= Just str
-            -- Need to delay set cursor position until after the next render
-            deferredCommands %= (`D.snoc` SetSelectionCommand n ss se sd)
-            pure $ D.singleton RenderCommand
-
-        SubmitAction -> do
+        SubmitAction v -> do
             -- trim the text
-            v <- (fmap J.strip) <$> use editText
-            let v' = fromMaybe J.empty v
-            value .= v'
-            editText .= Nothing
+            let v' = J.strip v
+            model . value .= v'
+            model . editText .= Nothing
             if J.null v'
                 then pure $ D.singleton DestroyCommand
-                else pure $ D.singleton RenderCommand
+                else D.singleton <$> renderCmd
+
+renderCmd :: Monad m => G.GadgetT Action SuperModel m Command
+renderCmd = do
+    model . frameNum %= (+ 1)
+    i <- J.pToJSVal <$> use (model . frameNum)
+    r <- use (model . componentRef)
+    sm <- use superModel
+    pure $ RenderCommand sm [("frameNum", i)] r

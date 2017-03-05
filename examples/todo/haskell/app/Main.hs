@@ -80,7 +80,7 @@ producerIO :: MonadIO io => PC.Input TD.App.Action -> P.Producer' (D.DList TD.Ap
 producerIO input = hoist (hoist (liftIO . atomically)) (producer input)
 
 producer :: PC.Input TD.App.Action -> P.Producer' (D.DList TD.App.Command) (StateT TD.App.SuperModel STM) ()
-producer input = PM.execInput input (G.runGadgetT (zoom TD.App.model TD.App.gadget))
+producer input = PM.execInput input (G.runGadgetT TD.App.gadget)
 
 runCommandsPipe
     :: (MonadState TD.App.SuperModel io, MonadIO io)
@@ -94,4 +94,4 @@ runCommands
     -> t TD.App.Command
     -> io ()
 runCommands output =
-    traverse_ (TD.App.Run.runCommand output)
+    traverse_ (liftIO . TD.App.Run.runCommand output)

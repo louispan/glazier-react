@@ -67,18 +67,17 @@ type TodosCommand' = (TodosKey, TD.Todo.Command)
 
 type TodosAction' = (TodosKey, TD.Todo.Action)
 
-type FrameNum = Int
-
 data Command
     -- Common widget commands
     -- | This should result in React component @setState({ frameNum: i })@
-    = RenderCommand
+    = RenderCommand SuperModel [E.Property] J.JSVal
 
     -- General Application level commands
     -- | DisposeCommand should run dispose on the SomeDisposable (eg. to release Callbacks)
     | DisposeCommand CD.SomeDisposable
     -- | Runs maker widgets creations
     | MakerCommand (F (R.Maker Action) Action)
+    | SendActionCommand Action
 
     -- TodoMVC specific commands
     | InputCommand TD.Input.Command
@@ -86,8 +85,8 @@ data Command
 
 data Action
     -- Common widget actions
-    = RefAction J.JSVal
-    | RenderedAction FrameNum
+    = ComponentRefAction J.JSVal
+    | ComponentDidUpdateAction
     -- TodoMVC specific actions
     | ToggleCompleteAllAction
     | DestroyTodoAction TodosKey
@@ -96,44 +95,49 @@ data Action
     | InputAction TD.Input.Action
     | TodosAction TodosAction'
 
-makeClassyPrisms ''Action
-
-data Callbacks = Callbacks
-    -- Common widget callbacks
-    { _onRender :: J.Callback (J.JSVal -> IO J.JSVal)
-    , _onRef :: J.Callback (J.JSVal -> IO ())
-    , _onUpdated :: J.Callback (J.JSVal -> IO ())
-    -- TodoMVC specific callbacks
-    , _fireToggleCompleteAll :: J.Callback (J.JSVal -> IO ())
-    } deriving (G.Generic)
-
-instance CD.Disposing Callbacks
-
-makeClassy ''Callbacks
-
 data Model = Model
     -- Common widget model
     { _uid :: J.JSString
-    , _ref :: J.JSVal -- ^ ref to react component object
-    , _frameNum :: FrameNum -- | Current rendered frame seqNum
-    , _deferredCommands :: M.Map FrameNum (D.DList Command)
+    , _componentRef :: J.JSVal
+    , _frameNum :: Int
+    , _deferredCommands :: D.DList Command
     -- TodoMVC specifc model
     , _todoSeqNum :: TodosKey
     , _todoInput :: TD.Input.SuperModel
     , _todosModel :: TodosModel'
     }
 
+data Callbacks = Callbacks
+    -- Common widget callbacks
+    { _onRender ::  J.Callback (J.JSVal -> IO J.JSVal)
+    , _onComponentRef :: J.Callback (J.JSVal -> IO ())
+    , _onComponentDidUpdate :: J.Callback (J.JSVal -> IO ())
+    -- TodoMVC specific callbacks
+    , _fireToggleCompleteAll :: J.Callback (J.JSVal -> IO ())
+    } deriving (G.Generic)
+
+-- | Callbacks and pure state
+type CModel = (Callbacks, Model)
+
+-- | Mutable model for rendering callback
+type MModel = MVar CModel
+
+-- | Contains MModel and CModel
+type SuperModel = (MModel, CModel)
+
+makeClassyPrisms ''Action
+
+makeClassy ''Callbacks
+
 makeClassy ''Model
+
+instance CD.Disposing Callbacks
 
 -- | This might be different per widget
 instance CD.Disposing Model where
     disposing s = CD.DisposeList $
         CD.disposing (s ^. todoInput)
-        : s ^. todosModel . to (fmap (CD.disposing . snd) . M.toList)
-
-
--- | Callbacks and pure state
-type CModel = (Callbacks, Model)
+        : foldr ((:) . CD.disposing) [] (s ^. todosModel)
 
 class HasCModel s where
     cModel :: Lens' s CModel
@@ -152,18 +156,11 @@ instance CD.Disposing CModel where
         [ s ^. callbacks . to CD.disposing
         , s ^. model . to CD.disposing
         ]
-
--- | Mutable model for rendering callback
-type MModel = MVar CModel
-
 class HasMModel s where
     mModel :: Lens' s MModel
 
 instance HasMModel MModel where
     mModel = id
-
--- | Contains MModel and CModel
-type SuperModel = (MModel, CModel)
 
 class HasSuperModel s where
     superModel :: Lens' s SuperModel
@@ -193,18 +190,16 @@ mkCallbacks :: MVar CModel -> F (R.Maker Action) Callbacks
 mkCallbacks ms = Callbacks
     -- common widget callbacks
     <$> (R.mkRenderer ms (const render))
-    <*> (R.mkHandler $ R.onRef RefAction)
-    <*> (R.mkHandler $ R.onUpdated RenderedAction)
+    <*> (R.mkHandler $ pure . pure . ComponentRefAction)
+    <*> (R.mkHandler $ pure . pure . const ComponentDidUpdateAction)
     -- widget specific callbacks
-    <*> (R.mkHandler fireToggleCompleteAll')
+    <*> (R.mkHandler $ pure . pure . const ToggleCompleteAllAction)
 
 mkSuperModel :: J.JSString -> F (R.Maker Action) SuperModel
 mkSuperModel uid' = do
     minput <- hoistF (R.mapAction $ review _InputAction) $
         TD.Input.mkSuperModel $ TD.Input.Model
             "newtodo"
-            J.nullRef
-            0
             "What needs to be done?"
             J.empty
     R.mkSuperModel mkCallbacks $ \cbs -> (cbs, Model
@@ -217,10 +212,7 @@ mkSuperModel uid' = do
         mempty)
 
 hasActiveTodos :: TodosModel' -> Bool
-hasActiveTodos = not . null . filter (not . TD.Todo._completed) . fmap (view TD.Todo.model . snd) . M.toList
-
-fireToggleCompleteAll' :: Applicative m => J.JSVal -> m Action
-fireToggleCompleteAll' = const $ pure ToggleCompleteAllAction
+hasActiveTodos = getAny . foldMap (view (TD.Todo.model . TD.Todo.completed . to not . to Any))
 
 -- | This is used by parent components to render this component
 window :: Monad m => G.WindowT CModel (R.ReactMlT m) ()
@@ -229,8 +221,8 @@ window = do
     lift $ R.lf R.shimComponent
         [ ("key",  s ^. model . uid . to J.jsval)
         , ("render", s ^. callbacks . onRender . to E.PureJSVal . to J.pToJSVal)
-        , ("ref", s ^. callbacks . onRef . to E.PureJSVal . to J.pToJSVal)
-        , ("updated", s ^. callbacks . onUpdated . to E.PureJSVal . to J.pToJSVal)
+        , ("ref", s ^. callbacks . onComponentRef . to E.PureJSVal . to J.pToJSVal)
+        , ("componentDidUpdate", s ^. callbacks . onComponentDidUpdate . to E.PureJSVal . to J.pToJSVal)
         ]
 
 -- | This is used by the React render callback
@@ -270,53 +262,47 @@ todoListWindow = do
                                 ] $
         traverse_ (view G._WindowT TD.Todo.window) todos
 
-gadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
+gadget :: Monad m => G.GadgetT Action SuperModel m (D.DList Command)
 gadget = appGadget
     <> inputGadget
     <> todosGadget'
 
-appGadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
+appGadget :: Monad m => G.GadgetT Action SuperModel m (D.DList Command)
 appGadget = do
     a <- ask
     case a of
-        RefAction node -> do
-            ref .= node
+        ComponentRefAction node -> do
+            model . componentRef .= node
             pure mempty
 
-        RenderedAction n -> do
-            -- Run delayed commands that need to wait until a particular frame is rendered
+        ComponentDidUpdateAction -> do
+            -- Run delayed commands that need to wait until frame is re-rendered
             -- Eg focusing after other rendering changes
-            -- All deferred commands with renderSeqNum lower than the rendered SeqNum is
-            -- safe to run
-            cmds <- use deferredCommands
-            let (cmds', leftoverCmds) = M.partitionWithKey (\k _ -> k < n) cmds
-            deferredCommands .= leftoverCmds
-            pure . foldMap snd . M.toList $ cmds'
+            cmds <- use (model . deferredCommands)
+            (model . deferredCommands) .= mempty
+            pure cmds
 
         ToggleCompleteAllAction -> do
-            s <- use todosModel
+            s <- use (model . todosModel)
             let b = hasActiveTodos s
-                (cmds, s') = M.mapAccumWithKey (toggleCompleteAll b) mempty s
-            todosModel .= s'
-            pure cmds
+            pure $ M.foldMapWithKey (toggleCompleteAll b) s
 
         DestroyTodoAction k -> do
             -- queue up callbacks to be released after rerendering
-            ts <- use todosModel
+            ts <- use (model . todosModel)
             ret <- runMaybeT $ do
                 (_, todoModel) <- MaybeT $ pure $ M.lookup k ts
                 let junk = CD.disposing todoModel
-                i <- use frameNum
-                deferredCommands %= (M.alter (addCommand $ DisposeCommand junk) i)
+                (model . deferredCommands) %= (`D.snoc` DisposeCommand junk)
                 -- Remove the todo from the model
-                todosModel %= M.delete k
+                (model . todosModel) %= M.delete k
                 -- on re-render the todo Shim will not get rendered and will be removed by react
-                pure $ D.singleton RenderCommand
+                lift $ D.singleton <$> renderCmd
             maybe (pure mempty) pure ret
 
         RequestNewTodoAction str -> do
-            n <- use todoSeqNum
-            todoSeqNum %= (+ 1)
+            n <- use (model . todoSeqNum)
+            (model . todoSeqNum) %= (+ 1)
             pure $ D.singleton $ MakerCommand $ do
                 ms <- hoistF (R.mapAction $ \act -> TodosAction (n, act)) $
                     TD.Todo.mkSuperModel $ TD.Todo.Model
@@ -331,33 +317,28 @@ appGadget = do
                 pure $ AddNewTodoAction n ms
 
         AddNewTodoAction n v -> do
-            todosModel %= M.insert n v
-            pure $ D.singleton RenderCommand
+            (model . todosModel) %= M.insert n v
+            D.singleton <$> renderCmd
 
         -- these will be handled by monoidally appending other gadgets
         InputAction _ -> pure mempty
         TodosAction _ -> pure mempty
   where
-    addCommand cmd Nothing = Just $ D.singleton cmd
-    addCommand cmd (Just cmds') = Just (cmds' `D.snoc` cmd)
-
     toggleCompleteAll
         :: Bool
-        -> D.DList Command
         -> TodosKey
         -> TD.Todo.SuperModel
-        -> (D.DList Command, TD.Todo.SuperModel)
-    toggleCompleteAll b cmds k (ms, s) =
+        -> D.DList Command
+    toggleCompleteAll b k (_, s) =
         if (s ^. (TD.Todo.model . TD.Todo.completed) /= b)
-            then ( cmds `D.snoc` TodosCommand (k, TD.Todo.RenderCommand)
-                 , (ms, s & TD.Todo.model . TD.Todo.completed .~ b))
-            else (cmds, (ms, s))
+            then D.singleton $ SendActionCommand $ TodosAction (k, TD.Todo.SetCompletedAction b)
+            else mempty
 
 inputWindow :: Monad m => G.WindowT CModel (R.ReactMlT m) ()
 inputWindow = magnify (todoInput . TD.Input.cModel) TD.Input.window
 
-inputGadget :: Monad m => G.GadgetT Action Model m (D.DList Command)
-inputGadget = fmap InputCommand <$> zoom (todoInput . TD.Input.model) (magnify _InputAction TD.Input.gadget)
+inputGadget :: Monad m => G.GadgetT Action SuperModel m (D.DList Command)
+inputGadget = fmap InputCommand <$> zoom todoInput (magnify _InputAction TD.Input.gadget)
 
 todosGadget :: Monad m => G.GadgetT TodosAction' TodosModel' m (D.DList TodosCommand')
 todosGadget = do
@@ -366,15 +347,21 @@ todosGadget = do
     x <- get
     case M.lookup k x of
         Nothing -> pure mempty
-        Just (mcs, cs) -> do
+        Just sm -> do
             -- run the todo gadget logic
-            let s = cs ^. TD.Todo.model
-            (cmds, s') <- lift $ view G._GadgetT TD.Todo.gadget a s
-            let cs' = cs & TD.Todo.model .~ s'
+            (cmds, sm') <- lift $ view G._GadgetT TD.Todo.gadget a sm
             -- replace the todo state in the map
-            put $ M.insert k (mcs, cs') x
+            put $ M.insert k sm' x
             -- annotate cmd with the key
             pure $ (\cmd -> (k, cmd)) <$> cmds
 
-todosGadget' :: Monad m => G.GadgetT Action Model m (D.DList Command)
+todosGadget' :: Monad m => G.GadgetT Action SuperModel m (D.DList Command)
 todosGadget' = fmap TodosCommand <$> zoom todosModel (magnify _TodosAction todosGadget)
+
+renderCmd :: Monad m => G.GadgetT Action SuperModel m Command
+renderCmd = do
+    model . frameNum %= (+ 1)
+    i <- J.pToJSVal <$> use (model . frameNum)
+    r <- use (model . componentRef)
+    sm <- use superModel
+    pure $ RenderCommand sm [("frameNum", i)] r

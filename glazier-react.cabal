@@ -27,6 +27,7 @@ library
                        Glazier.React.Maker.Run
                        Glazier.React.Markup
                        Glazier.React.ReactDOM
+                       Glazier.React.Util
                        GHCJS.Extras
   build-depends:       base >= 4.7 && < 5
                      , containers >= 0.5 && < 0.6
@@ -56,6 +57,7 @@ executable glazier-react-todo
                        Todo.App.Run
                        Todo.Input
                        Todo.Todo
+                       Todo.Widget
   main-is:             Main.hs
   js-sources:          examples/todo/haskell/jsbits/global.js
   ghc-options:         -Wall -threaded -rtsopts -with-rtsopts=-N

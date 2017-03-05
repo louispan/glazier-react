@@ -20,7 +20,7 @@ import qualified Glazier.React.Markup as R
 -- 'Maker' remembers the action type to allow 'mapAction' for changing the action type by parent widgets.
 -- The model type does not need to be changed, so it is hidden in the GADT existential.
 data Maker act nxt where
-    MkHandler :: (J.JSVal -> MaybeT IO act) -> (J.Callback (J.JSVal -> IO ()) -> nxt) -> Maker act nxt
+    MkHandler :: (J.JSVal -> MaybeT IO [act]) -> (J.Callback (J.JSVal -> IO ()) -> nxt) -> Maker act nxt
     MkModelMVar :: (MVar mdl -> nxt) -> Maker act nxt
     MkRenderer :: MVar mdl -> (J.JSVal -> G.WindowT mdl (R.ReactMl) ()) -> (J.Callback (J.JSVal -> IO J.JSVal) -> nxt) -> Maker act nxt
     PutModelMVar :: MVar mdl -> mdl -> nxt -> Maker act nxt
@@ -35,7 +35,7 @@ makeFree ''Maker
 
 -- | Allows changing the action type of Maker
 mapAction :: (act -> act') -> Maker act a -> Maker act' a
-mapAction f (MkHandler handler g) = MkHandler (\v -> f <$> handler v) g
+mapAction f (MkHandler handler g) = MkHandler (\v -> fmap f <$> handler v) g
 mapAction _ (MkModelMVar g) = MkModelMVar g
 mapAction _ (MkRenderer ms render g) = MkRenderer ms render g
 mapAction _ (PutModelMVar ms s x) = PutModelMVar ms s x

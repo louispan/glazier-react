@@ -12,8 +12,8 @@ class Shim extends React.PureComponent {
     }
 
     componentDidUpdate() {
-        if (this.props['updated'])
-            this.props['updated'](this.state);
+        if (this.props['componentDidUpdate'])
+            this.props['componentDidUpdate'](this.state);
     }
 
     render() {

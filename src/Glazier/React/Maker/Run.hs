@@ -5,6 +5,7 @@ import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.Morph
 import Control.Monad.Trans.Maybe
+import Data.Foldable
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
 import Glazier.React.Component as R
@@ -13,13 +14,13 @@ import qualified Pipes.Concurrent as PC
 
 mkActionCallback
     :: PC.Output act
-    -> (J.JSVal -> MaybeT IO act)
+    -> (J.JSVal -> MaybeT IO [act])
     -> IO (J.Callback (J.JSVal -> IO ()))
 mkActionCallback output handler =
     J.syncCallback1 J.ContinueAsync $ \evt ->
         void $ runMaybeT $ do
-            action <- handler evt
-            lift $ void $ atomically $ PC.send output action
+            acts <- handler evt
+            traverse_ (\act -> lift $ atomically $ PC.send output act >>= guard) acts
 
 runMaker :: PC.Output act -> R.Maker act (IO a) -> IO a
 runMaker output (R.MkHandler handler g) = mkActionCallback output handler >>= g

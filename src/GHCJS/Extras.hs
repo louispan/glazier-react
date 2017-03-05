@@ -1,17 +1,16 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module GHCJS.Extras
     ( strval
-    , getProperty
-    , classNames
-    , PureJSVal(..)
     , Property
+    , getProperty
+    , setProperty
+    , PureJSVal(..)
     , toMaybeJSObject
     , toJSObject
     ) where
 
 import Data.Foldable
 import qualified Data.JSString as J
-import qualified Data.Text as T
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import qualified JavaScript.Object as JO
@@ -20,24 +19,41 @@ import qualified JavaScript.Object as JO
 strval :: J.JSString -> J.JSVal
 strval = J.jsval
 
--- | This can throw an exception if $2 is null
-foreign import javascript unsafe "$2[$1]"
-  js_unsafeGetProp :: J.JSString -> J.JSVal -> IO J.JSVal
+type Property = (J.JSString, J.JSVal)
+
+-- | throws an exception if undefined or null
+foreign import javascript unsafe
+  "$2[$1]"
+  js_unsafeGetProperty :: J.JSString -> J.JSVal -> IO J.JSVal
+
+-- | throws an exception if undefined or null
+foreign import javascript unsafe
+  "$3[$1] = $2;"
+  js_unsafeSetProperty :: J.JSString -> J.JSVal -> J.JSVal -> IO ()
 
 -- | get a property of any JSVal. If a null or undefined is queried, the result will also be null
 getProperty :: J.JSString -> J.JSVal -> IO J.JSVal
-getProperty _ x | J.isUndefined x || J.isNull x = pure x
-getProperty p x = js_unsafeGetProp p x
+getProperty k x = let k' = J.pToJSVal k
+                  in if J.isUndefined x || J.isNull x
+                         || J.isUndefined k' || J.isNull k'
+                     then pure J.nullRef
+                     else js_unsafeGetProperty k x
+
+-- | set a property of any JSVal
+setProperty :: Property -> J.JSVal -> IO ()
+setProperty (k, v) x = let k' = J.pToJSVal k
+                    in if J.isUndefined x || J.isNull x
+                          || J.isUndefined k' || J.isNull k'
+                       then pure ()
+                       else js_unsafeSetProperty k v x
 
 -- | This is to enable conversion between equivalent classes 'IsJSVal' and 'PToJSVal'
--- Eg. You can convert ((PureJSVal Object) to JSVal with pToJSVal without requiring IO)
+-- So you can convert ((PureJSVal Object) to JSVal with pToJSVal without requiring IO)
 newtype PureJSVal a = PureJSVal a
     deriving J.IsJSVal
 
 instance J.IsJSVal a => J.PToJSVal (PureJSVal a) where
     pToJSVal (PureJSVal a) = J.jsval a
-
-type Property = (T.Text, J.JSVal)
 
 toMaybeJSObject :: [Property] -> IO (Maybe JO.Object)
 toMaybeJSObject [] = pure Nothing
@@ -47,5 +63,5 @@ toJSObject :: [Property] -> IO JO.Object
 toJSObject [] = JO.create
 toJSObject xs = do
     obj <- JO.create
-    traverse_ (\(k, v) -> JO.unsafeSetProp (J.textToJSString k) v obj) xs
+    traverse_ (\(k, v) -> JO.unsafeSetProp k v obj) xs
     pure obj
