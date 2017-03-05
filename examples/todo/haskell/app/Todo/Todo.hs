@@ -35,7 +35,7 @@ import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
 import qualified Data.DList as D
 import qualified Data.JSString as J
-import Data.Maybe
+import Data.Foldable
 import qualified GHC.Generics as G
 import qualified GHCJS.Extras as E
 import qualified GHCJS.Foreign.Callback as J
@@ -62,10 +62,11 @@ data Action
     -- Common widget actions
     = ComponentRefAction J.JSVal
     | ComponentDidUpdateAction
-    | SendCommandAction Command
+    | SendCommandsAction [Command]
     -- widget specific actions
     | EditRefAction J.JSVal
     | StartEditAction
+    | FocusEditAction
     | ToggleCompletedAction
     | SetCompletedAction Bool
     | DestroyAction
@@ -77,7 +78,7 @@ data Model = Model
     { _uid :: J.JSString
     , _componentRef :: J.JSVal
     , _frameNum :: Int
-    , _deferredCommands :: D.DList Command
+    , _deferredActions :: D.DList Action
     -- widget specifc model
     , _editRef :: J.JSVal
     , _value :: J.JSString
@@ -233,7 +234,7 @@ onEditKeyDown' = R.eventHandlerM TD.onInputKeyDown goLazy
   where
     goLazy :: (Maybe J.JSString, J.JSVal) -> MaybeT IO [Action]
     goLazy (ms, j) = pure $
-        (SendCommandAction $ SetPropertyCommand ("value", J.pToJSVal J.empty) j)
+        SendCommandsAction [SetPropertyCommand ("value", J.pToJSVal J.empty) j]
         : maybe [CancelEditAction] (pure . SubmitAction) ms
 
 gadget :: Monad m => G.GadgetT Action SuperModel m (D.DList Command)
@@ -247,15 +248,25 @@ gadget = do
             pure mempty
 
         ComponentDidUpdateAction -> do
-            -- Run delayed commands that need to wait until frame is re-rendered
+            -- Run delayed action that need to wait until frame is re-rendered
             -- Eg focusing after other rendering changes
-            cmds <- use deferredCommands
-            deferredCommands .= mempty
-            pure cmds
+            acts <- use deferredActions
+            deferredActions .= mempty
+            -- st :: Action -> StateT SuperModel m (D.DList Command)
+            let st = runReaderT (G.runGadgetT gadget)
+            G.GadgetT (lift (fold <$> (traverse st (D.toList acts))))
 
-        SendCommandAction cmd -> pure $ D.singleton cmd
+        SendCommandsAction cmds -> pure $ D.fromList cmds
 
         -- widget specific actions
+        -- Focus after rendering changed because a new input element might have been rendered
+        FocusEditAction -> do
+            input <- use editRef
+            ret <- runMaybeT $ do
+                input' <- MaybeT $ pure $ J.nullableToMaybe (J.Nullable input)
+                pure $ D.singleton $ FocusNodeCommand input'
+            maybe (pure mempty) pure ret
+
         EditRefAction v -> do
             editRef .= v
             pure mempty
@@ -269,12 +280,10 @@ gadget = do
             D.singleton <$> renderCmd
 
         StartEditAction -> do
-            input <- use editRef
             ret <- runMaybeT $ do
-                input' <- MaybeT $ pure $ J.nullableToMaybe (J.Nullable input)
                 editing .= True
                 -- Need to delay focusing until after the next render
-                deferredCommands %= (`D.snoc` FocusNodeCommand input')
+                deferredActions %= (`D.snoc` FocusEditAction)
                 lift $ D.singleton <$> renderCmd
             maybe (pure mempty) pure ret
 
