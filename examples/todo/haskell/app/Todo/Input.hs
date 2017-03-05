@@ -54,7 +54,7 @@ data Command
 
 data Action
     -- Common widget actions
-    = SendCommandAction Command
+    = SendCommandsAction [Command]
     -- widget specific actions
     | SubmitAction J.JSString
 
@@ -164,8 +164,13 @@ window = do
 render :: Monad m => G.WindowT CModel (R.ReactMlT m) ()
 render = do
     s <- ask
+    -- For uncontrolled components, we need to generate a new key per render
+    -- in for react to use the new defaultValue
     lift $ R.lf (E.strval "input")
-                    [ ("className", E.strval "new-todo")
+                    [ ("key", J.jsval $
+                                          (s ^. model . uid) `mappend`
+                                          (s ^. model . defaultValue))
+                    , ("className", E.strval "new-todo")
                     , ("placeholder", s ^. model . placeholder . to J.jsval)
                     , ("defaultValue", s ^. model . defaultValue . to J.jsval)
                     , ("autoFocus", J.pToJSVal True)
@@ -177,7 +182,7 @@ onKeyDown' = R.eventHandlerM TD.onInputKeyDown goLazy
   where
     goLazy :: (Maybe J.JSString, J.JSVal) -> MaybeT IO [Action]
     goLazy (ms, j) = pure $
-        (SendCommandAction $ SetPropertyCommand ("value", J.pToJSVal J.empty) j)
+        SendCommandsAction [SetPropertyCommand ("value", J.pToJSVal J.empty) j]
         : maybe [] (pure . SubmitAction) ms
 
 -- | State update logic.
@@ -189,7 +194,7 @@ gadget = do
     a <- ask
     case a of
         -- common widget actions
-        SendCommandAction cmd -> pure $ D.singleton cmd
+        SendCommandsAction cmds -> pure $ D.fromList cmds
 
         -- widget specific actions
         SubmitAction v -> do

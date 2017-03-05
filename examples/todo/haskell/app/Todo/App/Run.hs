@@ -9,6 +9,8 @@ import Control.Concurrent.STM
 import qualified Control.Disposable as CD
 import Control.Monad.Free.Church
 import Control.Monad.State.Strict
+import Control.Monad.Trans.Maybe
+import Data.Foldable
 import qualified GHCJS.Extras as E
 import qualified GHCJS.Types as J
 import qualified Glazier.React.Command.Run as R
@@ -32,7 +34,8 @@ runCommand output (TD.App.MakerCommand mks) = do
     act <- iterM (R.runMaker output) mks
     void $ atomically $ PC.send output act
 
-runCommand output (TD.App.SendActionCommand act) = void $ atomically $ PC.send output act
+runCommand output (TD.App.SendActionsCommand acts) = void $ runMaybeT $
+    traverse_ (\act -> lift $ atomically $ PC.send output act >>= guard) acts
 
 runCommand _ (TD.App.RenderCommand sm props j) = R.componentSetState sm props j
 

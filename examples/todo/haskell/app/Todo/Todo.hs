@@ -53,10 +53,10 @@ import qualified Todo.Widget as TD
 data Command
     -- Common widget commands
     = RenderCommand SuperModel [E.Property] J.JSVal
-    | SetPropertyCommand E.Property J.JSVal
     -- widget specific commands
-    | DestroyCommand
+    | SetPropertyCommand E.Property J.JSVal
     | FocusNodeCommand J.JSVal
+    | DestroyCommand
 
 data Action
     -- Common widget actions
@@ -218,7 +218,9 @@ render = do
                                      ]
         -- For uncontrolled components, we need to generate a new key per render
         -- in for react to use the new defaultValue
-        R.lf (E.strval "input") [ ("key", s ^. model . frameNum . to show . to J.pack . to J.jsval)
+        R.lf (E.strval "input") [ ("key", J.jsval $
+                                          (s ^. model . uid) `mappend`
+                                          (s ^. model . frameNum . to show . to J.pack))
                                 , ("ref", s ^. callbacks . onEditRef . to J.jsval)
                                 , ("className", E.strval "edit")
                                 , ("defaultValue", s ^. model . value . to J.jsval)

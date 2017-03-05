@@ -77,7 +77,7 @@ data Command
     | DisposeCommand CD.SomeDisposable
     -- | Runs maker widgets creations
     | MakerCommand (F (R.Maker Action) Action)
-    | SendActionCommand Action
+    | SendActionsCommand [Action]
 
     -- TodoMVC specific commands
     | InputCommand TD.Input.Command
@@ -285,7 +285,8 @@ appGadget = do
         ToggleCompleteAllAction -> do
             s <- use (model . todosModel)
             let b = hasActiveTodos s
-            pure $ M.foldMapWithKey (toggleCompleteAll b) s
+            let acts = M.foldMapWithKey (toggleCompleteAll b) s
+            pure $ D.singleton $ SendActionsCommand (D.toList acts)
 
         DestroyTodoAction k -> do
             -- queue up callbacks to be released after rerendering
@@ -328,10 +329,10 @@ appGadget = do
         :: Bool
         -> TodosKey
         -> TD.Todo.SuperModel
-        -> D.DList Command
+        -> D.DList Action
     toggleCompleteAll b k (_, s) =
         if (s ^. (TD.Todo.model . TD.Todo.completed) /= b)
-            then D.singleton $ SendActionCommand $ TodosAction (k, TD.Todo.SetCompletedAction b)
+            then D.singleton $ TodosAction (k, TD.Todo.SetCompletedAction b)
             else mempty
 
 inputWindow :: Monad m => G.WindowT CModel (R.ReactMlT m) ()
