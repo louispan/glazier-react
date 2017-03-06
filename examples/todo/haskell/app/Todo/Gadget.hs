@@ -1,12 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Todo.Widget where
+module Todo.Gadget where
 
 import Control.Applicative as A
-import Control.Lens
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
-import Control.Monad.State.Strict
 import qualified GHCJS.Extras as E
 import qualified GHCJS.Marshal as J
 import qualified GHCJS.Marshal.Pure as J
@@ -21,7 +19,7 @@ onInputKeyDown :: J.JSVal -> MaybeT IO (Maybe J.JSString, J.JSVal)
 onInputKeyDown evt = do
         evt' <- MaybeT $ pure $ R.castSyntheticEvent evt
         evt'' <- MaybeT $ pure $ R.parseKeyboardEvent evt'
-        -- trget is the "input" DOM
+        -- target is the "input" DOM
         input <- lift $ pure . J.jsval . R.target . R.parseEvent $ evt'
         let k = R.keyCode evt''
         case k of

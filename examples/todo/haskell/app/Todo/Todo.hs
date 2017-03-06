@@ -47,7 +47,7 @@ import qualified Glazier.React.Maker as R
 import qualified Glazier.React.Markup as R
 import qualified Glazier.React.Model.Class as R
 import qualified Glazier.React.Util as R
-import qualified Todo.Widget as TD
+import qualified Todo.Gadget as TD
 
 data Command
     -- Common widget commands

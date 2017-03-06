@@ -42,7 +42,7 @@ import qualified Glazier.React.Event as R
 import qualified Glazier.React.Maker as R
 import qualified Glazier.React.Markup as R
 import qualified Glazier.React.Model.Class as R
-import qualified Todo.Widget as TD
+import qualified Todo.Gadget as TD
 
 data Command
     -- Common widget commands
@@ -61,7 +61,6 @@ data Model = Model
     { _uid :: J.JSString
     -- widget specifc model
     , _placeholder :: J.JSString
-    , _defaultValue :: J.JSString
     }
 
 data Callbacks = Callbacks
@@ -144,15 +143,10 @@ window = do
 render :: Monad m => G.WindowT CModel (R.ReactMlT m) ()
 render = do
     s <- ask
-    -- For uncontrolled components, we need to generate a new key per render
-    -- in for react to use the new defaultValue
     lift $ R.lf (E.strval "input")
-                    [ ("key", J.jsval $
-                                          (s ^. uid) `mappend`
-                                          (s ^. defaultValue))
+                    [ ("key", s ^. uid . to J.jsval)
                     , ("className", E.strval "new-todo")
                     , ("placeholder", s ^. placeholder . to J.jsval)
-                    , ("defaultValue", s ^. defaultValue . to J.jsval)
                     , ("autoFocus", J.pToJSVal True)
                     , ("onKeyDown", s ^. onKeyDown . to J.jsval)
                     ]

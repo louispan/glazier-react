@@ -170,7 +170,6 @@ mkSuperModel uid' = do
         TD.Input.mkSuperModel $ TD.Input.Model
             "newtodo"
             "What needs to be done?"
-            J.empty
     R.mkSuperModel mkCallbacks $ \cbs -> (cbs, Model
         uid'
         J.nullRef

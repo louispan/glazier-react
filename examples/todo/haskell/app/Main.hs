@@ -12,6 +12,7 @@ import Control.Lens
 import Control.Monad.Free.Church
 import Control.Monad.IO.Class
 import Control.Monad.Morph
+import Control.Monad.Reader
 import Control.Monad.State.Strict
 import qualified Data.DList as D
 import Data.Foldable
@@ -19,7 +20,7 @@ import qualified Data.JSString as J
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Prim as J
 import qualified Glazier as G
-import qualified Glazier.React.Maker.Run as R
+import qualified Glazier.React.Maker.Run as R.Maker
 import qualified Glazier.React.Markup as R
 import qualified Glazier.React.ReactDOM as RD
 import qualified Glazier.React.Model.Class as R
@@ -29,7 +30,7 @@ import qualified Pipes.Lift as PL
 import qualified Pipes.Misc as PM
 import qualified Pipes.Prelude as PP
 import qualified Todo.App as TD.App
-import qualified Todo.App.Run as TD.App.Run
+import qualified Todo.App.Run as TD.App
 
 -- | 'main' is used to create React classes and setup callbacks to be used externally by the browser.
 -- GHCJS runs 'main' lazily.
@@ -43,7 +44,7 @@ main = do
     (output, input) <- liftIO . PC.spawn $ PC.unbounded
 
     -- App Model
-    s <- liftIO $ iterM (R.runMaker output) (TD.App.mkSuperModel "todos")
+    s <- liftIO $ iterM (R.Maker.run output) (TD.App.mkSuperModel "todos")
 
     -- Start the App render
     root <- js_getElementById "root"
@@ -58,7 +59,7 @@ main = do
     -- Cleanup
     -- We actually never get here because in this example runEffect never quits
     -- but in other apps, gadgetEffect might be quit-able (eg with MaybeT)
-    -- so let's add the cleanup code here to be explicit.
+    -- so let's just be explicit where cleanup code would be.
     CD.dispose (CD.disposing s')
 
 foreign import javascript unsafe
@@ -73,15 +74,15 @@ appEffect
     -> P.Effect io TD.App.SuperModel
 appEffect s output input = do
     PL.execStateP s $
-        producerIO input P.>->
+        appProducerIO input P.>->
         runCommandsPipe output P.>->
         PP.drain
 
-producerIO :: MonadIO io => PC.Input TD.App.Action -> P.Producer' (D.DList TD.App.Command) (StateT TD.App.SuperModel io) ()
-producerIO input = hoist (hoist (liftIO . atomically)) (producer input)
+appProducerIO :: MonadIO io => PC.Input TD.App.Action -> P.Producer' (D.DList TD.App.Command) (StateT TD.App.SuperModel io) ()
+appProducerIO input = hoist (hoist (liftIO . atomically)) (appProducer input)
 
-producer :: PC.Input TD.App.Action -> P.Producer' (D.DList TD.App.Command) (StateT TD.App.SuperModel STM) ()
-producer input = PM.execInput input (G.runGadgetT TD.App.gadget)
+appProducer :: PC.Input TD.App.Action -> P.Producer' (D.DList TD.App.Command) (StateT TD.App.SuperModel STM) ()
+appProducer input = PM.execInput input (G.runGadgetT TD.App.gadget)
 
 runCommandsPipe
     :: (MonadState TD.App.SuperModel io, MonadIO io)
@@ -95,4 +96,4 @@ runCommands
     -> t TD.App.Command
     -> io ()
 runCommands output =
-    traverse_ (liftIO . TD.App.Run.runCommand output)
+    traverse_ (\cmd -> runReaderT (TD.App.run cmd) (TD.App.Env output id))

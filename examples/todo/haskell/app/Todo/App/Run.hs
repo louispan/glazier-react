@@ -1,62 +1,64 @@
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Todo.App.Run
-    ( runCommand
+    ( Env(..)
+    , HasEnv(..)
+    , run
     ) where
 
 import Control.Concurrent.STM
 import qualified Control.Disposable as CD
+import Control.Lens
 import Control.Monad.Free.Church
-import Control.Monad.State.Strict
+import Control.Monad.IO.Class
+import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
 import Data.Foldable
-import qualified GHCJS.Extras as E
-import qualified GHCJS.Types as J
 import qualified Glazier.React.Command.Run as R
-import qualified Glazier.React.Maker.Run as R
+import qualified Glazier.React.Maker.Run as R.Maker
 import qualified Pipes.Concurrent as PC
-import qualified Todo.App as TD.App
-import qualified Todo.Input as TD.Input
-import qualified Todo.Todo as TD.Todo
+import Todo.App as TD.App
+import qualified Todo.Input.Run as TD.Input
+import qualified Todo.Todo.Run as TD.Todo
 
-foreign import javascript unsafe
-  "if ($1 && $1['focus']) { $1['focus'](); }"
-  js_focus :: J.JSVal -> IO ()
+data Env act = Env
+    { _output :: PC.Output act
+    , _mapAction :: Action -> act
+    }
 
+makeClassy ''Env
 
--- FIXME: Is it possible to split this out for individual gadgets?
--- | Evaluate commands from gadgets here
-runCommand
-    :: PC.Output TD.App.Action
-    -> TD.App.Command
-    -> IO ()
+run :: (HasEnv s act, MonadReader s io, MonadIO io) => Command -> io ()
 
-runCommand output (TD.App.MakerCommand mks) = do
-    act <- iterM (R.runMaker output) mks
-    void $ atomically $ PC.send output act
+run (MakerCommand mks) = do
+    output' <- view output
+    f <- view mapAction
+    act <- liftIO $ f <$> iterM (R.Maker.run (contramap f output')) mks
+    liftIO $ void $ atomically $ PC.send output' act
 
-runCommand output (TD.App.SendActionsCommand acts) = void $ runMaybeT $
-    traverse_ (\act -> lift $ atomically $ PC.send output act >>= guard) acts
+run (SendActionsCommand acts) = do
+    output' <- view output
+    f <- view mapAction
+    liftIO $ void $ runMaybeT $ traverse_ (\act -> lift $ atomically $ PC.send output' (f act) >>= guard) acts
 
-runCommand _ (TD.App.RenderCommand sm props j) = R.componentSetState sm props j
+run (RenderCommand sm props j) = liftIO $ R.componentSetState sm props j
 
-runCommand _ (TD.App.DisposeCommand x) = CD.dispose x
+run (DisposeCommand x) = liftIO $ CD.dispose x
 
-runCommand output (TD.App.InputCommand (TD.Input.SubmitCommand str)) =
-    void $ atomically $ PC.send output (TD.App.RequestNewTodoAction str)
+run (InputCommand cmd) = do
+    output' <- view output
+    f <- view mapAction
+    runReaderT
+        (TD.Input.run cmd)
+        (TD.Input.Env output' (f . RequestNewTodoAction))
 
-runCommand _ (TD.App.InputCommand (TD.Input.SetPropertyCommand prop j)) =
-    E.setProperty prop j
-
-runCommand _ (TD.App.TodosCommand (_, TD.Todo.SetPropertyCommand prop j)) =
-    E.setProperty prop j
-
-runCommand _ (TD.App.TodosCommand (_, TD.Todo.RenderCommand sm props j)) =
-    R.componentSetState sm props j
-
-runCommand output (TD.App.TodosCommand (k, TD.Todo.DestroyCommand)) =
-    void $ atomically $ PC.send output (TD.App.DestroyTodoAction k)
-
-runCommand _ (TD.App.TodosCommand (_, TD.Todo.FocusNodeCommand node)) =
-    js_focus node
+run (TodosCommand (k, cmd)) = do
+    output' <- view output
+    f <- view mapAction
+    runReaderT
+        (TD.Todo.run cmd)
+        (TD.Todo.Env output' (f (DestroyTodoAction k)))
