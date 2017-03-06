@@ -1,43 +1,23 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE TemplateHaskell #-}
-
 module Todo.Todo.Run
-    ( Env(..)
-    , HasEnv(..)
-    , run
+    ( run
     ) where
 
 import Control.Concurrent.STM
-import Control.Lens
-import Control.Monad.IO.Class
-import Control.Monad.Reader
+import Control.Monad
 import qualified GHCJS.Types as J
 import qualified Glazier.React.Command.Run as R
 import qualified JavaScript.Extras as JE
 import qualified Pipes.Concurrent as PC
 import Todo.Todo
 
-data Env act = Env
-    { _output :: PC.Output act
-    , _onDestroyTodo :: act
-    }
+run :: act -> PC.Output act -> Command -> IO ()
+run destroyTodoAction output DestroyCommand = void $ atomically $ PC.send output destroyTodoAction
 
-makeClassy ''Env
+run _ _ (SetPropertyCommand prop j) = JE.setProperty prop j
 
-run :: (HasEnv s a, MonadReader s io, MonadIO io) => Command -> io ()
-run DestroyCommand = do
-    output' <- view output
-    act <- view onDestroyTodo
-    liftIO $ void $ atomically $ PC.send output' act
+run _ _ (RenderCommand sm props j) = R.componentSetState sm props j
 
-run (SetPropertyCommand prop j) = liftIO $ JE.setProperty prop j
-
-run (RenderCommand sm props j) = liftIO $ R.componentSetState sm props j
-
-run (FocusNodeCommand j) = liftIO $ js_focus j
+run _ _ (FocusNodeCommand j) = js_focus j
 
 foreign import javascript unsafe
   "if ($1 && $1['focus']) { $1['focus'](); }"

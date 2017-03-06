@@ -5,17 +5,15 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Todo.App.Run
-    ( Env(..)
-    , HasEnv(..)
-    , run
+    ( run
     ) where
 
 import Control.Concurrent.STM
 import qualified Control.Disposable as CD
-import Control.Lens
+import Control.Lens -- for contramap
+import Control.Monad
 import Control.Monad.Free.Church
-import Control.Monad.IO.Class
-import Control.Monad.Reader
+import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
 import Data.Foldable
 import qualified Glazier.React.Command.Run as R
@@ -25,40 +23,19 @@ import Todo.App as TD.App
 import qualified Todo.Input.Run as TD.Input
 import qualified Todo.Todo.Run as TD.Todo
 
-data Env act = Env
-    { _output :: PC.Output act
-    , _mapAction :: Action -> act
-    }
+run :: (Action -> act) -> PC.Output act -> Command -> IO ()
 
-makeClassy ''Env
+run mapAction output (MakerCommand mks) = do
+    act <- mapAction <$> iterM (R.Maker.run (contramap mapAction output)) mks
+    void $ atomically $ PC.send output act
 
-run :: (HasEnv s act, MonadReader s io, MonadIO io) => Command -> io ()
+run mapAction output (SendActionsCommand acts) =
+    void $ runMaybeT $ traverse_ (\act -> lift $ atomically $ PC.send output (mapAction act) >>= guard) acts
 
-run (MakerCommand mks) = do
-    output' <- view output
-    f <- view mapAction
-    act <- liftIO $ f <$> iterM (R.Maker.run (contramap f output')) mks
-    liftIO $ void $ atomically $ PC.send output' act
+run _ _ (RenderCommand sm props j) = R.componentSetState sm props j
 
-run (SendActionsCommand acts) = do
-    output' <- view output
-    f <- view mapAction
-    liftIO $ void $ runMaybeT $ traverse_ (\act -> lift $ atomically $ PC.send output' (f act) >>= guard) acts
+run _ _ (DisposeCommand x) = CD.dispose x
 
-run (RenderCommand sm props j) = liftIO $ R.componentSetState sm props j
+run mapAction output (InputCommand cmd) = TD.Input.run (mapAction . RequestNewTodoAction) output cmd
 
-run (DisposeCommand x) = liftIO $ CD.dispose x
-
-run (InputCommand cmd) = do
-    output' <- view output
-    f <- view mapAction
-    runReaderT
-        (TD.Input.run cmd)
-        (TD.Input.Env output' (f . RequestNewTodoAction))
-
-run (TodosCommand (k, cmd)) = do
-    output' <- view output
-    f <- view mapAction
-    runReaderT
-        (TD.Todo.run cmd)
-        (TD.Todo.Env output' (f (DestroyTodoAction k)))
+run mapAction output (TodosCommand (k, cmd)) = TD.Todo.run (mapAction (DestroyTodoAction k)) output cmd

@@ -12,7 +12,6 @@ import Control.Lens
 import Control.Monad.Free.Church
 import Control.Monad.IO.Class
 import Control.Monad.Morph
-import Control.Monad.Reader
 import Control.Monad.State.Strict
 import qualified Data.DList as D
 import Data.Foldable
@@ -116,5 +115,4 @@ runCommands
     => PC.Output TD.App.Action
     -> t TD.App.Command
     -> io ()
-runCommands output =
-    traverse_ (\cmd -> runReaderT (TD.App.run cmd) (TD.App.Env output id))
+runCommands output = traverse_ (liftIO . TD.App.run id output)
