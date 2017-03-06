@@ -33,21 +33,21 @@ import Control.Monad.Reader
 import Control.Monad.State.Strict
 import qualified Data.DList as D
 import Data.Semigroup
-import qualified GHCJS.Extras as E
 import qualified GHCJS.Types as J
 import qualified Glazier as G
 import qualified Glazier.React.Element as R
+import qualified JavaScript.Extras as JE
 
 -- | The parameters required to create a branch ReactElement with children
 data BranchParam = BranchParam
     J.JSVal -- ^ Can be a react component type as well as html name
-    [E.Property]
+    [JE.Property]
     (D.DList ReactMarkup) -- ^ children
 
 -- | The parameters required to create a leaf ReactElement (no children)
 data LeafParam = LeafParam
     J.JSVal -- ^ Can be a react component type as well as html name
-    [E.Property]
+    [JE.Property]
 
 data ReactMarkup
     = ElementMarkup R.ReactElement
@@ -123,11 +123,11 @@ txt :: Applicative m => J.JSString -> ReactMlT m ()
 txt n = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` TextMarkup n)
 
 -- | For the contentless elements: eg 'br_'
-lf :: Applicative m => J.JSVal -> [E.Property] -> ReactMlT m ()
+lf :: Applicative m => J.JSVal -> [JE.Property] -> ReactMlT m ()
 lf n props = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` LeafMarkup (LeafParam n props))
 
 -- | For the contentful elements: eg 'div_'
-bh :: Functor m => J.JSVal -> [E.Property] -> ReactMlT m a -> ReactMlT m a
+bh :: Functor m => J.JSVal -> [JE.Property] -> ReactMlT m a -> ReactMlT m a
 bh n props (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
     (a, childs') <- childs mempty
     pure (a, xs `D.snoc` BranchMarkup (BranchParam n props childs'))

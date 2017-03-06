@@ -5,11 +5,10 @@ module Todo.Gadget where
 import Control.Applicative as A
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
-import qualified GHCJS.Extras as E
 import qualified GHCJS.Marshal as J
-import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import qualified Glazier.React.Event as R
+import qualified JavaScript.Extras as JE
 
 foreign import javascript unsafe
   "if ($1 && $1['value']) { $1['value'] = ''; }"
@@ -27,6 +26,6 @@ onInputKeyDown evt = do
             27 -> pure $ (Nothing, input)
             -- FIXME: ENTER_KEY
             13 -> do
-                v <- MaybeT $ E.getProperty "value" input >>= J.fromJSVal
+                v <- MaybeT $ JE.getProperty "value" input >>= J.fromJSVal
                 pure $ (Just v, input)
             _ -> A.empty

@@ -46,7 +46,7 @@ setup-info:
 # will not be run. This is useful for tweaking upstream packages.
 packages:
 - '.'
-- location: '/Users/louis/repo/hs/disposable'
+- location: '/Users/louis/repo/js/javascript-extras'
   extra-dep: true
 
 
@@ -60,6 +60,7 @@ extra-deps:
 - pipes-category-0.2.0.1
 - mmorph-1.0.9
 - disposable-0.1.1.0
+- javascript-extras-0.1.0.0
 
 # Override default flag values for local packages and extra-deps
 flags: {}

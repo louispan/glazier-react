@@ -32,7 +32,6 @@ import Control.Monad.Trans.Maybe
 import qualified Data.DList as D
 import qualified Data.JSString as J
 import qualified GHC.Generics as G
-import qualified GHCJS.Extras as E
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
@@ -42,11 +41,12 @@ import qualified Glazier.React.Event as R
 import qualified Glazier.React.Maker as R
 import qualified Glazier.React.Markup as R
 import qualified Glazier.React.Model.Class as R
+import qualified JavaScript.Extras as JE
 import qualified Todo.Gadget as TD
 
 data Command
     -- Common widget commands
-    = SetPropertyCommand E.Property J.JSVal
+    = SetPropertyCommand JE.Property J.JSVal
     -- widget specific commands
     | SubmitCommand J.JSString
 
@@ -136,16 +136,16 @@ window = do
     s <- ask
     lift $ R.lf R.shimComponent
         [ ("key",  s ^. uid . to J.jsval)
-        , ("render", s ^. onRender . to E.PureJSVal . to J.pToJSVal)
+        , ("render", s ^. onRender . to JE.PureJSVal . to J.pToJSVal)
         ]
 
 -- | This is used by the React render callback
 render :: Monad m => G.WindowT CModel (R.ReactMlT m) ()
 render = do
     s <- ask
-    lift $ R.lf (E.strval "input")
+    lift $ R.lf (JE.strval "input")
                     [ ("key", s ^. uid . to J.jsval)
-                    , ("className", E.strval "new-todo")
+                    , ("className", JE.strval "new-todo")
                     , ("placeholder", s ^. placeholder . to J.jsval)
                     , ("autoFocus", J.pToJSVal True)
                     , ("onKeyDown", s ^. onKeyDown . to J.jsval)

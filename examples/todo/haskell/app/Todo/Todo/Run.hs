@@ -14,9 +14,9 @@ import Control.Concurrent.STM
 import Control.Lens
 import Control.Monad.IO.Class
 import Control.Monad.Reader
-import qualified GHCJS.Extras as E
 import qualified GHCJS.Types as J
 import qualified Glazier.React.Command.Run as R
+import qualified JavaScript.Extras as JE
 import qualified Pipes.Concurrent as PC
 import Todo.Todo
 
@@ -33,7 +33,7 @@ run DestroyCommand = do
     act <- view onDestroyTodo
     liftIO $ void $ atomically $ PC.send output' act
 
-run (SetPropertyCommand prop j) = liftIO $ E.setProperty prop j
+run (SetPropertyCommand prop j) = liftIO $ JE.setProperty prop j
 
 run (RenderCommand sm props j) = liftIO $ R.componentSetState sm props j
 

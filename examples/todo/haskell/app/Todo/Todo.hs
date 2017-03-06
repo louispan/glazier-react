@@ -35,7 +35,6 @@ import qualified Data.DList as D
 import Data.Foldable
 import qualified Data.JSString as J
 import qualified GHC.Generics as G
-import qualified GHCJS.Extras as E
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Nullable as J
@@ -46,14 +45,14 @@ import qualified Glazier.React.Event as R
 import qualified Glazier.React.Maker as R
 import qualified Glazier.React.Markup as R
 import qualified Glazier.React.Model.Class as R
-import qualified Glazier.React.Util as R
+import qualified JavaScript.Extras as JE
 import qualified Todo.Gadget as TD
 
 data Command
     -- Common widget commands
-    = RenderCommand SuperModel [E.Property] J.JSVal
+    = RenderCommand SuperModel [JE.Property] J.JSVal
     -- widget specific commands
-    | SetPropertyCommand E.Property J.JSVal
+    | SetPropertyCommand JE.Property J.JSVal
     | FocusNodeCommand J.JSVal
     | DestroyCommand
 
@@ -174,45 +173,47 @@ window = do
     s <- ask
     lift $ R.lf R.shimComponent
         [ ("key",  s ^. uid . to J.jsval)
-        , ("render", s ^. onRender . to E.PureJSVal . to J.pToJSVal)
-        , ("ref", s ^. onComponentRef . to E.PureJSVal . to J.pToJSVal)
-        , ("componentDidUpdate", s ^. onComponentDidUpdate . to E.PureJSVal . to J.pToJSVal)
+        , ("render", s ^. onRender . to JE.PureJSVal . to J.pToJSVal)
+        , ("ref", s ^. onComponentRef . to JE.PureJSVal . to J.pToJSVal)
+        , ("componentDidUpdate", s ^. onComponentDidUpdate . to JE.PureJSVal . to J.pToJSVal)
         ]
 
 render :: Monad m => G.WindowT CModel (R.ReactMlT m) ()
 render = do
     s <- ask
-    lift $ R.bh (E.strval "li") [("className", cns s)] $ do
-        R.bh (E.strval "div") [ ("key", E.strval "view")
-                              , ("className", E.strval "view")
+    lift $ R.bh (JE.strval "li") [ ("className"
+                                 , classNames [("completed", s ^. completed), ("editing", s ^. editing)])] $ do
+        R.bh (JE.strval "div") [ ("key", JE.strval "view")
+                              , ("className", JE.strval "view")
                               ] $ do
-            R.lf (E.strval "input") [ ("key", E.strval "toggle")
-                                    , ("className", E.strval "toggle")
-                                    , ("type", E.strval "checkbox")
+            R.lf (JE.strval "input") [ ("key", JE.strval "toggle")
+                                    , ("className", JE.strval "toggle")
+                                    , ("type", JE.strval "checkbox")
                                     , ("checked", s ^. completed . to J.pToJSVal)
                                     , ("onChange", s ^. fireToggleComplete . to J.jsval)
                                     ]
-            R.bh (E.strval "label")  [ ("key", E.strval "label")
+            R.bh (JE.strval "label")  [ ("key", JE.strval "label")
                                      , ("onDoubleClick", s ^. fireStartEdit. to J.jsval)
                                      ] (s ^. value . to R.txt)
-            R.lf (E.strval "button") [ ("key", E.strval "destroy")
-                                     , ("className", E.strval "destroy")
+            R.lf (JE.strval "button") [ ("key", JE.strval "destroy")
+                                     , ("className", JE.strval "destroy")
                                      , ("onClick", s ^. fireDestroy . to J.jsval)
                                      ]
         -- For uncontrolled components, we need to generate a new key per render
         -- in for react to use the new defaultValue
-        R.lf (E.strval "input") [ ("key", J.jsval $
+        R.lf (JE.strval "input") [ ("key", J.jsval $
                                           (s ^. uid) `mappend`
                                           (s ^.  frameNum . to show . to J.pack))
                                 , ("ref", s ^.  onEditRef . to J.jsval)
-                                , ("className", E.strval "edit")
+                                , ("className", JE.strval "edit")
                                 , ("defaultValue", s ^. value . to J.jsval)
                                 , ("checked", s ^. completed . to J.pToJSVal)
                                 , ("onBlur", s ^. fireCancelEdit . to J.jsval)
                                 , ("onKeyDown", s ^. onEditKeyDown . to J.jsval)
                                 ]
-  where
-    cns s = R.classNames [("completed", s ^. completed), ("editing", s ^. editing)]
+
+classNames :: [(J.JSString, Bool)] -> J.JSVal
+classNames = J.jsval . J.unwords . fmap fst . filter snd
 
 onEditKeyDown' :: J.JSVal -> MaybeT IO [Action]
 onEditKeyDown' = R.eventHandlerM TD.onInputKeyDown goLazy
@@ -266,6 +267,8 @@ gadget = do
 
         StartEditAction -> do
             ret <- runMaybeT $ do
+                b <- use completed
+                guard (not b)
                 editing .= True
                 -- Need to delay focusing until after the next render
                 deferredActions %= (`D.snoc` FocusEditAction)

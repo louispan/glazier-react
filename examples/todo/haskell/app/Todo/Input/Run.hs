@@ -14,8 +14,8 @@ import Control.Concurrent.STM
 import Control.Lens
 import Control.Monad.IO.Class
 import Control.Monad.Reader
-import qualified GHCJS.Extras as E
 import qualified GHCJS.Types as J
+import qualified JavaScript.Extras as JE
 import qualified Pipes.Concurrent as PC
 import Todo.Input
 
@@ -32,4 +32,4 @@ run (SubmitCommand str) = do
     f <- view onSubmit
     liftIO $ void $ atomically $ PC.send output' (f str)
 
-run (SetPropertyCommand prop j) = liftIO $ E.setProperty prop j
+run (SetPropertyCommand prop j) = liftIO $ JE.setProperty prop j

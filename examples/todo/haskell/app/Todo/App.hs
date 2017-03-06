@@ -43,15 +43,15 @@ import qualified Data.JSString as J
 import qualified Data.Map.Strict as M
 import Data.Semigroup
 import qualified GHC.Generics as G
-import qualified GHCJS.Extras as E
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import qualified Glazier as G
 import qualified Glazier.React.Component as R
-import qualified Glazier.React.Markup as R
 import qualified Glazier.React.Maker as R
+import qualified Glazier.React.Markup as R
 import qualified Glazier.React.Model.Class as R
+import qualified JavaScript.Extras as JE
 import qualified Todo.Input as TD.Input
 import qualified Todo.Todo as TD.Todo
 
@@ -68,7 +68,7 @@ type TodosAction' = (TodosKey, TD.Todo.Action)
 data Command
     -- Common widget commands
     -- | This should result in React component @setState({ frameNum: i })@
-    = RenderCommand SuperModel [E.Property] J.JSVal
+    = RenderCommand SuperModel [JE.Property] J.JSVal
 
     -- General Application level commands
     -- | DisposeCommand should run dispose on the SomeDisposable (eg. to release Callbacks)
@@ -200,17 +200,17 @@ window = do
     s <- ask
     lift $ R.lf R.shimComponent
         [ ("key",  s ^. uid . to J.jsval)
-        , ("render", s ^. onRender . to E.PureJSVal . to J.pToJSVal)
-        , ("ref", s ^. onComponentRef . to E.PureJSVal . to J.pToJSVal)
-        , ("componentDidUpdate", s ^. onComponentDidUpdate . to E.PureJSVal . to J.pToJSVal)
+        , ("render", s ^. onRender . to JE.PureJSVal . to J.pToJSVal)
+        , ("ref", s ^. onComponentRef . to JE.PureJSVal . to J.pToJSVal)
+        , ("componentDidUpdate", s ^. onComponentDidUpdate . to JE.PureJSVal . to J.pToJSVal)
         ]
 
 -- | This is used by the React render callback
 render :: Monad m => G.WindowT CModel (R.ReactMlT m) ()
 render = do
     s <- ask
-    lift $ R.bh (E.strval "header") [("className", E.strval "header")] $ do
-        R.bh (E.strval "h1") [("key", E.strval "heading")] (R.txt "todos")
+    lift $ R.bh (JE.strval "header") [("className", JE.strval "header")] $ do
+        R.bh (JE.strval "h1") [("key", JE.strval "heading")] (R.txt "todos")
         view G._WindowT inputWindow s
         view G._WindowT mainWindow s
 
@@ -221,14 +221,14 @@ mainWindow = do
         then pure ()
         else do
         s <- ask
-        lift $ R.bh (E.strval "section") [ ("key", E.strval "main")
-                                         , ("className", E.strval "main")
+        lift $ R.bh (JE.strval "section") [ ("key", JE.strval "main")
+                                         , ("className", JE.strval "main")
                                          ] $ do
             -- This is the complete all checkbox
-            R.lf (E.strval "input")
-                        [ ("key", E.strval "toggle-all")
-                        , ("className", E.strval "toggle-all")
-                        , ("type", E.strval "checkbox")
+            R.lf (JE.strval "input")
+                        [ ("key", JE.strval "toggle-all")
+                        , ("className", JE.strval "toggle-all")
+                        , ("type", JE.strval "checkbox")
                         , ("checked", s ^. todosModel . to (J.pToJSVal . not . hasActiveTodos))
                         , ("onChange", s ^. fireToggleCompleteAll . to J.jsval)
                         ]
@@ -237,8 +237,8 @@ mainWindow = do
 todoListWindow :: Monad m => G.WindowT CModel (R.ReactMlT m) ()
 todoListWindow = do
     todos <- fmap (view R.cModel . snd) . M.toList <$> view todosModel
-    lift $ R.bh (E.strval "ul") [ ("key", E.strval "todo-list")
-                                , ("className", E.strval "todo-list")
+    lift $ R.bh (JE.strval "ul") [ ("key", JE.strval "todo-list")
+                                , ("className", JE.strval "todo-list")
                                 ] $
         traverse_ (view G._WindowT TD.Todo.window) todos
 

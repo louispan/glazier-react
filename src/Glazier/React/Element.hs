@@ -11,10 +11,10 @@ module Glazier.React.Element
     , mkCombinedElements
     ) where
 
-import qualified GHCJS.Extras as E
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import qualified JavaScript.Array as JA
+import qualified JavaScript.Extras as JE
 
 newtype ReactElement = ReactElement J.JSVal
 instance J.IsJSVal ReactElement
@@ -43,16 +43,16 @@ unsafeCoerceElement :: J.JSVal -> ReactElement
 unsafeCoerceElement = ReactElement
 
 -- | Create a react element (with children) from a HashMap of properties
-mkBranchElement :: J.JSVal -> [E.Property] -> [ReactElement] -> IO ReactElement
+mkBranchElement :: J.JSVal -> [JE.Property] -> [ReactElement] -> IO ReactElement
 mkBranchElement n props xs = do
-    props' <- E.toMaybeJSObject props
-    js_mkBranchElement n (J.pToJSVal (E.PureJSVal <$> props')) (JA.fromList $ J.jsval <$> xs)
+    props' <- JE.toMaybeJSObject props
+    js_mkBranchElement n (J.pToJSVal (JE.PureJSVal <$> props')) (JA.fromList $ J.jsval <$> xs)
 
 -- | Create a react element (with no children) from a HashMap of properties
-mkLeafElement :: J.JSVal -> [E.Property] -> IO ReactElement
+mkLeafElement :: J.JSVal -> [JE.Property] -> IO ReactElement
 mkLeafElement n props = do
-    props' <- E.toMaybeJSObject props
-    js_mkLeafElement n (J.pToJSVal (E.PureJSVal <$> props'))
+    props' <- JE.toMaybeJSObject props
+    js_mkLeafElement n (J.pToJSVal (JE.PureJSVal <$> props'))
 
 foreign import javascript unsafe
     "$r = $1;"
