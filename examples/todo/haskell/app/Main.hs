@@ -18,7 +18,7 @@ import qualified Data.DList as D
 import Data.Foldable
 import qualified Data.JSString as J
 import qualified GHCJS.Marshal.Pure as J
-import qualified GHCJS.Prim as J
+import qualified GHCJS.Types as J
 import qualified Glazier as G
 import qualified Glazier.React.Maker.Run as R.Maker
 import qualified Glazier.React.Markup as R
@@ -30,6 +30,7 @@ import qualified Pipes.Lift as PL
 import qualified Pipes.Misc as PM
 import qualified Pipes.Prelude as PP
 import qualified Todo.App as TD.App
+import qualified Todo.Input as TD.Input
 import qualified Todo.App.Run as TD.App
 
 -- | 'main' is used to create React classes and setup callbacks to be used externally by the browser.
@@ -43,8 +44,23 @@ main = do
     -- blocked events are kept by the GHCJCS runtime.
     (output, input) <- liftIO . PC.spawn $ PC.unbounded
 
+    shim <- js_shimComponent
+
     -- App Model
-    s <- liftIO $ iterM (R.Maker.run output) (TD.App.mkSuperModel "todos")
+    let inputModel = TD.Input.Model
+            shim
+            "newtodo"
+            "What needs to be done?"
+        mkAppModel inputSuperModel = TD.App.Model
+            shim
+            "todos"
+            J.nullRef
+            0
+            mempty
+            0
+            inputSuperModel
+            mempty
+    s <- liftIO $ iterM (R.Maker.run output) (TD.App.mkSuperModel inputModel mkAppModel)
 
     -- Start the App render
     root <- js_getElementById "root"
@@ -61,6 +77,11 @@ main = do
     -- but in other apps, gadgetEffect might be quit-able (eg with MaybeT)
     -- so let's just be explicit where cleanup code would be.
     CD.dispose (CD.disposing s')
+
+foreign import javascript unsafe
+  "$r = hgr$mkClass();"
+  js_shimComponent
+      :: IO J.JSVal
 
 foreign import javascript unsafe
   "$r = document.getElementById($1);"

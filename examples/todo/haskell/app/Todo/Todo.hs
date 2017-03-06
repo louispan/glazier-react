@@ -40,7 +40,6 @@ import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Nullable as J
 import qualified GHCJS.Types as J
 import qualified Glazier as G
-import qualified Glazier.React.Component as R
 import qualified Glazier.React.Event as R
 import qualified Glazier.React.Maker as R
 import qualified Glazier.React.Markup as R
@@ -73,7 +72,8 @@ data Action
 
 data Model = Model
     -- common widget model
-    { _uid :: J.JSString
+    { _shim :: J.JSVal
+    , _uid :: J.JSString
     , _componentRef :: J.JSVal
     , _frameNum :: Int
     , _deferredActions :: D.DList Action
@@ -171,7 +171,7 @@ mkCallbacks ms = Callbacks
 window :: Monad m => G.WindowT CModel (R.ReactMlT m) ()
 window = do
     s <- ask
-    lift $ R.lf R.shimComponent
+    lift $ R.lf (s ^. shim)
         [ ("key",  s ^. uid . to J.jsval)
         , ("render", s ^. onRender . to JE.PureJSVal . to J.pToJSVal)
         , ("ref", s ^. onComponentRef . to JE.PureJSVal . to J.pToJSVal)
@@ -201,13 +201,15 @@ render = do
                                      ]
         -- For uncontrolled components, we need to generate a new key per render
         -- in for react to use the new defaultValue
-        R.lf (JE.strval "input") [ ("key", J.jsval $
-                                          (s ^. uid) `mappend`
-                                          (s ^.  frameNum . to show . to J.pack))
+        R.lf (JE.strval "input") [ ("key", J.jsval $ J.unwords
+                                       [ s ^. uid
+                                       , s ^. completed . to show . to J.pack
+                                       , s ^.  frameNum . to show . to J.pack
+                                       ])
                                 , ("ref", s ^.  onEditRef . to J.jsval)
                                 , ("className", JE.strval "edit")
                                 , ("defaultValue", s ^. value . to J.jsval)
-                                , ("checked", s ^. completed . to J.pToJSVal)
+                                , ("defaultChecked", s ^. completed . to J.pToJSVal)
                                 , ("onBlur", s ^. fireCancelEdit . to J.jsval)
                                 , ("onKeyDown", s ^. onEditKeyDown . to J.jsval)
                                 ]

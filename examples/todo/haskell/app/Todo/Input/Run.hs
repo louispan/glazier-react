@@ -19,6 +19,8 @@ import qualified JavaScript.Extras as JE
 import qualified Pipes.Concurrent as PC
 import Todo.Input
 
+
+-- FIXME: pass params explicitly - saves a TH
 data Env act = Env
     { _output :: PC.Output act
     , _onSubmit :: J.JSString -> act

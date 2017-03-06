@@ -1,34 +1,40 @@
-// This function requires that React is in scope
-// isPure: bool
-// name: string
-// renderCb: function() { return React.createElement(...) }
-// propTypes: { ... }
-// defaultProps: { ... }
-// state: { ... }
+// This function requires that React is in scope by the time this is called.
 // Using React.createClass for now since not all browsers support ES6 classes
-// function hgr$mkClass(isPure, name, render, initialState, registry, key) {
-//     const specs = { 'displayName': name }
-//     specs['render'] = function() {
-//         if (render)
-//         return null;
-//     };
-//     if (initialState) {
-//         specs['getInitialState'] = function() {
-//             return initialState;
-//         };
-//     }
-//     spec['constructor'] = function(props) {
-//         super(props);
-//         registry.listen(key, function(newState) { this.setState(newState) }.bind(this));
+// It is the equivalent of the following:
+// import React from 'react';
+
+// // Inheriting from Component means every call to this.setState will result in a render
+// // Inheriting from PureComponet means a shallow comparison will be made
+// class Shim extends React.PureComponent {
+
+//     componentDidUpdate() {
+//         if (this.props['componentDidUpdate'])
+//             this.props['componentDidUpdate'](this.state);
 //     }
 
-//     const cl = React.createClass(specs);
-//     // means the state will only be shallowly compared
-//     if (isPure) {
-//         cl.prototype.isPureReactComponent = true;
+//     render() {
+//         if (this.props['render'])
+//             return this.props['render'](this.state);
+//         return null;
 //     }
-//     return cl;
 // }
+// export default Shim;
+function hgr$mkClass() {
+    const specs = {};
+    specs['componentDidUpdate'] = function() {
+        if (this.props['componentDidUpdate'])
+            this.props['componentDidUpdate'](this.state);
+    };
+    specs['render'] = function() {
+        if (this.props['render'])
+            return this.props['render'](this.state);
+        return null;
+    };
+    const cl = React.createClass(specs);
+    cl.prototype.isPureReactComponent = true;
+
+    return cl;
+}
 
 // Convert a list of ReactElements into a single ReactElement
 function hgr$mkCombinedElements(elements) {

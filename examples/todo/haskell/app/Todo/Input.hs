@@ -36,7 +36,6 @@ import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import qualified Glazier as G
-import qualified Glazier.React.Component as R
 import qualified Glazier.React.Event as R
 import qualified Glazier.React.Maker as R
 import qualified Glazier.React.Markup as R
@@ -58,7 +57,8 @@ data Action
 
 data Model = Model
     -- common widget model
-    { _uid :: J.JSString
+    { _shim :: J.JSVal
+    , _uid :: J.JSString
     -- widget specifc model
     , _placeholder :: J.JSString
     }
@@ -134,7 +134,7 @@ mkCallbacks ms = Callbacks
 window :: Monad m => G.WindowT CModel (R.ReactMlT m) ()
 window = do
     s <- ask
-    lift $ R.lf R.shimComponent
+    lift $ R.lf (s ^. shim)
         [ ("key",  s ^. uid . to J.jsval)
         , ("render", s ^. onRender . to JE.PureJSVal . to J.pToJSVal)
         ]

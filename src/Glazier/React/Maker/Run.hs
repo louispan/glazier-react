@@ -9,10 +9,19 @@ import Control.Monad.Morph
 import Control.Monad.Trans.Maybe
 import Data.Foldable
 import qualified GHCJS.Foreign.Callback as J
+import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
-import Glazier.React.Component as R
+import qualified Glazier as G
 import Glazier.React.Maker as R
+import qualified Glazier.React.Markup as R
 import qualified Pipes.Concurrent as PC
+
+-- | This is called synchronously by React to render the DOM.
+-- This must not block!
+onRender :: MVar s -> (J.JSVal -> G.WindowT s (R.ReactMlT IO) ()) -> J.JSVal -> IO J.JSVal
+onRender ms wdw v = do
+    s <- readMVar ms
+    J.pToJSVal <$> R.markedElement (wdw v) s
 
 mkActionCallback
     :: PC.Output act
@@ -29,7 +38,7 @@ run output (R.MkHandler handler g) = mkActionCallback output handler >>= g
 
 run _ (R.MkModelMVar g) = newEmptyMVar >>= g
 
-run _ (R.MkRenderer ms render g) = J.syncCallback1' (R.onRender ms render') >>= g
+run _ (R.MkRenderer ms render g) = J.syncCallback1' (onRender ms render') >>= g
   where
     render' v = hoist (hoist generalize) (render v)
 

@@ -47,7 +47,6 @@ import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import qualified Glazier as G
-import qualified Glazier.React.Component as R
 import qualified Glazier.React.Maker as R
 import qualified Glazier.React.Markup as R
 import qualified Glazier.React.Model.Class as R
@@ -95,7 +94,8 @@ data Action
 
 data Model = Model
     -- Common widget model
-    { _uid :: J.JSString
+    { _shim :: J.JSVal
+    , _uid :: J.JSString
     , _componentRef :: J.JSVal
     , _frameNum :: Int
     , _deferredCommands :: D.DList Command
@@ -164,20 +164,11 @@ instance CD.Disposing Model where
         CD.disposing (s ^. todoInput)
         : foldr ((:) . CD.disposing) [] (s ^. todosModel)
 
-mkSuperModel :: J.JSString -> F (R.Maker Action) SuperModel
-mkSuperModel uid' = do
-    minput <- hoistF (R.mapAction $ review _InputAction) $
-        TD.Input.mkSuperModel $ TD.Input.Model
-            "newtodo"
-            "What needs to be done?"
-    R.mkSuperModel mkCallbacks $ \cbs -> (cbs, Model
-        uid'
-        J.nullRef
-        0
-        mempty
-        0
-        minput
-        mempty)
+mkSuperModel :: TD.Input.Model -> (TD.Input.SuperModel -> Model) -> F (R.Maker Action) SuperModel
+mkSuperModel inputModel f = do
+    inputSuperModel <- hoistF (R.mapAction $ review _InputAction) $
+        TD.Input.mkSuperModel $ inputModel
+    R.mkSuperModel mkCallbacks $ \cbs -> (cbs, f inputSuperModel)
 
 -- End similar code per widget
 ----------------------------------------------------------
@@ -198,7 +189,7 @@ hasActiveTodos = getAny . foldMap (view (TD.Todo.model . TD.Todo.completed . to 
 window :: Monad m => G.WindowT CModel (R.ReactMlT m) ()
 window = do
     s <- ask
-    lift $ R.lf R.shimComponent
+    lift $ R.lf (s ^. shim)
         [ ("key",  s ^. uid . to J.jsval)
         , ("render", s ^. onRender . to JE.PureJSVal . to J.pToJSVal)
         , ("ref", s ^. onComponentRef . to JE.PureJSVal . to J.pToJSVal)
@@ -284,9 +275,11 @@ appGadget = do
         RequestNewTodoAction str -> do
             n <- use todoSeqNum
             todoSeqNum %= (+ 1)
+            shim' <- use shim
             pure $ D.singleton $ MakerCommand $ do
                 ms <- hoistF (R.mapAction $ \act -> TodosAction (n, act)) $
                     TD.Todo.mkSuperModel $ TD.Todo.Model
+                        shim'
                         (J.pack . show $ n)
                         J.nullRef
                         0
