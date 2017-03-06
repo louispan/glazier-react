@@ -12,7 +12,6 @@ copyright:           2017 Louis Pan
 category:            Web, FRP
 build-type:          Simple
 extra-source-files:  README.md
-                     jsextras/Shim.js
 cabal-version:       >=1.10
 
 library
