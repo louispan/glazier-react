@@ -14,6 +14,7 @@ import Control.Monad.Trans.Maybe
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
 import qualified Glazier as G
+import qualified Glazier.React.Component as R
 import qualified Glazier.React.Markup as R
 
 -- | DSL for IO effects required during making widget models and callbacks
@@ -24,12 +25,14 @@ data Maker act nxt where
     MkModelMVar :: (MVar mdl -> nxt) -> Maker act nxt
     MkRenderer :: MVar mdl -> (J.JSVal -> G.WindowT mdl (R.ReactMl) ()) -> (J.Callback (J.JSVal -> IO J.JSVal) -> nxt) -> Maker act nxt
     PutModelMVar :: MVar mdl -> mdl -> nxt -> Maker act nxt
+    GetComponent :: (R.ReactComponent -> nxt) -> Maker act nxt
 
 instance Functor (Maker act) where
   fmap f (MkHandler handler g) = MkHandler handler (f . g)
   fmap f (MkModelMVar g) = MkModelMVar (f . g)
   fmap f (MkRenderer ms render g) = MkRenderer ms render (f . g)
   fmap f (PutModelMVar ms s x) = PutModelMVar ms s (f x)
+  fmap f (GetComponent g) = GetComponent (f . g)
 
 makeFree ''Maker
 
@@ -39,6 +42,7 @@ mapAction f (MkHandler handler g) = MkHandler (\v -> fmap f <$> handler v) g
 mapAction _ (MkModelMVar g) = MkModelMVar g
 mapAction _ (MkRenderer ms render g) = MkRenderer ms render g
 mapAction _ (PutModelMVar ms s x) = PutModelMVar ms s x
+mapAction _ (GetComponent g) = GetComponent g
 
 mkSuperModel :: MonadFree (Maker act) m => (MVar mdl -> m cbs) -> (cbs -> mdl) -> m (MVar mdl, mdl)
 mkSuperModel makeCallbacks createModel = do

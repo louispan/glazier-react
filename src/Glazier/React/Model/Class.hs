@@ -11,11 +11,11 @@ import Control.Concurrent.MVar
 import Control.Lens
 import GHC.Exts
 
-class HasMModel c cm | c -> cm where
-    mModel :: Lens' c (MVar cm)
+class HasMModel c gm | c -> gm where
+    mModel :: Lens' c (MVar gm)
 
-class HasCModel c cm | c -> cm where
-    cModel :: Lens' c cm
+class HasGModel c gm | c -> gm where
+    gModel :: Lens' c gm
 
-type family HasSuperModel c cm :: Constraint
-type instance HasSuperModel c cm = (HasMModel c cm, HasCModel c cm)
+type family HasSuperModel c gm :: Constraint
+type instance HasSuperModel c gm = (HasMModel c gm, HasGModel c gm)

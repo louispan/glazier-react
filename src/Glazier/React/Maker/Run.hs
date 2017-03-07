@@ -1,6 +1,4 @@
-module Glazier.React.Maker.Run
-    ( run
-    ) where
+module Glazier.React.Maker.Run where
 
 import Control.Concurrent.MVar
 import Control.Concurrent.STM
@@ -13,6 +11,7 @@ import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import qualified Glazier as G
 import Glazier.React.Maker as R
+import qualified Glazier.React.Component as R
 import qualified Glazier.React.Markup as R
 import qualified Pipes.Concurrent as PC
 
@@ -33,13 +32,15 @@ mkActionCallback output handler =
             acts <- handler evt
             traverse_ (\act -> lift $ atomically $ PC.send output act >>= guard) acts
 
-run :: PC.Output act -> R.Maker act (IO a) -> IO a
-run output (R.MkHandler handler g) = mkActionCallback output handler >>= g
+run :: PC.Output act -> R.ReactComponent -> R.Maker act (IO a) -> IO a
+run output _ (R.MkHandler handler g) = mkActionCallback output handler >>= g
 
-run _ (R.MkModelMVar g) = newEmptyMVar >>= g
+run _ _ (R.MkModelMVar g) = newEmptyMVar >>= g
 
-run _ (R.MkRenderer ms render g) = J.syncCallback1' (onRender ms render') >>= g
+run _ _ (R.MkRenderer ms render g) = J.syncCallback1' (onRender ms render') >>= g
   where
     render' v = hoist (hoist generalize) (render v)
 
-run _ (R.PutModelMVar ms s g) = putMVar ms s >> g
+run _ _ (R.PutModelMVar ms s g) = putMVar ms s >> g
+
+run _ component (R.GetComponent g) = g component

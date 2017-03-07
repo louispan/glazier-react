@@ -21,7 +21,7 @@ instance J.IsJSVal ReactElement
 instance J.PToJSVal ReactElement where
     pToJSVal = J.jsval
 
--- | This is an IO action even if the same args was used
+-- | This is an IO action because even if the same args was used
 -- a different ReactElement may be created, because JSVal
 -- and JSArray are mutable.
 foreign import javascript unsafe
