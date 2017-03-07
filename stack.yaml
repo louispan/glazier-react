@@ -48,6 +48,8 @@ packages:
 - '.'
 - location: '/Users/louis/repo/js/javascript-extras'
   extra-dep: true
+- location: '/Users/louis/repo/hs/disposable'
+  extra-dep: true
 
 
 # Dependency packages to be pulled from upstream that are not in the resolver
@@ -59,7 +61,7 @@ extra-deps:
 - stm-extras-0.1.0.1
 - pipes-category-0.2.0.1
 - mmorph-1.0.9
-- disposable-0.1.1.0
+- disposable-0.2.0.0
 - javascript-extras-0.1.0.0
 
 # Override default flag values for local packages and extra-deps

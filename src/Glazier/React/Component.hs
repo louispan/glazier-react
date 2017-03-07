@@ -11,8 +11,8 @@ import qualified GHCJS.Marshal.Pure as J
 -- This allows generic deriving of model Adaptors.
 newtype ReactComponent = ReactComponent J.JSVal
 
-instance CD.Disposable ReactComponent where
-    dispose _ = pure ()
+instance CD.Disposing ReactComponent where
+    disposing _ = CD.DisposeNone
 
 instance J.IsJSVal ReactComponent
 instance J.PToJSVal ReactComponent where
