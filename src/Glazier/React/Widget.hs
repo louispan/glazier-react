@@ -72,15 +72,17 @@ instance HasGModel (SuperModel gsk mdl) gsk mdl where
 
 class IsWidget w where
     -- The input to Gadget
-    type Action w :: *
+    type WidgetAction w :: *
 
     -- The output of Gadget
-    type Command w :: *
-    type Model w :: *
+    type WidgetCommand w :: *
+
+    -- The pure model for state and rendering
+    type WidgetModel w :: *
 
     -- Callbacks and data required for interfacing with react.
-    type Gasket w :: *
+    type WidgetGasket w :: *
 
-type WidgetGModel w = GModel (Gasket w) (Model w)
-type WidgetMModel w = MModel (Gasket w) (Model w)
-type WidgetSuperModel w = SuperModel (Gasket w) (Model w)
+type WidgetGModel w = GModel (WidgetGasket w) (WidgetModel w)
+type WidgetMModel w = MModel (WidgetGasket w) (WidgetModel w)
+type WidgetSuperModel w = SuperModel (WidgetGasket w) (WidgetModel w)
