@@ -10,10 +10,10 @@ import Control.Lens
 import Control.Monad
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
-import qualified Glazier.React.Model.Class as R
+import qualified Glazier.React.Widget as R
 import qualified JavaScript.Extras as JE
 
-componentSetState :: R.HasSuperModel sm gm => sm -> [JE.Property] -> J.JSVal -> IO ()
+componentSetState :: R.HasSuperModel sm g m => sm -> [JE.Property] -> J.JSVal -> IO ()
 componentSetState sm props j = do
     let gm = sm ^. R.gModel
         mm = sm ^. R.mModel
