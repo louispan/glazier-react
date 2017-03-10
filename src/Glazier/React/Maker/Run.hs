@@ -32,8 +32,8 @@ mkActionCallback output handler =
             acts <- handler evt
             traverse_ (\act -> lift $ atomically $ PC.send output act >>= guard) acts
 
-run :: PC.Output act -> R.ReactComponent -> R.Maker act (IO a) -> IO a
-run output _ (R.MkHandler handler g) = mkActionCallback output handler >>= g
+run :: R.ReactComponent -> PC.Output act -> R.Maker act (IO a) -> IO a
+run _ output (R.MkHandler handler g) = mkActionCallback output handler >>= g
 
 run _ _ (R.MkEmptyMModel g) = newEmptyMVar >>= g
 
@@ -43,4 +43,4 @@ run _ _ (R.MkRenderer ms render g) = J.syncCallback1' (onRender ms render') >>= 
 
 run _ _ (R.PutMModel ms s g) = putMVar ms s >> g
 
-run _ component (R.GetComponent g) = g component
+run component _ (R.GetComponent g) = g component
