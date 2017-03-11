@@ -19,7 +19,8 @@ module Glazier.React.Event
   , isDefaultPrevented
   , stopPropagation
   , isPropagationStopped
-  , parseEvent
+  , fromSyntheticEvent
+  , parseMaybeEvent
   , MouseEvent(..)
   , parseMouseEvent
   , KeyboardEvent(..)
@@ -147,7 +148,7 @@ data Event = Event
     , isTrusted :: Bool
     , nativeEvent :: DOMEvent
     , target :: DOMEventTarget
-    , timestamp :: Int
+    , timeStamp :: Int
     -- type is a reserved word, so prefix to eventType
     , eventType :: J.JSString
     }
@@ -160,8 +161,18 @@ unsafeProperty :: J.PFromJSVal a => J.JSVal -> J.JSString -> a
 unsafeProperty v = J.pFromJSVal . js_unsafeProperty v
 
 -- | This should alway be safe to use
-parseEvent :: SyntheticEvent -> Event
-parseEvent (SyntheticEvent evt) =
+fromSyntheticEvent :: SyntheticEvent -> Event
+fromSyntheticEvent (SyntheticEvent evt) = doParseEvent evt
+
+-- | This is for parsing DOM events not from the React framework (eg hashchange)
+-- Will return Nothing if J.JSVal is null or undefined
+parseMaybeEvent :: J.JSVal -> Maybe Event
+parseMaybeEvent evt = if J.isUndefined evt || J.isNull evt
+    then Nothing
+    else Just $ doParseEvent evt
+
+doParseEvent :: J.JSVal -> Event
+doParseEvent evt =
     Event
     { bubbles = unsafeProperty evt "bubbles"
     , cancelable = unsafeProperty evt "cancelable"
@@ -169,9 +180,9 @@ parseEvent (SyntheticEvent evt) =
     , defaultPrevented = unsafeProperty evt "defaultPrevented"
     , eventPhase = unsafeProperty evt "eventPhase"
     , isTrusted = unsafeProperty evt "isTrusted"
-    , nativeEvent = DOMEvent $ js_unsafeProperty evt "nativeEvent"
+    , nativeEvent = DOMEvent evt
     , target = DOMEventTarget $ js_unsafeProperty evt "target"
-    , timestamp = unsafeProperty evt "timestamp"
+    , timeStamp = unsafeProperty evt "timeStamp"
     , eventType = unsafeProperty evt "type"
     }
 
