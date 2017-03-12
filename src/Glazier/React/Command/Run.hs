@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE RankNTypes #-}
 
 -- | Common functions used by command interpreters
@@ -22,6 +23,15 @@ componentSetState sm props j = do
     let dict' = J.pToJSVal $ JE.PureJSVal dict
     js_componentSetState dict' j
 
+#ifdef __GHCJS__
+
 foreign import javascript unsafe
   "if ($2 && $2['setState']) { $2['setState']($1); }"
   js_componentSetState :: J.JSVal -> J.JSVal -> IO ()
+
+#else
+
+js_componentSetState :: J.JSVal -> J.JSVal -> IO ()
+js_componentSetState _ _ = pure ()
+
+#endif

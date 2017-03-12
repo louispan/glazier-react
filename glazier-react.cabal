@@ -51,6 +51,8 @@ library
   ghc-options:         -Wall
   if impl(ghcjs)
     build-depends: ghcjs-base
+  if !impl(ghcjs)
+    build-depends: ghcjs-base-stub >= 0.1.0.1 && < 1
 
 source-repository head
   type:     git

@@ -1,10 +1,11 @@
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE DuplicateRecordFields #-}
 
 -- | This module based on React/Flux/PropertiesAndEvents.hs.
 module Glazier.React.Event
@@ -47,10 +48,6 @@ instance J.Cast DOMEventTarget where
     unsafeWrap = DOMEventTarget
     instanceRef _ = js_DOMEventTarget
 
-foreign import javascript unsafe
-    "EventTarget"
-    js_DOMEventTarget :: J.JSVal
-
 -- | The native event
 -- https://developer.mozilla.org/en-US/docs/Web/API/Event
 newtype DOMEvent = DOMEvent J.JSVal
@@ -63,10 +60,6 @@ instance J.Cast DOMEvent where
     unsafeWrap = DOMEvent
     instanceRef _ = js_DOMEvent
 
-foreign import javascript unsafe
-    "Event"
-    js_DOMEvent :: J.JSVal
-
 -- | Every event in React is a synthetic event, a cross-browser wrapper around the native event.
 -- 'SyntheticEvent' must only be used in the first part of 'eventHandler'.
 newtype SyntheticEvent = SyntheticEvent J.JSVal
@@ -74,10 +67,6 @@ newtype SyntheticEvent = SyntheticEvent J.JSVal
 instance J.IsJSVal SyntheticEvent
 instance J.PToJSVal SyntheticEvent where
     pToJSVal = J.jsval
-
-foreign import javascript unsafe
-    "($1 && $1.nativeEvent && $1.nativeEvent instanceof Event)"
-    js_isSyntheticEvent :: J.JSVal -> Bool
 
 -- | SyntheticEvent cannot be a Javascript.Cast
 -- See https://github.com/ghcjs/ghcjs-base/issues/86
@@ -109,30 +98,14 @@ eventHandlerM goStrict goLazy evt = do
     r <- goStrict evt
     goLazy $!! r
 
-foreign import javascript unsafe
-    "$1.preventDefault()"
-    js_preventDefault :: SyntheticEvent -> IO ()
-
 preventDefault :: SyntheticEvent -> IO ()
 preventDefault = js_preventDefault
-
-foreign import javascript unsafe
-    "$1.isDefaultPrevented()"
-    js_isDefaultPrevented :: SyntheticEvent -> Bool
 
 isDefaultPrevented :: SyntheticEvent -> Bool
 isDefaultPrevented = js_isDefaultPrevented
 
-foreign import javascript unsafe
-    "$1.stopPropagation()"
-    js_stopPropagation :: SyntheticEvent -> IO ()
-
 stopPropagation :: SyntheticEvent -> IO ()
 stopPropagation = js_stopPropagation
-
-foreign import javascript unsafe
-    "$1.isPropagationStopped()"
-    js_isPropagationStopped :: SyntheticEvent -> Bool
 
 isPropagationStopped :: SyntheticEvent -> Bool
 isPropagationStopped = js_isPropagationStopped
@@ -152,10 +125,6 @@ data Event = Event
     -- type is a reserved word, so prefix to eventType
     , eventType :: J.JSString
     }
-
--- | unsafe and non-IO to enable lazy parsing. See mkEventHandler
-foreign import javascript unsafe "$1[$2]"
-  js_unsafeProperty :: J.JSVal -> J.JSString -> J.JSVal
 
 unsafeProperty :: J.PFromJSVal a => J.JSVal -> J.JSString -> a
 unsafeProperty v = J.pFromJSVal . js_unsafeProperty v
@@ -214,18 +183,9 @@ data MouseEvent = MouseEvent
   , shiftKey :: Bool
   }
 
--- | unsafe to enable lazy parsing. See mkEventHandler
-foreign import javascript unsafe
-    "$1.getModifierState($2)"
-    js_unsafeGetModifierState :: J.JSVal -> J.JSString -> J.JSVal
-
 -- | See https://www.w3.org/TR/DOM-Level-3-Events-key/#keys-modifier
 unsafeGetModifierState :: J.JSVal -> J.JSString -> Bool
 unsafeGetModifierState obj k = J.fromJSBool $ js_unsafeGetModifierState obj k
-
-foreign import javascript unsafe
-    "($1 instanceof MouseEvent)"
-    js_isMouseEvent :: J.JSVal -> Bool
 
 parseMouseEvent :: SyntheticEvent -> Maybe MouseEvent
 parseMouseEvent (SyntheticEvent evt) | js_isMouseEvent (js_unsafeProperty evt "nativeEvent") = Just $
@@ -267,10 +227,6 @@ data KeyboardEvent = KeyboardEvent
   , which :: Int
   }
 
-foreign import javascript unsafe
-    "($1 instanceof KeyboardEvent)"
-    js_isKeyboardEvent :: J.JSVal -> Bool
-
 parseKeyboardEvent :: SyntheticEvent -> Maybe KeyboardEvent
 parseKeyboardEvent (SyntheticEvent evt) | js_isKeyboardEvent (js_unsafeProperty evt "nativeEvent") = Just $
     KeyboardEvent
@@ -288,3 +244,89 @@ parseKeyboardEvent (SyntheticEvent evt) | js_isKeyboardEvent (js_unsafeProperty 
     , which = unsafeProperty evt "which"
     }
 parseKeyboardEvent _ | otherwise = Nothing
+
+#ifdef __GHCJS__
+
+foreign import javascript unsafe
+    "EventTarget"
+    js_DOMEventTarget :: J.JSVal
+
+foreign import javascript unsafe
+    "Event"
+    js_DOMEvent :: J.JSVal
+
+foreign import javascript unsafe
+    "($1 && $1.nativeEvent && $1.nativeEvent instanceof Event)"
+    js_isSyntheticEvent :: J.JSVal -> Bool
+
+foreign import javascript unsafe
+    "$1.preventDefault()"
+    js_preventDefault :: SyntheticEvent -> IO ()
+
+foreign import javascript unsafe
+    "$1.isDefaultPrevented()"
+    js_isDefaultPrevented :: SyntheticEvent -> Bool
+
+foreign import javascript unsafe
+    "$1.stopPropagation()"
+    js_stopPropagation :: SyntheticEvent -> IO ()
+
+foreign import javascript unsafe
+    "$1.isPropagationStopped()"
+    js_isPropagationStopped :: SyntheticEvent -> Bool
+
+-- | unsafe and non-IO to enable lazy parsing. See mkEventHandler
+foreign import javascript unsafe "$1[$2]"
+  js_unsafeProperty :: J.JSVal -> J.JSString -> J.JSVal
+
+-- | unsafe to enable lazy parsing. See mkEventHandler
+foreign import javascript unsafe
+    "$1.getModifierState($2)"
+    js_unsafeGetModifierState :: J.JSVal -> J.JSString -> J.JSVal
+
+foreign import javascript unsafe
+    "($1 instanceof MouseEvent)"
+    js_isMouseEvent :: J.JSVal -> Bool
+
+foreign import javascript unsafe
+    "($1 instanceof KeyboardEvent)"
+    js_isKeyboardEvent :: J.JSVal -> Bool
+
+#else
+
+js_DOMEventTarget :: J.JSVal
+js_DOMEventTarget = J.nullRef
+
+js_DOMEvent :: J.JSVal
+js_DOMEvent = J.nullRef
+
+js_isSyntheticEvent :: J.JSVal -> Bool
+js_isSyntheticEvent _ = False
+
+js_preventDefault :: SyntheticEvent -> IO ()
+js_preventDefault _ = pure ()
+
+js_isDefaultPrevented :: SyntheticEvent -> Bool
+js_isDefaultPrevented _ = False
+
+js_stopPropagation :: SyntheticEvent -> IO ()
+js_stopPropagation _ = pure ()
+
+js_isPropagationStopped :: SyntheticEvent -> Bool
+js_isPropagationStopped _ = False
+
+-- | unsafe and non-IO to enable lazy parsing. See mkEventHandler
+js_unsafeProperty :: J.JSVal -> J.JSString -> J.JSVal
+js_unsafeProperty _ _ = J.nullRef
+
+-- | unsafe to enable lazy parsing. See mkEventHandler
+js_unsafeGetModifierState :: J.JSVal -> J.JSString -> J.JSVal
+js_unsafeGetModifierState _ _ = J.nullRef
+
+js_isMouseEvent :: J.JSVal -> Bool
+js_isMouseEvent _ = False
+
+js_isKeyboardEvent :: J.JSVal -> Bool
+js_isKeyboardEvent _ = False
+
+#endif

@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 
@@ -27,6 +28,15 @@ basicRenderCmd frameNum componentRef fcmd = do
     sm <- get
     pure $ fcmd sm [("frameNum", i)] r
 
+#ifdef __GHCJS__
+
 foreign import javascript unsafe
   "Number.MAX_SAFE_INTEGER"
   js_maxSafeInt :: Int
+
+#else
+
+js_maxSafeInt :: Int
+js_maxSafeInt = 0
+
+#endif

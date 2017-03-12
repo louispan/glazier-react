@@ -1,3 +1,5 @@
+{-# LANGUAGE CPP #-}
+
 module Glazier.React.Component
     ( ReactComponent
     , mkComponent
@@ -21,7 +23,17 @@ instance J.PToJSVal ReactComponent where
 mkComponent :: IO ReactComponent
 mkComponent = ReactComponent <$> js_mkComponent
 
+#ifdef __GHCJS__
+
 foreign import javascript unsafe
   "$r = hgr$mkClass();"
   js_mkComponent
       :: IO J.JSVal
+
+#else
+
+js_mkComponent :: IO J.JSVal
+js_mkComponent = pure J.nullRef
+
+
+#endif

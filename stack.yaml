@@ -16,15 +16,6 @@
 #  name: custom-snapshot
 #  location: "./custom-snapshot.yaml"
 resolver: lts-7.19
-compiler: ghcjs-0.2.1.9007019_ghc-8.0.1
-compiler-check: match-exact
-
-setup-info:
-  ghcjs:
-    source:
-      ghcjs-0.2.1.9007019_ghc-8.0.1:
-           url: http://ghcjs.tolysz.org/ghc-8.0-2017-02-05-lts-7.19-9007019.tar.gz
-           sha1: d2cfc25f9cda32a25a87d9af68891b2186ee52f9
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -50,7 +41,8 @@ packages:
   extra-dep: true
 - location: '/Users/louis/repo/hs/disposable'
   extra-dep: true
-
+- location: '/Users/louis/repo/js/ghcjs-base-stub'
+  extra-dep: true
 
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
@@ -63,6 +55,7 @@ extra-deps:
 - mmorph-1.0.9
 - disposable-0.2.0.0
 - javascript-extras-0.1.0.0
+- ghcjs-base-stub-0.1.0.1
 
 # Override default flag values for local packages and extra-deps
 flags: {}
