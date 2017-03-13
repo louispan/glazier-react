@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 
@@ -8,7 +7,6 @@ module Glazier.React.Command
 
 import Control.Lens
 import Control.Monad.State.Strict
-import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import qualified JavaScript.Extras as JE
 
@@ -22,21 +20,8 @@ basicRenderCmd :: MonadState sm m =>
            -> (sm -> [JE.Property] -> J.JSVal -> cmd)
            -> m cmd
 basicRenderCmd frameNum componentRef fcmd = do
-    frameNum %= (\i -> (i `mod` js_maxSafeInt) + 1)
-    i <- J.pToJSVal <$> use frameNum
+    frameNum %= (\i -> (i `mod` maxBound) + 1)
+    i <- JE.toJS <$> use frameNum
     r <- use componentRef
     sm <- get
     pure $ fcmd sm [("frameNum", i)] r
-
-#ifdef __GHCJS__
-
-foreign import javascript unsafe
-  "Number.MAX_SAFE_INTEGER"
-  js_maxSafeInt :: Int
-
-#else
-
-js_maxSafeInt :: Int
-js_maxSafeInt = 0
-
-#endif

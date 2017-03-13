@@ -54,7 +54,7 @@ extra-deps:
 - pipes-category-0.2.0.1
 - mmorph-1.0.9
 - disposable-0.2.0.0
-- javascript-extras-0.1.0.0
+- javascript-extras-0.2.0.0
 - ghcjs-base-stub-0.1.0.1
 
 # Override default flag values for local packages and extra-deps

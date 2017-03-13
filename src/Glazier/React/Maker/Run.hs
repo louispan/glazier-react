@@ -7,12 +7,12 @@ import Control.Monad.Morph
 import Control.Monad.Trans.Maybe
 import Data.Foldable
 import qualified GHCJS.Foreign.Callback as J
-import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import qualified Glazier as G
-import Glazier.React.Maker as R
 import qualified Glazier.React.Component as R
+import Glazier.React.Maker as R
 import qualified Glazier.React.Markup as R
+import JavaScript.Extras as JE
 import qualified Pipes.Concurrent as PC
 
 -- | This is called synchronously by React to render the DOM.
@@ -20,7 +20,7 @@ import qualified Pipes.Concurrent as PC
 onRender :: MVar s -> (J.JSVal -> G.WindowT s (R.ReactMlT IO) ()) -> J.JSVal -> IO J.JSVal
 onRender mm wind v = do
     mdl <- readMVar mm
-    J.pToJSVal <$> R.markedElement (wind v) mdl
+    JE.toJS <$> R.markedElement (wind v) mdl
 
 mkActionCallback
     :: PC.Output act

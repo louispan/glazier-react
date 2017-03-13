@@ -8,6 +8,7 @@ module Glazier.React.Component
 import qualified Control.Disposable as CD
 import qualified GHCJS.Types as J
 import qualified GHCJS.Marshal.Pure as J
+import qualified JavaScript.Extras.Recast as JE
 
 -- | A newtype wrapper to give a noop disposable instance to React components
 -- This allows generic deriving of model Adaptors.
@@ -19,6 +20,7 @@ instance CD.Disposing ReactComponent where
 instance J.IsJSVal ReactComponent
 instance J.PToJSVal ReactComponent where
     pToJSVal = J.jsval
+instance JE.ToJS ReactComponent
 
 mkComponent :: IO ReactComponent
 mkComponent = ReactComponent <$> js_mkComponent
