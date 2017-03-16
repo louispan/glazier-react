@@ -14,11 +14,11 @@ import qualified Glazier.React.Widget as R
 import qualified JavaScript.Extras as JE
 import qualified JavaScript.Object as JO
 
-componentSetState :: R.HasSuperModel sm g m => sm -> [JE.Property] -> J.JSVal -> IO ()
+componentSetState :: R.HasSuperModel sm mdl pln => sm -> [JE.Property] -> J.JSVal -> IO ()
 componentSetState sm props j = do
-    let gm = sm ^. R.gModel
-        mm = sm ^. R.mModel
-    void $ swapMVar mm gm
+    let dsn = sm ^. R.design
+        rep = sm ^. R.replica
+    void $ swapMVar rep dsn
     js_componentSetState (JE.fromProperties props) j
 
 #ifdef __GHCJS__

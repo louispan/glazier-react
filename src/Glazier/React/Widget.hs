@@ -13,62 +13,62 @@ import qualified Control.Disposable as CD
 import Control.Lens
 import qualified GHC.Generics as G
 
-class HasWidgetGasket c gsk | c -> gsk where
-    widgetGasket :: Lens' c gsk
+class HasWidgetPlan c pln | c -> pln where
+    widgetPlan :: Lens' c pln
 
 class HasWidgetModel c mdl | c -> mdl where
     widgetModel :: Lens' c mdl
 
-data GModel gsk mdl = GModel
-    { _widgetGasket :: gsk
-    , _widgetModel :: mdl
+data Design mdl pln = Design
+    { _widgetModel :: mdl
+    , _widgetPlan :: pln
     } deriving (G.Generic)
 
-instance (CD.Disposing gsk, CD.Disposing mdl) => CD.Disposing (GModel gsk mdl)
+instance (CD.Disposing pln, CD.Disposing mdl) => CD.Disposing (Design mdl pln)
 
-instance HasWidgetGasket (GModel gsk mdl) gsk where
-    widgetGasket f (GModel gsk mdl) = fmap (\gsk' -> GModel gsk' mdl) (f gsk)
-    {-# INLINE widgetGasket #-}
+instance HasWidgetPlan (Design mdl pln) pln where
+    widgetPlan f (Design mdl pln) = fmap (\pln' -> Design mdl pln') (f pln)
+    {-# INLINE widgetPlan #-}
 
-instance HasWidgetModel (GModel gsk mdl) mdl where
-    widgetModel f (GModel gsk mdl) = fmap (\mdl' -> GModel gsk mdl') (f mdl)
+instance HasWidgetModel (Design mdl pln) mdl where
+    widgetModel f (Design mdl pln) = fmap (\mdl' -> Design mdl' pln) (f mdl)
     {-# INLINE widgetModel #-}
 
-class HasGModel c gsk mdl | c -> gsk mdl where
-    gModel :: Lens' c (GModel gsk mdl)
+class HasDesign c mdl pln | c -> mdl pln where
+    design :: Lens' c (Design mdl pln)
 
-instance HasGModel (GModel gsk mdl) gsk mdl where
-    gModel = id
+instance HasDesign (Design mdl pln) mdl pln where
+    design = id
 
-type MModel gsk mdl = MVar (GModel gsk mdl)
+type Replica mdl pln = MVar (Design mdl pln)
 
-class HasMModel c gsk mdl | c -> gsk mdl where
-    mModel :: Lens' c (MModel gsk mdl)
+class HasReplica c mdl pln | c -> mdl pln where
+    replica :: Lens' c (Replica mdl pln)
 
-instance HasMModel (MModel gsk mdl) gsk mdl where
-    mModel = id
+instance HasReplica (Replica mdl pln) mdl pln where
+    replica = id
 
-data SuperModel gsk mdl = SuperModel
-    { _mModel :: MModel gsk mdl
-    , _gModel :: GModel gsk mdl
+data SuperModel mdl pln = SuperModel
+    { _design :: Design mdl pln
+    , _replica :: Replica mdl pln
     } deriving (G.Generic)
 
-instance CD.Disposing (GModel gsk mdl) => CD.Disposing (SuperModel gsk mdl) where
-    disposing s = CD.disposing $ s ^. gModel
+instance CD.Disposing (Design mdl pln) => CD.Disposing (SuperModel mdl pln) where
+    disposing s = CD.disposing $ s ^. design
 
-class (HasMModel c gsk mdl, HasGModel c gsk mdl) => HasSuperModel c gsk mdl | c -> gsk mdl where
-    superModel :: Lens' c (SuperModel gsk mdl)
+class (HasDesign c mdl pln, HasReplica c mdl pln) => HasSuperModel c mdl pln | c -> mdl pln where
+    superModel :: Lens' c (SuperModel mdl pln)
 
-instance HasSuperModel (SuperModel gsk mdl) gsk mdl where
+instance HasSuperModel (SuperModel mdl pln) mdl pln where
     superModel = id
 
-instance HasMModel (SuperModel gsk mdl) gsk mdl where
-    mModel f (SuperModel mm gm) = fmap (\mm' -> SuperModel mm' gm) (f mm)
-    {-# INLINE mModel #-}
+instance HasReplica (SuperModel mdl pln) mdl pln where
+    replica f (SuperModel dsn rep) = fmap (\rep' -> SuperModel dsn rep') (f rep)
+    {-# INLINE replica #-}
 
-instance HasGModel (SuperModel gsk mdl) gsk mdl where
-    gModel f (SuperModel mm gm) = fmap (\gm' -> SuperModel mm gm') (f gm)
-    {-# INLINE gModel #-}
+instance HasDesign (SuperModel mdl pln) mdl pln where
+    design f (SuperModel dsn rep) = fmap (\dsn' -> SuperModel dsn' rep) (f dsn)
+    {-# INLINE design #-}
 
 class IsWidget w where
     -- The input to Gadget
@@ -81,8 +81,8 @@ class IsWidget w where
     type WidgetModel w :: *
 
     -- Callbacks and data required for interfacing with react.
-    type WidgetGasket w :: *
+    type WidgetPlan w :: *
 
-type WidgetGModel w = GModel (WidgetGasket w) (WidgetModel w)
-type WidgetMModel w = MModel (WidgetGasket w) (WidgetModel w)
-type WidgetSuperModel w = SuperModel (WidgetGasket w) (WidgetModel w)
+type WidgetDesign w = Design (WidgetModel w) (WidgetPlan w)
+type WidgetReplica w = Replica (WidgetModel w) (WidgetPlan w)
+type WidgetSuperModel w = SuperModel (WidgetModel w) (WidgetPlan w) 

@@ -25,17 +25,17 @@ data Maker act nxt where
         :: (J.JSVal -> MaybeT IO [act])
         -> (J.Callback (J.JSVal -> IO ()) -> nxt)
         -> Maker act nxt
-    MkEmptyMModel
-        :: (R.MModel gsk mdl -> nxt)
+    MkEmptyReplica
+        :: (R.Replica mdl pln -> nxt)
         -> Maker act nxt
     MkRenderer
-        :: R.MModel gsk mdl
-        -> (J.JSVal -> G.WindowT (R.GModel gsk mdl) (R.ReactMl) ())
+        :: R.Replica mdl pln
+        -> (J.JSVal -> G.WindowT (R.Design mdl pln) (R.ReactMl) ())
         -> (J.Callback (J.JSVal -> IO J.JSVal) -> nxt)
         -> Maker act nxt
-    PutMModel
-        :: R.MModel gsk mdl
-        -> R.GModel gsk mdl
+    PutReplica
+        :: R.Replica mdl pln
+        -> R.Design mdl pln
         -> nxt
         -> Maker act nxt
     GetComponent
@@ -44,9 +44,9 @@ data Maker act nxt where
 
 instance Functor (Maker act) where
   fmap f (MkHandler handler g) = MkHandler handler (f . g)
-  fmap f (MkEmptyMModel g) = MkEmptyMModel (f . g)
+  fmap f (MkEmptyReplica g) = MkEmptyReplica (f . g)
   fmap f (MkRenderer ms render g) = MkRenderer ms render (f . g)
-  fmap f (PutMModel ms s x) = PutMModel ms s (f x)
+  fmap f (PutReplica rep dsn x) = PutReplica rep dsn (f x)
   fmap f (GetComponent g) = GetComponent (f . g)
 
 makeFree ''Maker
@@ -54,19 +54,19 @@ makeFree ''Maker
 -- | Allows changing the action type of Maker
 mapAction :: (act -> act') -> Maker act a -> Maker act' a
 mapAction f (MkHandler handler g) = MkHandler (\v -> fmap f <$> handler v) g
-mapAction _ (MkEmptyMModel g) = MkEmptyMModel g
+mapAction _ (MkEmptyReplica g) = MkEmptyReplica g
 mapAction _ (MkRenderer ms render g) = MkRenderer ms render g
-mapAction _ (PutMModel ms s x) = PutMModel ms s x
+mapAction _ (PutReplica ms s x) = PutReplica ms s x
 mapAction _ (GetComponent g) = GetComponent g
 
 mkSuperModel
     :: MonadFree (Maker act) m
-    => (R.MModel gsk mdl -> m gsk)
-    -> (gsk -> R.GModel gsk mdl)
-    -> m (R.SuperModel gsk mdl)
-mkSuperModel makeGasket createGModel = do
-    mm <- mkEmptyMModel
-    g <- makeGasket mm
-    let gm = createGModel g
-    putMModel mm gm
-    pure (R.SuperModel mm gm)
+    => (R.Replica mdl pln -> m pln)
+    -> (pln -> R.Design mdl pln)
+    -> m (R.SuperModel mdl pln)
+mkSuperModel makePlan toDesign = do
+    rep <- mkEmptyReplica
+    pln <- makePlan rep
+    let dsn = toDesign pln
+    putReplica rep dsn
+    pure (R.SuperModel dsn rep)

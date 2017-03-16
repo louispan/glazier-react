@@ -35,12 +35,12 @@ mkActionCallback output handler =
 run :: R.ReactComponent -> PC.Output act -> R.Maker act (IO a) -> IO a
 run _ output (R.MkHandler handler g) = mkActionCallback output handler >>= g
 
-run _ _ (R.MkEmptyMModel g) = newEmptyMVar >>= g
+run _ _ (R.MkEmptyReplica g) = newEmptyMVar >>= g
 
 run _ _ (R.MkRenderer ms render g) = J.syncCallback1' (onRender ms render') >>= g
   where
     render' v = hoist (hoist generalize) (render v)
 
-run _ _ (R.PutMModel ms s g) = putMVar ms s >> g
+run _ _ (R.PutReplica rep dsn g) = putMVar rep dsn >> g
 
 run component _ (R.GetComponent g) = g component
