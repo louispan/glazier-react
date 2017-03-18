@@ -29,10 +29,10 @@ function hgr$registry() {
         if (!handlers[name])
             handlers[name] = { nextIndex: 0, listeners: {} };
 
-        var i = handlers[name].nextIndex;
+        const i = handlers[name].nextIndex;
         handlers[name].nextIndex += 1;
         handlers[name].listeners[i] = listener;
-        var unregister = function() {
+        const unregister = function() {
             handlers[name] = omit(handlers[name], i);
         };
         return unregister;
@@ -45,7 +45,7 @@ function hgr$registry() {
         if (handlers[name]) {
             // iterate using copy of keys to safeguard against listeners added/removed
             // during callbacks.
-            for (const key of Object.keys(handlers[name].listeners)) {
+            for (var key of Object.keys(handlers[name].listeners)) {
                 const listener = handlers[name].listeners[key];
                 if (listener) {
                     ret.push(listener(data));
