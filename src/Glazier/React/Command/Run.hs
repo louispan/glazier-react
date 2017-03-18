@@ -10,15 +10,15 @@ import Control.Concurrent.MVar
 import Control.Lens
 import Control.Monad
 import qualified GHCJS.Types as J
-import qualified Glazier.React.Widget as R
+import qualified Glazier.React.Model as R
 import qualified JavaScript.Extras as JE
 import qualified JavaScript.Object as JO
 
 componentSetState :: R.HasSuperModel sm mdl pln => sm -> [JE.Property] -> J.JSVal -> IO ()
 componentSetState sm props j = do
     let dsn = sm ^. R.design
-        rep = sm ^. R.replica
-    void $ swapMVar rep dsn
+        frm = sm ^. R.frame
+    void $ swapMVar frm dsn
     js_componentSetState (JE.fromProperties props) j
 
 #ifdef __GHCJS__
