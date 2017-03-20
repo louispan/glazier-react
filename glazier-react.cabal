@@ -1,5 +1,5 @@
 name:                glazier-react
-version:             0.3.0.1
+version:             0.3.0.2
 synopsis:            ReactJS binding using Glazier and Pipes.Fluid
 description:         ReactJS binding using Glazier and Pipes.Fluid, which is
                      more functional and composable than Elm/Flux.
