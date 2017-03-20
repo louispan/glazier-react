@@ -40,13 +40,13 @@ import qualified JavaScript.Extras as JE
 
 -- | The parameters required to create a branch ReactElement with children
 data BranchParam = BranchParam
-    J.JSVal -- ^ Can be a react component type as well as html name
+    J.JSVal
     [JE.Property]
-    (D.DList ReactMarkup) -- ^ children
+    (D.DList ReactMarkup)
 
 -- | The parameters required to create a leaf ReactElement (no children)
 data LeafParam = LeafParam
-    J.JSVal -- ^ Can be a react component type as well as html name
+    J.JSVal
     [JE.Property]
 
 data ReactMarkup
@@ -87,7 +87,7 @@ newtype ReactMlT m a = ReactMlT
 
 type ReactMl = ReactMlT Identity
 
-makeWrapped ''ReactMlT
+-- makeWrapped ''ReactMlT
 
 instance (Semigroup a, Monad m) => Semigroup (ReactMlT m a) where
     (<>) = liftA2 (<>)
