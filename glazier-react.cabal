@@ -1,5 +1,5 @@
 name:                glazier-react
-version:             0.3.0.0
+version:             0.3.0.1
 synopsis:            ReactJS binding using Glazier and Pipes.Fluid
 description:         ReactJS binding using Glazier and Pipes.Fluid, which is
                      more functional and composable than Elm/Flux.
@@ -9,7 +9,7 @@ license-file:        LICENSE
 author:              Louis Pan
 maintainer:          louis@pan.me
 copyright:           2017 Louis Pan
-category:            Web, FRP
+category:            Web, GUI
 build-type:          Simple
 extra-source-files:  README.md
 cabal-version:       >=1.10
