@@ -41,6 +41,9 @@ data Maker act nxt where
     GetComponent
         :: (R.ReactComponent -> nxt)
         -> Maker act nxt
+    MkKey
+        :: (J.JSString -> nxt)
+        -> Maker act nxt
 
 instance Functor (Maker act) where
   fmap f (MkHandler handler g) = MkHandler handler (f . g)
@@ -48,6 +51,7 @@ instance Functor (Maker act) where
   fmap f (MkRenderer ms render g) = MkRenderer ms render (f . g)
   fmap f (PutFrame frm dsn x) = PutFrame frm dsn (f x)
   fmap f (GetComponent g) = GetComponent (f . g)
+  fmap f (MkKey g) = MkKey (f . g)
 
 makeFree ''Maker
 
@@ -58,3 +62,4 @@ mapAction _ (MkEmptyFrame g) = MkEmptyFrame g
 mapAction _ (MkRenderer ms render g) = MkRenderer ms render g
 mapAction _ (PutFrame frm dsn x) = PutFrame frm dsn x
 mapAction _ (GetComponent g) = GetComponent g
+mapAction _ (MkKey g) = MkKey g

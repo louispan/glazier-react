@@ -20,7 +20,7 @@ basicRenderCmd :: MonadState sm m =>
            -> (sm -> [JE.Property] -> J.JSVal -> cmd)
            -> m cmd
 basicRenderCmd frameNum componentRef fcmd = do
-    frameNum %= (\i -> (i `mod` maxBound) + 1)
+    frameNum %= (\i -> (i `mod` JE.maxSafeInteger) + 1)
     i <- JE.toJS <$> use frameNum
     r <- use componentRef
     sm <- get

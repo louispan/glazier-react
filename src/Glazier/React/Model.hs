@@ -59,7 +59,8 @@ data SuperModel mdl pln = SuperModel
     , _frame :: Frame mdl pln
     } deriving (G.Generic)
 
--- Undecidableinstances!
+-- | Undecidableinstances!
+-- But this is safe because Design is definitely smaller than SuperModel
 instance CD.Disposing (Design mdl pln) => CD.Disposing (SuperModel mdl pln) where
     disposing s = CD.disposing $ s ^. design
 
