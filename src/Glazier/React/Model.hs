@@ -43,6 +43,7 @@ class HasDesign c mdl pln | c -> mdl pln where
 
 instance HasDesign (Design mdl pln) mdl pln where
     design = id
+    {-# INLINE design #-}
 
 -- | Frame is a Mvar of Design. React rendering callback uses this MVar for rendering.
 type Frame mdl pln = MVar (Design mdl pln)
@@ -52,6 +53,7 @@ class HasFrame c mdl pln | c -> mdl pln where
 
 instance HasFrame (Frame mdl pln) mdl pln where
     frame = id
+    {-# INLINE frame #-}
 
 -- | A record of Design and Frame.
 data SuperModel mdl pln = SuperModel
@@ -63,12 +65,14 @@ data SuperModel mdl pln = SuperModel
 -- But this is safe because Design is definitely smaller than SuperModel
 instance CD.Disposing (Design mdl pln) => CD.Disposing (SuperModel mdl pln) where
     disposing s = CD.disposing $ s ^. design
+    {-# INLINE disposing #-}
 
 class (HasDesign c mdl pln, HasFrame c mdl pln) => HasSuperModel c mdl pln | c -> mdl pln where
     superModel :: Lens' c (SuperModel mdl pln)
 
 instance HasSuperModel (SuperModel mdl pln) mdl pln where
     superModel = id
+    {-# INLINE superModel #-}
 
 instance HasFrame (SuperModel mdl pln) mdl pln where
     frame f (SuperModel dsn frm) = fmap (\frm' -> SuperModel dsn frm') (f frm)
@@ -80,6 +84,8 @@ instance HasDesign (SuperModel mdl pln) mdl pln where
 
 instance HasPlan (SuperModel mdl pln) pln where
     plan = design . plan
+    {-# INLINE plan #-}
 
 instance HasModel (SuperModel mdl pln) mdl where
     model = design . model
+    {-# INLINE model #-}
