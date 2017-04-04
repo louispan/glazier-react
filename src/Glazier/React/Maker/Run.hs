@@ -38,11 +38,11 @@ run _ _ output (R.MkHandler handler g) = mkActionCallback output handler >>= g
 
 run _ _ _ (R.MkEmptyFrame g) = newEmptyMVar >>= g
 
-run _ _ _ (R.MkRenderer ms render g) = J.syncCallback1' (onRender ms render') >>= g
+run _ _ _ (R.MkRenderer frm render g) = J.syncCallback1' (onRender frm render') >>= g
   where
     render' v = hoist (hoist generalize) (render v)
 
-run _ _ _ (R.PutFrame frm dsn g) = putMVar frm dsn >> g
+run _ _ _ (R.PutFrame frm scn g) = putMVar frm scn >> g
 
 run _ component _ (R.GetComponent g) = g component
 

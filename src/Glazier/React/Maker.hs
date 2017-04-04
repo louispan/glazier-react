@@ -30,12 +30,12 @@ data Maker act nxt where
         -> Maker act nxt
     MkRenderer
         :: R.Frame mdl pln
-        -> (J.JSVal -> G.WindowT (R.Design mdl pln) R.ReactMl ())
+        -> (J.JSVal -> G.WindowT (R.Scene mdl pln) R.ReactMl ())
         -> (J.Callback (J.JSVal -> IO J.JSVal) -> nxt)
         -> Maker act nxt
     PutFrame
         :: R.Frame mdl pln
-        -> R.Design mdl pln
+        -> R.Scene mdl pln
         -> nxt
         -> Maker act nxt
     GetComponent
@@ -48,8 +48,8 @@ data Maker act nxt where
 instance Functor (Maker act) where
   fmap f (MkHandler handler g) = MkHandler handler (f . g)
   fmap f (MkEmptyFrame g) = MkEmptyFrame (f . g)
-  fmap f (MkRenderer ms render g) = MkRenderer ms render (f . g)
-  fmap f (PutFrame frm dsn x) = PutFrame frm dsn (f x)
+  fmap f (MkRenderer frm render g) = MkRenderer frm render (f . g)
+  fmap f (PutFrame frm scn x) = PutFrame frm scn (f x)
   fmap f (GetComponent g) = GetComponent (f . g)
   fmap f (MkKey g) = MkKey (f . g)
 
@@ -59,7 +59,7 @@ makeFree ''Maker
 mapAction :: (act -> act') -> Maker act a -> Maker act' a
 mapAction f (MkHandler handler g) = MkHandler (\v -> fmap f <$> handler v) g
 mapAction _ (MkEmptyFrame g) = MkEmptyFrame g
-mapAction _ (MkRenderer ms render g) = MkRenderer ms render g
-mapAction _ (PutFrame frm dsn x) = PutFrame frm dsn x
+mapAction _ (MkRenderer frm render g) = MkRenderer frm render g
+mapAction _ (PutFrame frm scn x) = PutFrame frm scn x
 mapAction _ (GetComponent g) = GetComponent g
 mapAction _ (MkKey g) = MkKey g
