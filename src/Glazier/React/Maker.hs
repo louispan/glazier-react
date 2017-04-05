@@ -8,6 +8,7 @@
 module Glazier.React.Maker where
 
 import Control.Monad.Free.Class
+import Control.Monad.Free.Church
 import Control.Monad.Free.TH
 import Control.Monad.Trans.Maybe
 import qualified GHCJS.Foreign.Callback as J
@@ -56,10 +57,13 @@ instance Functor (Maker act) where
 makeFree ''Maker
 
 -- | Allows changing the action type of Maker
-mapAction :: (act -> act') -> Maker act a -> Maker act' a
-mapAction f (MkHandler handler g) = MkHandler (\v -> fmap f <$> handler v) g
-mapAction _ (MkEmptyFrame g) = MkEmptyFrame g
-mapAction _ (MkRenderer frm render g) = MkRenderer frm render g
-mapAction _ (PutFrame frm scn x) = PutFrame frm scn x
-mapAction _ (GetComponent g) = GetComponent g
-mapAction _ (MkKey g) = MkKey g
+withAction :: (act -> act') -> Maker act a -> Maker act' a
+withAction f (MkHandler handler g) = MkHandler (\v -> fmap f <$> handler v) g
+withAction _ (MkEmptyFrame g) = MkEmptyFrame g
+withAction _ (MkRenderer frm render g) = MkRenderer frm render g
+withAction _ (PutFrame frm scn x) = PutFrame frm scn x
+withAction _ (GetComponent g) = GetComponent g
+withAction _ (MkKey g) = MkKey g
+
+hoistWithAction :: (act -> act') -> F (Maker act) a -> F (Maker act') a
+hoistWithAction f = hoistF (withAction f)

@@ -49,8 +49,8 @@ instance HasModel (Scene mdl pln) mdl where
     model f (Scene mdl pln) = fmap (\mdl' -> Scene mdl' pln) (f mdl)
     {-# INLINE model #-}
 
--- | Outline just uses the Model
-instance ToOutline mdl o => ToOutline (Scene mdl pln) o where
+-- | A Scene can be converted to Outline by using the Model
+instance ToOutline mdl ol => ToOutline (Scene mdl pln) ol where
     outline = view (model . to outline)
     {-# INLINE outline #-}
 
@@ -99,7 +99,7 @@ instance HasModel (Gizmo mdl pln) mdl where
     model = scene . model
     {-# INLINE model #-}
 
--- | Outline just uses the Model
+-- | A Gizmo can be converted to Outline by using the Model
 instance ToOutline mdl o => ToOutline (Gizmo mdl pln) o where
     outline = view (model . to outline)
     {-# INLINE outline #-}

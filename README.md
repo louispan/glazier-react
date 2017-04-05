@@ -103,75 +103,71 @@ This has the benefits of:
 ## Modelling
 [`Glazier.React.Model`](https://github.com/louispan/glazier-react/blob/master/src/Glazier/React/Model.hs) contain many nuanced concepts of Model.
 
+### Schema
+The `Schema` is a template of the pure data for stateful logic (the nouns). It is parameterized by a type variable which specializes it to either an `Outline` or 'Model'.
+
+### Outline
+The `Outline` is the pure data for stateful logic (the nouns). It may contain 'Outline's of child widgets.
+The `Outline` does not contain enough information for rendering the child widgets.
+
 ### Model
-The `Model` is the pure data used for rendering and stateful logic (the nouns).
-It may contain `SuperModel` (see below) of other widgets.
+The `Model` is similar to `Outline`, except that it may also contain `Gizmos` of child widgets.
+It may contain `Gizmo` (see below) of other widgets.
+The `Model` contains enough information to render child widgets, but not this widget.
 
 ### Plan
 The `Plan` contains the callbacks for integrating with React (the verbs). It also contains a javascript reference to the instance of shim component used for the widget. This reference is used to trigger rendering with  [`setState`](https://facebook.github.io/react/docs/react-component.html#setstate).
 
-### Design
-`Design` is basically a tuple of `Model` and `Plan`. It is a separate data type in order to generate convenient lenses to the fields.
-`Design` is all that a `Window` needs to purely generate rendering instructions.
+### Scene
+`Scene` is basically a tuple of `Model` and `Plan`. It is a separate data type in order to generate convenient lenses to the fields.
+`Scene` is all that a `Window` needs to purely generate rendering instructions.
 
 ### Frame
-`Frame` is a type synonym of `MVar Design`. It is a mutable holder of a copy of `Design`. This is so how the official state from Haskell is communicated to the React [`render`](https://facebook.github.io/react/docs/react-component.html#render) callback. The [`render`](https://facebook.github.io/react/docs/react-component.html#render) callback will read the latest copy of `Design` from the `MVar` and pass it to the widget `Window` for rendering.
+`Frame` is a type synonym of `MVar Scene`. It is a mutable holder of a copy of `Scene`. This is so how the official state from Haskell is communicated to the React [`render`](https://facebook.github.io/react/docs/react-component.html#render) callback. The [`render`](https://facebook.github.io/react/docs/react-component.html#render) callback will read the latest copy of `Scene` from the `MVar` and pass it to the widget `Window` for rendering.
 
-### SuperModel
-`SuperModel` is basically a tuple of `Design` and `Frame`. It is a separate data type in order to generate convenient lenses to the fields.
+### Gizmo
+`Gizmo` is basically a tuple of `Scene` and `Frame`. It is a separate data type in order to generate convenient lenses to the fields.
 This contains everything a widget needs for rendering and state processing.
-Most state processing is performed using the pure `Design`. The `Frame` is only used for the `RenderCommand`, to copy the latest `Design` into the `Frame` when re-rendering is required.
+Most state processing is performed using the pure `Model`. The `Frame` is only used for the `RenderCommand`, to put the latest `Scene` into the `Frame` when re-rendering is required.
 
 ## Maker
 `MVars` for `Frame`s and `Callback`s for `Plan`s may only be created in IO.  Using Free Monads, [`Glazier.React.Maker`](https://github.com/louispan/glazier-react/blob/master/src/Glazier/React/Maker.hs) provides a safe way to create them without allowing other arbitrary IO.
 
-The `Maker` can also be used create the initial `SuperModel` state for the widgets.
+The `Maker` can also be used create the initial `Gizmo` state for the widgets.
 The `Maker` DSL has an `action` type parameter which indicated the type of action that is dispatched by the widget.
 The `action` type can be mapped and hoisted to a larger `action` type, allow for embedding the smaller widget action in larger widget actions.
-
-For example, the [TodoMVC application](https://github.com/louispan/glazier-react-examples/blob/32b5b077faa499e7501cb8e5417105b340de9ad3/examples/todo/haskell/app/Main.hs#L44) uses `Maker` to create the initial application `SuperModel` which involves making and hoisting the `SuperModel` of the input, list of todos widget, and footer widget.
 
 ## Disposable
 GHCJS `Callback`s has resources that are not automatically collected by the garbage collector. `Callback`s need to be released manually. The [disposable](https://github.com/louispan/disposable) library provides a safe and easy way to convert the `Callback` into a storable `SomeDisposable` that can be queued up to be released after the next rendering frame.
 
-[disposable](https://github.com/louispan/disposable) allows generic instances of `Disposing` to be easily created, which make it easy to create instances of `Disposing`
-for a `Plan` of `Callback`s,  and therefore the parent container`Design`, `SuperModel`, and `Model` (which may contain other widget `SuperModel`s)
+[disposable](https://github.com/louispan/disposable) allows generic instances of `Disposing` to be easily created, which make it easy to create instances of `Disposing` for a `Plan` of `Callback`s,  and therefore for the parent container `Scene`, `Gizmo`, and `Model` (which may contain other widget `Gizmo`s)
 
 The [`List` widget](https://github.com/louispan/glazier-react-widget/blob/54a771f492b864ff422e31949284ea4b23aa02c6/src/Glazier/React/Widgets/List.hs#L181) shows how the disposables can be queued for destruction after the next rendered frame.
 
 ## Widget
 A [`Glazier.React.Widget`](https://github.com/louispan/glazier-react/blob/master/src/Glazier/React/Widget.hs) is the combination of:
-
+The `Maker` instruction on how to create the `Model` of that widget from an `Outline`:
+```
+mkModel :: Outline -> F (Maker Action) Model
+```
 The `Maker` instruction on how to create the `Plan` of that widget:
 ```
 mkPlan :: Frame Model Plan -> F (Maker Action) Plan
 ```
 The rendering instructions for that widget:
 ```
-window:: WindowT (Design Model Plan) (ReactMlT Identity) ()
+window:: WindowT (Scene Model Plan) (ReactMlT Identity) ()
 ```
 The state changes from `Action` events:
 ```
-gadget :: GadgetT Action (SuperModel Model Plan) Identity (DList Command)
+gadget :: GadgetT Action (Gizmo Model Plan) Identity (DList Command)
 ```
-This is everything you need in order to create, render and interact with a widget.
+This is everything you need in order to serialize, deserialize, create, render and interact with a widget.
 
 `Glazier.React.IsWidget` is a typeclass that provides handy XXXOf type functions to get to the type of `Command`, `Action`, `Model`, `Plan` of the Widget. It also ensures that the `Model` and `Plan` is an instance of `Disposing`.
 
-```
-instance (CD.Disposing m, CD.Disposing p) =>
-         IsWidget (Widget c a m p) where
-    type CommandOf (Widget c a m p) = c
-    type ActionOf (Widget c a m p) = a
-    type ModelOf (Widget c a m p) = m
-    type PlanOf (Widget c a m p) = p
-    mkPlan (Widget f _ _) = f
-    window (Widget _ f _) = f
-    gadget (Widget _ _ f) = f
-```
 
-This is useful for creating widgets that is composed of other Widgets. For example:
-The [List widget](https://github.com/louispan/glazier-react-widget/blob/54a771f492b864ff422e31949284ea4b23aa02c6/src/Glazier/React/Widgets/List.hs#L122) uses the IsWidget typeclass in order to ensure that the `itemWidget` can be disposed.
+This is useful for creating widgets that is composed of other Widgets.
 
 ## Widget best practices
 Please refer to [`glazier-react-widget`](https://github.com/louispan/glazier-react-widget) for documentation on the best practices for creating `Glazier.React.Widgets`
