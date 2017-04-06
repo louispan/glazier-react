@@ -30,7 +30,7 @@ import qualified Data.JSString as J
 import qualified GHCJS.Foreign as J
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
-import qualified JavaScript.Extras.Recast as JE
+import qualified JavaScript.Extras.Cast as JE
 
 -- | The object that dispatched the event.
 -- https://developer.mozilla.org/en-US/docs/Web/API/Event/target
@@ -41,8 +41,8 @@ instance J.PToJSVal DOMEventTarget where
     pToJSVal = J.jsval
 instance JE.ToJS DOMEventTarget
 instance JE.FromJS DOMEventTarget where
-    fromJS a | js_isDOMEventTarget a = pure . Just $ DOMEventTarget a
-    fromJS _ = pure Nothing
+    fromJS a | js_isDOMEventTarget a = Just $ DOMEventTarget a
+    fromJS _ = Nothing
 
 -- | The native event
 -- https://developer.mozilla.org/en-US/docs/Web/API/Event
@@ -53,8 +53,8 @@ instance J.PToJSVal DOMEvent where
     pToJSVal = J.jsval
 instance JE.ToJS DOMEvent
 instance JE.FromJS DOMEvent where
-    fromJS a | js_isDOMEvent a = pure . Just $ DOMEvent a
-    fromJS _ = pure Nothing
+    fromJS a | js_isDOMEvent a = Just $ DOMEvent a
+    fromJS _ = Nothing
 
 -- | Every event in React is a synthetic event, a cross-browser wrapper around the native event.
 -- 'SyntheticEvent' must only be used in the first part of 'eventHandler'.
@@ -65,8 +65,8 @@ instance J.PToJSVal SyntheticEvent where
     pToJSVal = J.jsval
 instance JE.ToJS SyntheticEvent
 instance JE.FromJS SyntheticEvent where
-    fromJS a | js_isSyntheticEvent a = pure . Just $ SyntheticEvent a
-    fromJS _ = pure Nothing
+    fromJS a | js_isSyntheticEvent a = Just $ SyntheticEvent a
+    fromJS _ = Nothing
 
 -- | Using the NFData idea from React/Flux/PropertiesAndEvents.hs
 -- React re-uses SyntheticEvent from a pool, which means it may no longer be valid if we lazily
@@ -132,9 +132,12 @@ data Event = Event
 unsafeProperty :: J.PFromJSVal a => J.JSVal -> J.JSString -> a
 unsafeProperty v = J.pFromJSVal . js_unsafeProperty v
 
-parseEvent :: SyntheticEvent -> IO Event
+-- | We can lie about this not being in IO because
+-- within the strict part of 'eventHandlerM'
+-- the SyntheticEvent is effectively immutable.
+parseEvent :: SyntheticEvent -> Event
 parseEvent (SyntheticEvent evt) =
-    pure $ Event
+    Event
     { bubbles = unsafeProperty evt "bubbles"
     , cancelable = unsafeProperty evt "cancelable"
     , currentTarget = DOMEventTarget $ js_unsafeProperty evt "currentTarget"
@@ -183,8 +186,8 @@ unsafeGetModifierState obj k = J.fromJSBool $ js_unsafeGetModifierState obj k
 -- | We can lie about this not being in IO because
 -- within the strict part of 'eventHandlerM'
 -- the SyntheticEvent is effectively immutable.
-parseMouseEvent :: SyntheticEvent -> IO (Maybe MouseEvent)
-parseMouseEvent (SyntheticEvent evt) | js_isMouseEvent (js_unsafeProperty evt "nativeEvent") = pure $ Just $
+parseMouseEvent :: SyntheticEvent -> Maybe MouseEvent
+parseMouseEvent (SyntheticEvent evt) | js_isMouseEvent (js_unsafeProperty evt "nativeEvent") = Just $
     MouseEvent
     { altKey = unsafeProperty evt "altKey"
     , button = unsafeProperty evt "button"
@@ -201,7 +204,7 @@ parseMouseEvent (SyntheticEvent evt) | js_isMouseEvent (js_unsafeProperty evt "n
     , screenY = unsafeProperty evt "xcreenY"
     , shiftKey = unsafeProperty evt "shiftKey"
     }
-parseMouseEvent _ | otherwise = pure Nothing
+parseMouseEvent _ | otherwise = Nothing
 
 -- | Keyboard events
 -- 'KeyboardEvent' must only be used in the first part of 'eventHandler'.
@@ -226,8 +229,8 @@ data KeyboardEvent = KeyboardEvent
 -- | We can lie about this not being in IO because
 -- within the strict part of 'eventHandlerM'
 -- the SyntheticEvent is effectively immutable.
-parseKeyboardEvent :: SyntheticEvent -> IO (Maybe KeyboardEvent)
-parseKeyboardEvent (SyntheticEvent evt) | js_isKeyboardEvent (js_unsafeProperty evt "nativeEvent") = pure $ Just $
+parseKeyboardEvent :: SyntheticEvent -> Maybe KeyboardEvent
+parseKeyboardEvent (SyntheticEvent evt) | js_isKeyboardEvent (js_unsafeProperty evt "nativeEvent") = Just $
     KeyboardEvent
     { altKey = unsafeProperty evt "altKey"
     , charCode = unsafeProperty evt "charCode"
@@ -242,7 +245,7 @@ parseKeyboardEvent (SyntheticEvent evt) | js_isKeyboardEvent (js_unsafeProperty 
     , shiftkey = unsafeProperty evt "shiftkey"
     , which = unsafeProperty evt "which"
     }
-parseKeyboardEvent _ | otherwise = pure Nothing
+parseKeyboardEvent _ | otherwise = Nothing
 
 #ifdef __GHCJS__
 

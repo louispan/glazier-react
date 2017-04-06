@@ -24,4 +24,4 @@ basicRenderCmd frameNum componentRef fcmd = do
     i <- JE.toJS <$> use frameNum
     r <- use componentRef
     sm <- get
-    pure $ fcmd sm [("frameNum", i)] r
+    pure $ fcmd sm [("frameNum", JE.JSVar i)] r

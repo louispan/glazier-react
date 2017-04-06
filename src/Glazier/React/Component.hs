@@ -8,7 +8,7 @@ module Glazier.React.Component
 import qualified Control.Disposable as CD
 import qualified GHCJS.Types as J
 import qualified GHCJS.Marshal.Pure as J
-import qualified JavaScript.Extras.Recast as JE
+import qualified JavaScript.Extras.Cast as JE
 
 -- | A newtype wrapper to give a noop disposable instance to React components
 -- This allows generic deriving of model Adaptors.

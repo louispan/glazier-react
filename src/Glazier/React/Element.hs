@@ -26,19 +26,19 @@ instance JE.ToJS ReactElement
 -- | Unfortunately, ReactJS did not export an easy way to check if something is a ReactElement,
 -- although they do so in the internal code with REACT_ELEMENT_TYPE.
 -- This function allow coercing a ReactElement from a JSVal
--- and is marked unsafe as a reminder that the coersion is unchecked.
+-- and is named unsafe as a reminder that the coersion is unchecked.
 -- This function is required when receiving ReactElement from javascript (eg in a callback)
 -- or to interface with foreign React Elements.
 unsafeCoerceElement :: J.JSVal -> ReactElement
 unsafeCoerceElement = ReactElement
 
 -- | Create a react element (with children) from a HashMap of properties
-mkBranchElement :: J.JSVal -> [JE.Property] -> [ReactElement] -> IO ReactElement
+mkBranchElement :: JE.JSVar -> [JE.Property] -> [ReactElement] -> IO ReactElement
 mkBranchElement n props xs =
     js_mkBranchElement n (JE.fromProperties props) (JA.fromList $ JE.toJS <$> xs)
 
 -- | Create a react element (with no children) from a HashMap of properties
-mkLeafElement :: J.JSVal -> [JE.Property] -> IO ReactElement
+mkLeafElement :: JE.JSVar -> [JE.Property] -> IO ReactElement
 mkLeafElement n props =
     js_mkLeafElement n (JE.fromProperties props)
 
@@ -59,11 +59,11 @@ mkCombinedElements xs = js_mkCombinedElements (JA.fromList $ JE.toJS <$> xs)
 -- and JSArray are mutable.
 foreign import javascript unsafe
     "$r = React.createElement($1, $2, $3);"
-    js_mkBranchElement :: J.JSVal -> JO.Object -> JA.JSArray -> IO ReactElement
+    js_mkBranchElement :: JE.JSVar -> JO.Object -> JA.JSArray -> IO ReactElement
 
 foreign import javascript unsafe
     "$r = React.createElement($1, $2);"
-    js_mkLeafElement :: J.JSVal -> JO.Object -> IO ReactElement
+    js_mkLeafElement :: JE.JSVar -> JO.Object -> IO ReactElement
 
 foreign import javascript unsafe
     "$r = $1;"
@@ -79,10 +79,10 @@ foreign import javascript unsafe
 -- | This is an IO action because even if the same args was used
 -- a different ReactElement may be created, because JSVal
 -- and JSArray are mutable.
-js_mkBranchElement :: J.JSVal -> JO.Object -> JA.JSArray -> IO ReactElement
+js_mkBranchElement :: JE.JSVar -> JO.Object -> JA.JSArray -> IO ReactElement
 js_mkBranchElement _ _ _ = pure (ReactElement J.nullRef)
 
-js_mkLeafElement :: J.JSVal -> JO.Object -> IO ReactElement
+js_mkLeafElement :: JE.JSVar -> JO.Object -> IO ReactElement
 js_mkLeafElement _ _ =  pure (ReactElement J.nullRef)
 
 js_textElement :: J.JSString -> ReactElement
