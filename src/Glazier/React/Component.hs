@@ -28,7 +28,7 @@ mkComponent = ReactComponent <$> js_mkComponent
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
-  "$r = hgr$mkClass();"
+  "$r = hgr$shimComponent();"
   js_mkComponent
       :: IO J.JSVal
 

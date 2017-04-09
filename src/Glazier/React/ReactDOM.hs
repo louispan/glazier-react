@@ -15,7 +15,7 @@ render = js_render
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
-  "ReactDOM.render($1, $2);"
+  "hgr$ReactDOM().render($1, $2);"
   js_render :: J.JSVal -> J.JSVal -> IO ()
 
 #else

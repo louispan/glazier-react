@@ -58,11 +58,11 @@ mkCombinedElements xs = js_mkCombinedElements (JA.fromList $ JE.toJS <$> xs)
 -- a different ReactElement may be created, because JSVal
 -- and JSArray are mutable.
 foreign import javascript unsafe
-    "$r = React.createElement($1, $2, $3);"
+    "$r = hgr$React().createElement($1, $2, $3);"
     js_mkBranchElement :: JE.JSVar -> JO.Object -> JA.JSArray -> IO ReactElement
 
 foreign import javascript unsafe
-    "$r = React.createElement($1, $2);"
+    "$r = hgr$React().createElement($1, $2);"
     js_mkLeafElement :: JE.JSVar -> JO.Object -> IO ReactElement
 
 foreign import javascript unsafe
