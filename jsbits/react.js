@@ -24,7 +24,8 @@ function hgr$shimComponent() {
     if (typeof hgr$shimComponent_ == "undefined") {
         // Inheriting from Component means every call to this.setState will result in a render
         // Inheriting from PureComponet means a shallow comparison will be made
-        class Shim extends hgr$React().PureComponent {
+        var React = hgr$React();
+        class Shim extends React.PureComponent {
 
             componentDidUpdate() {
                 if (this.props['componentDidUpdate'])
