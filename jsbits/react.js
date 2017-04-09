@@ -1,9 +1,11 @@
-// This function requires that React is in scope by the time this is called,
-// otherwise, you will get a "React is not defined error".
-// See import example at https://github.com/louispan/glazier-react-examples/blob/master/examples/todo/haskell/jsexports/exports.header
-// Using React.createClass for now since not all browsers support ES6 classes
-// It is the equivalent of the following:
-
+// Node module dependencies
+// Example package.json:
+// {
+//   "dependencies": {
+//     "react": "^15.4.2",
+//     "react-dom": "^15.4.2"
+//   }
+// }
 var hgr$React_;
 function hgr$React() {
     if (typeof hgr$React_ == "undefined") {
@@ -11,6 +13,7 @@ function hgr$React() {
     }
     return hgr$React_;
 }
+
 var hgr$ReactDOM_;
 function hgr$ReactDOM() {
     if (typeof hgr$ReactDOM_ == "undefined") {
