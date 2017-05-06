@@ -15,20 +15,23 @@ import qualified Glazier.React.Maker as R
 import qualified Glazier.React.Markup as R
 import qualified Glazier.React.Model as R
 
+type family ExceptionOf w where
+    ExceptionOf (Widget e c a o m p) = e
+
 type family CommandOf w where
-    CommandOf (Widget c a o m p) = c
+    CommandOf (Widget e c a o m p) = c
 
 type family ActionOf w where
-    ActionOf (Widget c a o m p) = a
+    ActionOf (Widget e c a o m p) = a
 
 type family OutlineOf w where
-    OutlineOf (Widget c a o m p) = o
+    OutlineOf (Widget e c a o m p) = o
 
 type family ModelOf w where
-    ModelOf (Widget c a o m p) = m
+    ModelOf (Widget e c a o m p) = m
 
 type family PlanOf w where
-    PlanOf (Widget c a o m p) = p
+    PlanOf (Widget e c a o m p) = p
 
 type SceneOf w = R.Scene (ModelOf w) (PlanOf w)
 
@@ -38,7 +41,7 @@ type GizmoOf w = R.Gizmo (ModelOf w) (PlanOf w)
 
 type WindowOf w = G.WindowT (SceneOf w) (R.ReactMlT Identity) ()
 
-type GadgetOf w = G.GadgetT (ActionOf w) (GizmoOf w) Identity (D.DList (CommandOf w))
+type GadgetOf w = G.GadgetT (ExceptionOf w) (ActionOf w) (GizmoOf w) Identity (D.DList (CommandOf w))
 
 -- | tag used to choose Schema that contains Gizmos
 data WithGizmo
@@ -58,17 +61,17 @@ type family SchemaType tag w where
 -- render, and run the event processing.
 -- This is a GADT to enforce the Disposing and ToOutline constraints at the time
 -- of creating the Widget record.
-data Widget c a o m p where
+data Widget e c a o m p where
     Widget
          :: (CD.Disposing m, CD.Disposing p, R.ToOutline m o)
          => (o -> F (R.Maker a) m)
          -> (R.Frame m p -> F (R.Maker a) p)
-         -> G.WindowT (R.Scene m p) (R.ReactMlT Identity) ()
-         -> G.GadgetT a (R.Gizmo m p) Identity (D.DList c)
-         -> Widget c a o m p
+         -> G.WindowT (R.Scene m p) R.ReactMl ()
+         -> G.GadgetT e a (R.Gizmo m p) Identity (D.DList c)
+         -> Widget e c a o m p
 
 -- | This typeclass is convenient as it carries the 'Disposing Model' and 'Disposing Plan' constraints
--- and allows treating 'Widget c a m p' as a type 'w'
+-- and allows treating 'Widget e c a o m p' as a type 'w'
 class (CD.Disposing (ModelOf w)
       , CD.Disposing (PlanOf w)
       , R.ToOutline (ModelOf w) (OutlineOf w)) => IsWidget w where
@@ -77,11 +80,11 @@ class (CD.Disposing (ModelOf w)
     -- | Given an empty frame, make the Plan that uses the frame for rendering
     mkPlan :: w -> R.Frame (ModelOf w) (PlanOf w) -> F (R.Maker (ActionOf w)) (PlanOf w)
     -- | Rendering function that uses the Scene of Model and Plan
-    window :: w -> G.WindowT (R.Scene (ModelOf w) (PlanOf w)) (R.ReactMlT Identity) ()
+    window :: w -> G.WindowT (R.Scene (ModelOf w) (PlanOf w)) R.ReactMl ()
     -- | Update function that processes Action to update the Frame and Scene
-    gadget :: w -> G.GadgetT (ActionOf w) (R.Gizmo (ModelOf w) (PlanOf w)) Identity (D.DList (CommandOf w))
+    gadget :: w -> G.Gadget (ExceptionOf w) (ActionOf w) (R.Gizmo (ModelOf w) (PlanOf w)) (D.DList (CommandOf w))
 
-instance (CD.Disposing m, CD.Disposing p, R.ToOutline m o) => IsWidget (Widget c a o m p) where
+instance (CD.Disposing m, CD.Disposing p, R.ToOutline m o) => IsWidget (Widget e c a o m p) where
     mkModel (Widget f _ _ _) = f
     mkPlan (Widget _ f _ _) = f
     window (Widget _ _ f _) = f
