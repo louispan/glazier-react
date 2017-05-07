@@ -156,11 +156,11 @@ mkPlan :: Frame Model Plan -> F (Maker Action) Plan
 ```
 The rendering instructions for that widget:
 ```
-window:: WindowT (Scene Model Plan) (ReactMlT Identity) ()
+window:: WindowT (Scene Model Plan) ReactMl ()
 ```
 The state changes from `Action` events:
 ```
-gadget :: GadgetT Action (Gizmo Model Plan) Identity (DList Command)
+gadget :: Gadget () Action (Gizmo Model Plan) (DList Command)
 ```
 This is everything you need in order to serialize, deserialize, create, render and interact with a widget.
 

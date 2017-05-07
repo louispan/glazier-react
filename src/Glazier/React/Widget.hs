@@ -43,19 +43,16 @@ type WindowOf w = G.WindowT (SceneOf w) (R.ReactMlT Identity) ()
 
 type GadgetOf w = G.GadgetT (ExceptionOf w) (ActionOf w) (GizmoOf w) Identity (D.DList (CommandOf w))
 
--- | tag used to choose Schema that contains Gizmos
-data WithGizmo
--- | tag used to choose Schema that contains Outlines
-data WithOutline
+-- | tag used to choose GizmoOf type function. See @Widget's@.
+data GizmoType
+-- | tag used to choose OutlineOf type funciton. See @Widget's@.
+data OutlineType
 
 -- | You can't use type family as a type variable for a data type. The workaround is to use
 -- a tag to choose between different type family functions.
--- ModelType takes a tag to choose between Gizmo or Outline.
--- This enables creating a @data@ type that can specialize to
--- using the tag.
-type family SchemaType tag w where
-    SchemaType WithGizmo w = GizmoOf w
-    SchemaType WithOutline w = OutlineOf w
+type family Widget's tag w where
+    Widget's GizmoType w = GizmoOf w
+    Widget's OutlineType w = OutlineOf w
 
 -- | Record of functions for a widget. Contains everything you need to make the model,
 -- render, and run the event processing.
