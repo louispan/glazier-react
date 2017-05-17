@@ -15,14 +15,14 @@ import qualified Glazier.React.Maker as R
 import qualified Glazier.React.Markup as R
 import qualified Glazier.React.Model as R
 
-type family ExceptionOf w where
-    ExceptionOf (Widget e c a o m p) = e
-
 type family CommandOf w where
     CommandOf (Widget e c a o m p) = c
 
 type family ActionOf w where
     ActionOf (Widget e c a o m p) = a
+
+type family ExceptionOf w where
+    ExceptionOf (Widget e c a o m p) = e
 
 type family OutlineOf w where
     OutlineOf (Widget e c a o m p) = o
@@ -39,9 +39,9 @@ type FrameOf w = R.Frame (ModelOf w) (PlanOf w)
 
 type GizmoOf w = R.Gizmo (ModelOf w) (PlanOf w)
 
-type WindowOf w = G.WindowT (SceneOf w) (R.ReactMlT Identity) ()
+type WindowOf w = G.WindowT (SceneOf w) R.ReactMl ()
 
-type GadgetOf w = G.GadgetT (ExceptionOf w) (ActionOf w) (GizmoOf w) Identity (D.DList (CommandOf w))
+type GadgetOf w = G.Gadget (ActionOf w) (ExceptionOf w) (GizmoOf w) (D.DList (CommandOf w))
 
 -- | tag used to choose GizmoOf type function. See @Widget's@.
 data GizmoType
@@ -58,13 +58,14 @@ type family Widget's tag w where
 -- render, and run the event processing.
 -- This is a GADT to enforce the Disposing and ToOutline constraints at the time
 -- of creating the Widget record.
+-- data Widget a e o m p c where
 data Widget e c a o m p where
     Widget
          :: (CD.Disposing m, CD.Disposing p, R.ToOutline m o)
          => (o -> F (R.Maker a) m)
          -> (R.Frame m p -> F (R.Maker a) p)
          -> G.WindowT (R.Scene m p) R.ReactMl ()
-         -> G.GadgetT e a (R.Gizmo m p) Identity (D.DList c)
+         -> G.Gadget a e (R.Gizmo m p) (D.DList c)
          -> Widget e c a o m p
 
 -- | This typeclass is convenient as it carries the 'Disposing Model' and 'Disposing Plan' constraints
@@ -79,7 +80,7 @@ class (CD.Disposing (ModelOf w)
     -- | Rendering function that uses the Scene of Model and Plan
     window :: w -> G.WindowT (R.Scene (ModelOf w) (PlanOf w)) R.ReactMl ()
     -- | Update function that processes Action to update the Frame and Scene
-    gadget :: w -> G.Gadget (ExceptionOf w) (ActionOf w) (R.Gizmo (ModelOf w) (PlanOf w)) (D.DList (CommandOf w))
+    gadget :: w -> G.Gadget (ActionOf w) (ExceptionOf w)(R.Gizmo (ModelOf w) (PlanOf w)) (D.DList (CommandOf w))
 
 instance (CD.Disposing m, CD.Disposing p, R.ToOutline m o) => IsWidget (Widget e c a o m p) where
     mkModel (Widget f _ _ _) = f
