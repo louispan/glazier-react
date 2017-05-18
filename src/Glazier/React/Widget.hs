@@ -7,7 +7,6 @@
 module Glazier.React.Widget where
 
 import qualified Control.Disposable as CD
-import Control.Lens
 import Control.Monad.Free.Church
 import qualified Data.DList as D
 import qualified Glazier as G
@@ -15,23 +14,23 @@ import qualified Glazier.React.Maker as R
 import qualified Glazier.React.Markup as R
 import qualified Glazier.React.Model as R
 
-type family CommandOf w where
-    CommandOf (Widget e c a o m p) = c
-
 type family ActionOf w where
-    ActionOf (Widget e c a o m p) = a
+    ActionOf (Widget a e o m p c) = a
 
 type family ExceptionOf w where
-    ExceptionOf (Widget e c a o m p) = e
+    ExceptionOf (Widget a e o m p c) = e
 
 type family OutlineOf w where
-    OutlineOf (Widget e c a o m p) = o
+    OutlineOf (Widget a e o m p c) = o
 
 type family ModelOf w where
-    ModelOf (Widget e c a o m p) = m
+    ModelOf (Widget a e o m p c) = m
 
 type family PlanOf w where
-    PlanOf (Widget e c a o m p) = p
+    PlanOf (Widget a e o m p c) = p
+
+type family CommandOf w where
+    CommandOf (Widget a e o m p c) = c
 
 type SceneOf w = R.Scene (ModelOf w) (PlanOf w)
 
@@ -57,19 +56,18 @@ type family Widget's tag w where
 -- | Record of functions for a widget. Contains everything you need to make the model,
 -- render, and run the event processing.
 -- This is a GADT to enforce the Disposing and ToOutline constraints at the time
--- of creating the Widget record.
--- data Widget a e o m p c where
-data Widget e c a o m p where
+-- of creating the Widget record, which ensures all values of Widget is a valid IsWidget instance.
+data Widget a e o m p c where
     Widget
          :: (CD.Disposing m, CD.Disposing p, R.ToOutline m o)
          => (o -> F (R.Maker a) m)
          -> (R.Frame m p -> F (R.Maker a) p)
          -> G.WindowT (R.Scene m p) R.ReactMl ()
          -> G.Gadget a e (R.Gizmo m p) (D.DList c)
-         -> Widget e c a o m p
+         -> Widget a e o m p c
 
 -- | This typeclass is convenient as it carries the 'Disposing Model' and 'Disposing Plan' constraints
--- and allows treating 'Widget e c a o m p' as a type 'w'
+-- and allows treating 'Widget a e o m p c' as a type 'w'
 class (CD.Disposing (ModelOf w)
       , CD.Disposing (PlanOf w)
       , R.ToOutline (ModelOf w) (OutlineOf w)) => IsWidget w where
@@ -82,7 +80,7 @@ class (CD.Disposing (ModelOf w)
     -- | Update function that processes Action to update the Frame and Scene
     gadget :: w -> G.Gadget (ActionOf w) (ExceptionOf w)(R.Gizmo (ModelOf w) (PlanOf w)) (D.DList (CommandOf w))
 
-instance (CD.Disposing m, CD.Disposing p, R.ToOutline m o) => IsWidget (Widget e c a o m p) where
+instance (CD.Disposing m, CD.Disposing p, R.ToOutline m o) => IsWidget (Widget a e o m p c) where
     mkModel (Widget f _ _ _) = f
     mkPlan (Widget _ f _ _) = f
     window (Widget _ _ f _) = f
