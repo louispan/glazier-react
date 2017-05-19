@@ -11,7 +11,7 @@ import qualified GHCJS.Marshal.Pure as J
 import qualified JavaScript.Extras.Cast as JE
 
 -- | A newtype wrapper to give a noop disposable instance to React components
--- This allows generic deriving of model Adaptors.
+-- This allows generic deriving of Plan.
 newtype ReactComponent = ReactComponent J.JSVal
 
 instance CD.Disposing ReactComponent where

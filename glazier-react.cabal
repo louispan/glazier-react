@@ -18,7 +18,8 @@ library
   hs-source-dirs:      src
   js-sources:          jsbits/react.js
                        jsbits/registry.js
-  exposed-modules:     Glazier.React.Component
+  exposed-modules:     Glazier.React
+                       Glazier.React.Component
                        Glazier.React.Element
                        Glazier.React.Event
                        Glazier.React.Maker
