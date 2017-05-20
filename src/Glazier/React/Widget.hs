@@ -59,9 +59,9 @@ type family Widget's tag w where
 data Widget a o m p c where
     Widget :: (CD.Disposing m, CD.Disposing p, R.ToOutline m o)
         => (o -> F (R.Maker a) m)
-        -> (forall s. R.HasScene s m p => MVar s -> F (R.Maker a) p)
-        -> G.WindowT (R.Scene m p) R.ReactMl ()
-        -> G.Gadget a (R.Gizmo m p) (D.DList c)
+        -> (forall scn. R.HasScene scn m p => MVar scn -> F (R.Maker a) p)
+        -> (forall scn. R.HasScene scn m p => G.WindowT scn R.ReactMl ())
+        -> (forall giz. R.HasGizmo giz m p => G.Gadget a giz (D.DList c))
         -> Widget a o m p c
 
 -- | This typeclass is convenient as it carries the 'Disposing Model' and 'Disposing Plan' constraints
@@ -72,11 +72,11 @@ class (CD.Disposing (ModelOf w)
     -- | Make a Model from an Outline
     mkModel :: w -> OutlineOf w -> F (R.Maker (ActionOf w)) (ModelOf w)
     -- | Given an empty frame, make the Plan that uses the frame for rendering
-    mkPlan :: R.HasScene s (ModelOf w) (PlanOf w) => w -> MVar s -> F (R.Maker (ActionOf w)) (PlanOf w)
+    mkPlan :: R.HasScene scn (ModelOf w) (PlanOf w) => w -> MVar scn -> F (R.Maker (ActionOf w)) (PlanOf w)
     -- | Rendering function that uses the Scene of Model and Plan
-    window :: w -> G.WindowT (R.Scene (ModelOf w) (PlanOf w)) R.ReactMl ()
+    window :: R.HasScene scn (ModelOf w) (PlanOf w) => w -> G.WindowT scn R.ReactMl ()
     -- | Update function that processes Action to update the Frame and Scene
-    gadget :: w -> G.Gadget (ActionOf w) (R.Gizmo (ModelOf w) (PlanOf w)) (D.DList (CommandOf w))
+    gadget :: R.HasGizmo giz (ModelOf w) (PlanOf w) => w -> G.Gadget (ActionOf w) giz (D.DList (CommandOf w))
 
 instance (CD.Disposing m, CD.Disposing p, R.ToOutline m o) =>
          IsWidget (Widget a o m p c) where
