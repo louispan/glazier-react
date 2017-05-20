@@ -18,10 +18,10 @@ import qualified Pipes.Concurrent as PC
 
 -- | This is called synchronously by React to render the DOM.
 -- This must not block!
-onRender :: MVar s -> (J.JSVal -> G.WindowT s (R.ReactMlT IO) ()) -> J.JSVal -> IO J.JSVal
-onRender mm wind v = do
-    mdl <- readMVar mm
-    JE.toJS <$> R.markedElement (wind v) mdl
+onRender :: MVar scn -> (J.JSVal -> G.WindowT scn (R.ReactMlT IO) ()) -> J.JSVal -> IO J.JSVal
+onRender frm wind v = do
+    scn <- readMVar frm
+    JE.toJS <$> R.markedElement (wind v) scn
 
 mkActionCallback
     :: PC.Output act

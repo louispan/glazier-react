@@ -2,10 +2,12 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Glazier.React.Widget where
 
+import Control.Concurrent.MVar
 import qualified Control.Disposable as CD
 import Control.Monad.Free.Church
 import qualified Data.DList as D
@@ -55,13 +57,12 @@ type family Widget's tag w where
 -- This is a GADT to enforce the Disposing and ToOutline constraints at the time
 -- of creating the Widget record, which ensures all values of Widget is a valid IsWidget instance.
 data Widget a o m p c where
-    Widget
-         :: (CD.Disposing m, CD.Disposing p, R.ToOutline m o)
-         => (o -> F (R.Maker a) m)
-         -> (R.Frame m p -> F (R.Maker a) p)
-         -> G.WindowT (R.Scene m p) R.ReactMl ()
-         -> G.Gadget a (R.Gizmo m p) (D.DList c)
-         -> Widget a o m p c
+    Widget :: (CD.Disposing m, CD.Disposing p, R.ToOutline m o)
+        => (o -> F (R.Maker a) m)
+        -> (forall s. R.HasScene s m p => MVar s -> F (R.Maker a) p)
+        -> G.WindowT (R.Scene m p) R.ReactMl ()
+        -> G.Gadget a (R.Gizmo m p) (D.DList c)
+        -> Widget a o m p c
 
 -- | This typeclass is convenient as it carries the 'Disposing Model' and 'Disposing Plan' constraints
 -- and allows treating 'Widget a o m p c' as a type 'w'
@@ -71,13 +72,14 @@ class (CD.Disposing (ModelOf w)
     -- | Make a Model from an Outline
     mkModel :: w -> OutlineOf w -> F (R.Maker (ActionOf w)) (ModelOf w)
     -- | Given an empty frame, make the Plan that uses the frame for rendering
-    mkPlan :: w -> R.Frame (ModelOf w) (PlanOf w) -> F (R.Maker (ActionOf w)) (PlanOf w)
+    mkPlan :: R.HasScene s (ModelOf w) (PlanOf w) => w -> MVar s -> F (R.Maker (ActionOf w)) (PlanOf w)
     -- | Rendering function that uses the Scene of Model and Plan
     window :: w -> G.WindowT (R.Scene (ModelOf w) (PlanOf w)) R.ReactMl ()
     -- | Update function that processes Action to update the Frame and Scene
     gadget :: w -> G.Gadget (ActionOf w) (R.Gizmo (ModelOf w) (PlanOf w)) (D.DList (CommandOf w))
 
-instance (CD.Disposing m, CD.Disposing p, R.ToOutline m o) => IsWidget (Widget a o m p c) where
+instance (CD.Disposing m, CD.Disposing p, R.ToOutline m o) =>
+         IsWidget (Widget a o m p c) where
     mkModel (Widget f _ _ _) = f
     mkPlan (Widget _ f _ _) = f
     window (Widget _ _ f _) = f

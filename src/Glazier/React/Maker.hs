@@ -7,6 +7,7 @@
 
 module Glazier.React.Maker where
 
+import Control.Concurrent.MVar
 import Control.Monad.Free.Class
 import Control.Monad.Free.Church
 import Control.Monad.Free.TH
@@ -27,15 +28,15 @@ data Maker act nxt where
         -> (J.Callback (J.JSVal -> IO ()) -> nxt)
         -> Maker act nxt
     MkEmptyFrame
-        :: (R.Frame mdl pln -> nxt)
+        :: (MVar (R.Scene mdl pln) -> nxt)
         -> Maker act nxt
     MkRenderer
-        :: R.Frame mdl pln
-        -> (J.JSVal -> G.WindowT (R.Scene mdl pln) R.ReactMl ())
+        :: R.HasScene scn mdl pln => MVar scn
+        -> (J.JSVal -> G.WindowT scn R.ReactMl ())
         -> (J.Callback (J.JSVal -> IO J.JSVal) -> nxt)
         -> Maker act nxt
     PutFrame
-        :: R.Frame mdl pln
+        :: MVar (R.Scene mdl pln)
         -> R.Scene mdl pln
         -> nxt
         -> Maker act nxt
