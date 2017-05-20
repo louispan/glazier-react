@@ -59,9 +59,15 @@ type family Widget's tag w where
 data Widget a o m p c where
     Widget :: (CD.Disposing m, CD.Disposing p, R.ToOutline m o)
         => (o -> F (R.Maker a) m)
+        -- | HasScene allows using the mkPlan in composite widgets
+        -- so that larger models can be used to initialize the window function below.
         -> (forall scn. R.HasScene scn m p => MVar scn -> F (R.Maker a) p)
+        -- | HasScene allows using the window in composite widgets
+        -- so that the window can use data from larger models
+        -- (eg. to add to class properties of html elements).
         -> (forall scn. R.HasScene scn m p => G.WindowT scn R.ReactMl ())
-        -> (forall giz. R.HasGizmo giz m p => G.Gadget a giz (D.DList c))
+        -- | Gadget doesn't use HasGizmo as it can be easily zoomed.
+        -> G.Gadget a (R.Gizmo m p) (D.DList c)
         -> Widget a o m p c
 
 -- | This typeclass is convenient as it carries the 'Disposing Model' and 'Disposing Plan' constraints
@@ -76,7 +82,7 @@ class (CD.Disposing (ModelOf w)
     -- | Rendering function that uses the Scene of Model and Plan
     window :: R.HasScene scn (ModelOf w) (PlanOf w) => w -> G.WindowT scn R.ReactMl ()
     -- | Update function that processes Action to update the Frame and Scene
-    gadget :: R.HasGizmo giz (ModelOf w) (PlanOf w) => w -> G.Gadget (ActionOf w) giz (D.DList (CommandOf w))
+    gadget :: w -> G.Gadget (ActionOf w) (R.Gizmo (ModelOf w) (PlanOf w)) (D.DList (CommandOf w))
 
 instance (CD.Disposing m, CD.Disposing p, R.ToOutline m o) =>
          IsWidget (Widget a o m p c) where
