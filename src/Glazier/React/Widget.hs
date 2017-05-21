@@ -15,6 +15,7 @@ import qualified Glazier as G
 import qualified Glazier.React.Maker as R
 import qualified Glazier.React.Markup as R
 import qualified Glazier.React.Model as R
+import qualified JavaScript.Extras as JE
 
 type family ActionOf w where
     ActionOf (Widget a o m p c) = a
@@ -61,7 +62,7 @@ data Widget a o m p c where
         => (o -> F (R.Maker a) m)
         -- | HasScene allows using the mkPlan in composite widgets
         -- so that larger models can be used to initialize the window function below.
-        -> (forall scn. R.HasScene scn m p => MVar scn -> F (R.Maker a) p)
+        -> (forall scn. (R.HasScene scn m p) => MVar scn -> F (R.Maker a) p)
         -- | HasScene allows using the window in composite widgets
         -- so that the window can use data from larger models
         -- (eg. to add to class properties of html elements).
@@ -78,7 +79,7 @@ class (CD.Disposing (ModelOf w)
     -- | Make a Model from an Outline
     mkModel :: w -> OutlineOf w -> F (R.Maker (ActionOf w)) (ModelOf w)
     -- | Given an empty frame, make the Plan that uses the frame for rendering
-    mkPlan :: R.HasScene scn (ModelOf w) (PlanOf w) => w -> MVar scn -> F (R.Maker (ActionOf w)) (PlanOf w)
+    mkPlan :: (R.HasScene scn (ModelOf w) (PlanOf w)) => w -> MVar scn -> F (R.Maker (ActionOf w)) (PlanOf w)
     -- | Rendering function that uses the Scene of Model and Plan
     window :: R.HasScene scn (ModelOf w) (PlanOf w) => w -> G.WindowT scn R.ReactMl ()
     -- | Update function that processes Action to update the Frame and Scene
@@ -106,3 +107,9 @@ mkGizmo' ::
   -> OutlineOf w
   -> F (R.Maker (ActionOf w)) (R.Gizmo (ModelOf w) (PlanOf w))
 mkGizmo' w i = mkModel w i >>= mkGizmo w
+
+-- | This is used to attach additional Properties and Handles to the shim component.
+newtype WindowProps = WindowProps ([JE.Property], [R.Handle])
+
+-- | This is used to attach additional Properties and Handles to the rendered widget.
+newtype RenderProps = RenderProps ([JE.Property], [R.Handle])

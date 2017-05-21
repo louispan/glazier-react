@@ -62,3 +62,13 @@ function hgr$mkCombinedElements(elements) {
     }
     return null;
 }
+
+// Combine functions into a single function
+// Given two 'Callback (JSVal -> IO ())'
+// return a function that calls both callbacks
+function hgr$combineCallback1(a, b) {
+    return function(j) {
+        a(j);
+        b(j);
+    }
+}

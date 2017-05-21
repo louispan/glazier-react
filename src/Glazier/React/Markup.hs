@@ -1,4 +1,5 @@
 {-# LANGUAGE ApplicativeDo #-}
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -8,7 +9,8 @@
 
 -- | 'Lucid.HtmlT' inspired monad for creating 'ReactElement's
 module Glazier.React.Markup
-    ( ReactMarkup(..)
+    ( Handle
+    , ReactMarkup(..)
     , BranchParam(..)
     , LeafParam(..)
     , fromMarkup
@@ -32,22 +34,28 @@ import Control.Monad.Morph
 import Control.Monad.Reader
 import Control.Monad.State.Strict
 import qualified Data.DList as D
+import qualified Data.Map.Strict as M
 import Data.Semigroup
+import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
 import qualified Glazier as G
 import qualified Glazier.React.Element as R
 import qualified JavaScript.Extras as JE
 
+type Handle = (J.JSString, J.Callback (J.JSVal -> IO ()))
+
 -- | The parameters required to create a branch ReactElement with children
 data BranchParam = BranchParam
     JE.JSVar
     [JE.Property]
+    [Handle]
     (D.DList ReactMarkup)
 
 -- | The parameters required to create a leaf ReactElement (no children)
 data LeafParam = LeafParam
     JE.JSVar
     [JE.Property]
+    [Handle]
 
 data ReactMarkup
     = ElementMarkup R.ReactElement
@@ -57,11 +65,11 @@ data ReactMarkup
 
 -- | Create 'ReactElement's from a 'AtomMarkup'
 fromMarkup :: ReactMarkup -> IO (R.ReactElement)
-fromMarkup (BranchMarkup (BranchParam n p xs)) = do
-    xs' <- sequenceA $ fromMarkup <$> (D.toList xs)
-    R.mkBranchElement n p xs'
+fromMarkup (BranchMarkup (BranchParam n props hdls xs)) = do
+    xs' <- sequenceA $ fromMarkup <$> D.toList xs
+    R.mkBranchElement n (props ++ dedupHandles hdls) xs'
 
-fromMarkup (LeafMarkup (LeafParam n p)) = R.mkLeafElement n p
+fromMarkup (LeafMarkup (LeafParam n props hdls)) = R.mkLeafElement n (props ++ dedupHandles hdls)
 
 fromMarkup (TextMarkup str) = pure $ R.textElement str
 
@@ -123,11 +131,52 @@ txt :: Applicative m => J.JSString -> ReactMlT m ()
 txt n = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` TextMarkup n)
 
 -- | For the contentless elements: eg 'br_'
-lf :: Applicative m => JE.JSVar -> [JE.Property] -> ReactMlT m ()
-lf n props = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` LeafMarkup (LeafParam n props))
+-- It is ok to have duplicate keys in cbs, however, it is a hidden error
+-- to have duplicate keys in hdls, or across props and hdls.
+-- It is possible to put callback in the props argument
+-- but it is safer to put them in the cbs arguments because
+-- multiple callbacks of the same key will be combined.
+lf
+    :: Applicative m
+    => JE.JSVar
+    -> [JE.Property]
+    -> [Handle]
+    -> ReactMlT m ()
+lf n props hdls = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` LeafMarkup (LeafParam n props hdls))
 
 -- | For the contentful elements: eg 'div_'
-bh :: Functor m => JE.JSVar -> [JE.Property] -> ReactMlT m a -> ReactMlT m a
-bh n props (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
+-- It is ok to have duplicate keys in cbs, however, it is a hidden error
+-- to have duplicate keys in props, or across props and cbs.
+-- It is possible to put callback in the props argument
+-- but it is safer to put them in the cbs arguments because
+-- multiple callbacks of the same key will be combined.
+bh
+    :: Functor m
+    => JE.JSVar
+    -> [JE.Property]
+    -> [Handle]
+    -> ReactMlT m a
+    -> ReactMlT m a
+bh n props hdls (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
     (a, childs') <- childs mempty
-    pure (a, xs `D.snoc` BranchMarkup (BranchParam n props childs'))
+    pure (a, xs `D.snoc` BranchMarkup (BranchParam n props hdls childs'))
+
+-- | dedups a list of (key, Callback1) by mergeing callbacks for the same key together.
+dedupHandles :: [Handle] -> [JE.Property]
+dedupHandles = M.toList . M.fromListWith js_combineCallback1 . fmap (fmap JE.toJS')
+
+#ifdef __GHCJS__
+
+-- | Combine functions into a single function
+-- Given two 'Callback (JSVal -> IO ())'
+-- return a function that calls both callbacks
+foreign import javascript unsafe
+    "$r = function(j) { $1(j); $2(j); };"
+    js_combineCallback1 :: JE.JSVar -> JE.JSVar -> JE.JSVar
+
+#else
+
+js_combineCallback1 :: JE.JSVar -> JE.JSVar -> JE.JSVar
+js_combineCallback1 _ _ = JE.JSVar J.nullRef
+
+#endif
