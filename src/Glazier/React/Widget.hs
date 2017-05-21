@@ -11,6 +11,7 @@ import Control.Concurrent.MVar
 import qualified Control.Disposable as CD
 import Control.Monad.Free.Church
 import qualified Data.DList as D
+import Data.Semigroup
 import qualified Glazier as G
 import qualified Glazier.React.Maker as R
 import qualified Glazier.React.Markup as R
@@ -111,5 +112,19 @@ mkGizmo' w i = mkModel w i >>= mkGizmo w
 -- | This is used to attach additional Properties and Handles to the shim component.
 newtype WindowProps = WindowProps ([JE.Property], [R.Handle])
 
+instance Semigroup WindowProps where
+    WindowProps (props, hdls) <> WindowProps (props', hdls') = WindowProps (props <> props', hdls <> hdls')
+
+instance Monoid WindowProps where
+    mempty = WindowProps ([], [])
+    mappend = (<>)
+
 -- | This is used to attach additional Properties and Handles to the rendered widget.
 newtype RenderProps = RenderProps ([JE.Property], [R.Handle])
+
+instance Semigroup RenderProps where
+    RenderProps (props, hdls) <> RenderProps (props', hdls') = RenderProps (props <> props', hdls <> hdls')
+
+instance Monoid RenderProps where
+    mempty = RenderProps ([], [])
+    mappend = (<>)
