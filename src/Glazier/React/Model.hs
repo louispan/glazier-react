@@ -14,17 +14,19 @@ import qualified Control.Disposable as CD
 import Control.Lens
 import qualified GHC.Generics as G
 
--- | Lens to the data for state and rendering.
-class HasDetail c dtl | c -> dtl where
-    detail :: Lens' c dtl
-
--- | Lens to the callbacks and interactions with React
-class HasPlan c pln | c -> pln where
-    plan :: Lens' c pln
 
 -- | Convert to the serializable outline for saving and restoring
-class ToOutline c o | c -> o where
-    outline :: c -> o
+-- All Detail should be an instance of this
+class ToOutline dtl ol | dtl -> ol where
+    outline :: dtl -> ol
+
+-- | Lens to the data for state and rendering.
+class HasDetail mdl dtl | mdl -> dtl where
+    detail :: Lens' mdl dtl
+
+-- | Lens to the callbacks and interactions with React
+class HasPlan mdl pln | mdl -> pln where
+    plan :: Lens' mdl pln
 
 ---------------------------------------------
 
@@ -34,12 +36,12 @@ data Model dtl pln = Model
     , _plan :: pln
     } deriving (G.Generic)
 
-class HasModel c dtl pln | c -> dtl pln where
-    model :: Lens' c (Model dtl pln)
+-- class HasModel c dtl pln | c -> dtl pln where
+--     model :: Lens' c (Model dtl pln)
 
-instance HasModel (Model dtl pln) dtl pln where
-    model = id
-    {-# INLINE model #-}
+-- instance HasModel (Model dtl pln) dtl pln where
+--     model = id
+--     {-# INLINE model #-}
 
 -- | All models should be disposable to make it easier for cleanup of callbacks.
 instance (CD.Disposing pln, CD.Disposing dtl) => CD.Disposing (Model dtl pln)
@@ -53,10 +55,13 @@ instance HasDetail (Model dtl pln) dtl where
     {-# INLINE detail #-}
 
 -- | A Model can be converted to Outline by using the Detail
--- | Undecidableinstances! This is safe because dtl is definitely smaller than (Model dtl pln)
-instance ToOutline dtl ol => ToOutline (Model dtl pln) ol where
-    outline = view (detail . to outline)
-    {-# INLINE outline #-}
+-- UndecidableInstances:
+-- The coverage condition fails in class ‘ToOutline’ for functional dependency: ‘dtl -> ol’
+-- Reason: lhs type ‘Model dtl pln’ does not determine rhs type ‘ol'
+-- NB: Safe because because 'Model dtl pln' determines dtl; in the constraints dtl determines ol.
+-- instance ToOutline dtl ol => ToOutline (Model dtl pln) ol where
+--     outline = view (detail . to outline)
+--     {-# INLINE outline #-}
 
 ---------------------------------------------
 
@@ -77,7 +82,6 @@ newtype Shared a = Shared (MVar a, a)
 
 makeWrapped ''Shared
 
--- | Undecidableinstances! This is safe because 'a' is definitely smaller than 'Shared a'
 instance CD.Disposing a => CD.Disposing (Shared a) where
     disposing (Shared (_, a)) = CD.disposing a
     {-# INLINE disposing #-}
@@ -97,23 +101,34 @@ instance HasIVal (Shared mdl) mdl where
     ival = _Wrapped' . _2
     {-# INLINE ival #-}
 
--- | Undecidableinstances! This is safe because (HasModel mdl dtl pln) is definitely smaller than (Shared mdl)
-instance HasModel mdl dtl pln => HasModel (Shared mdl) dtl pln where
-    model = ival . model
-    {-# INLINE model #-}
+-- -- | Undecidableinstances! This is safe because (HasModel mdl dtl pln) is definitely smaller than (Shared mdl)
+-- instance HasPlan mdl dtl pln => HasModel (Shared mdl) dtl pln where
+--     model = ival . model
+--     {-# INLINE model #-}
 
--- | Undecidableinstances! This is safe because (HasModel mdl dtl pln) is definitely smaller than (Shared mdl)
-instance HasModel mdl dtl pln => HasPlan (Shared mdl) pln where
-    plan = model . plan
+-- | UndecidableInstances:
+-- The coverage condition fails in class ‘HasPlan’ for functional dependency: ‘mdl -> pln’
+-- Reason: lhs type ‘Shared mdl’ does not determine rhs type ‘pln’
+-- NB: Safe because 'Shared mdl' determines mdl; in the constraints mdl determines pln
+instance HasPlan mdl pln => HasPlan (Shared mdl) pln where
+    plan = ival . plan
     {-# INLINE plan #-}
 
--- | Undecidableinstances! This is safe because (HasModel mdl dtl pln) is definitely smaller than (Shared mdl)
-instance HasModel mdl dtl pln => HasDetail (Shared mdl) dtl where
-    detail = model . detail
+-- | UndecidableInstances:
+-- The coverage condition fails in class ‘HasDetail’ for functional dependency: ‘mdl -> dtl’
+-- Reason: lhs type ‘Shared mdl’ does not determine rhs type ‘dtl’
+-- NB: Safe because 'Shared mdl' determines mdl; in the constraints mdl determines dtl
+instance HasDetail mdl dtl => HasDetail (Shared mdl) dtl where
+    detail = ival . detail
     {-# INLINE detail #-}
 
--- | A Entity can be converted to Outline by using the Detail
--- Undecidableinstances! This is safe because (HasModel mdl dtl pln) is definitely smaller than (Shared mdl)
-instance (HasModel mdl dtl pln, ToOutline dtl ol) => ToOutline (Shared mdl) ol where
+-- | A Entity can be converted to Outline by using the Detail.
+-- UndecidableInstances:
+-- Variable ‘dtl’ occurs more often in the constraint ‘HasDetail mdl dtl’ than in the instance head
+-- Variable ‘dtl’ occurs more often in the constraint ‘ToOutline dtl ol’ than in the instance head
+-- The coverage condition fails in class ‘ToOutline’ for functional dependency: ‘dtl -> ol’
+-- Reason: lhs type ‘Shared mdl’ does not determine rhs type ‘ol’
+-- NB: Safe because 'Shared md' determins mdl; in the constraints mdl determines dtl, and dtl determins ol
+instance (HasDetail mdl dtl, ToOutline dtl ol) => ToOutline (Shared mdl) ol where
     outline = view (detail . to outline)
     {-# INLINE outline #-}
