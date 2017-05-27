@@ -28,16 +28,16 @@ data Maker act nxt where
         -> (J.Callback (J.JSVal -> IO ()) -> nxt)
         -> Maker act nxt
     MkEmptyFrame
-        :: (MVar (R.Scene mdl pln) -> nxt)
+        :: (MVar (R.Model dtl pln) -> nxt)
         -> Maker act nxt
     MkRenderer
-        :: R.HasScene scn mdl pln => MVar scn
-        -> (J.JSVal -> G.WindowT scn R.ReactMl ())
+        :: MVar mdl
+        -> (J.JSVal -> G.WindowT mdl R.ReactMl ())
         -> (J.Callback (J.JSVal -> IO J.JSVal) -> nxt)
         -> Maker act nxt
     PutFrame
-        :: MVar (R.Scene mdl pln)
-        -> R.Scene mdl pln
+        :: MVar (R.Model dtl pln)
+        -> R.Model dtl pln
         -> nxt
         -> Maker act nxt
     GetComponent
@@ -51,7 +51,7 @@ instance Functor (Maker act) where
   fmap f (MkHandler handler g) = MkHandler handler (f . g)
   fmap f (MkEmptyFrame g) = MkEmptyFrame (f . g)
   fmap f (MkRenderer frm render g) = MkRenderer frm render (f . g)
-  fmap f (PutFrame frm scn x) = PutFrame frm scn (f x)
+  fmap f (PutFrame frm dsn x) = PutFrame frm dsn (f x)
   fmap f (GetComponent g) = GetComponent (f . g)
   fmap f (MkKey g) = MkKey (f . g)
 

@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -13,93 +14,106 @@ import qualified Control.Disposable as CD
 import Control.Lens
 import qualified GHC.Generics as G
 
+-- | Lens to the data for state and rendering.
+class HasDetail c dtl | c -> dtl where
+    detail :: Lens' c dtl
+
 -- | Lens to the callbacks and interactions with React
 class HasPlan c pln | c -> pln where
     plan :: Lens' c pln
 
--- | Lens to the pure model for state and rendering.
-class HasModel c mdl | c -> mdl where
-    model :: Lens' c mdl
-
--- | Convert to the pure serializable model for saving and restoring
+-- | Convert to the serializable outline for saving and restoring
 class ToOutline c o | c -> o where
     outline :: c -> o
 
--- | A record of Model and Plan
-data Scene mdl pln = Scene
-    { _model :: mdl
+---------------------------------------------
+
+-- | A record of Detail and Plan
+data Model dtl pln = Model
+    { _detail :: dtl
     , _plan :: pln
     } deriving (G.Generic)
 
-class HasScene c mdl pln | c -> mdl pln where
-    scene :: Lens' c (Scene mdl pln)
+class HasModel c dtl pln | c -> dtl pln where
+    model :: Lens' c (Model dtl pln)
 
-instance HasScene (Scene mdl pln) mdl pln where
-    scene = id
-    {-# INLINE scene #-}
-
--- | All scenes should be disposable to make it easier for cleanup of callbacks.
-instance (CD.Disposing pln, CD.Disposing mdl) => CD.Disposing (Scene mdl pln)
-
-instance HasPlan (Scene mdl pln) pln where
-    plan f (Scene mdl pln) = fmap (\pln' -> Scene mdl pln') (f pln)
-    {-# INLINE plan #-}
-
-instance HasModel (Scene mdl pln) mdl where
-    model f (Scene mdl pln) = fmap (\mdl' -> Scene mdl' pln) (f mdl)
+instance HasModel (Model dtl pln) dtl pln where
+    model = id
     {-# INLINE model #-}
 
--- | A Scene can be converted to Outline by using the Model
-instance ToOutline mdl ol => ToOutline (Scene mdl pln) ol where
-    outline = view (model . to outline)
+-- | All models should be disposable to make it easier for cleanup of callbacks.
+instance (CD.Disposing pln, CD.Disposing dtl) => CD.Disposing (Model dtl pln)
+
+instance HasPlan (Model dtl pln) pln where
+    plan f (Model dtl pln) = fmap (\pln' -> Model dtl pln') (f pln)
+    {-# INLINE plan #-}
+
+instance HasDetail (Model dtl pln) dtl where
+    detail f (Model dtl pln) = fmap (\dtl' -> Model dtl' pln) (f dtl)
+    {-# INLINE detail #-}
+
+-- | A Model can be converted to Outline by using the Detail
+-- | Undecidableinstances! This is safe because dtl is definitely smaller than (Model dtl pln)
+instance ToOutline dtl ol => ToOutline (Model dtl pln) ol where
+    outline = view (detail . to outline)
     {-# INLINE outline #-}
 
--- | Frame is a Mvar of Scene. React rendering callback uses this MVar for rendering.
-type Frame mdl pln = MVar (Scene mdl pln)
+---------------------------------------------
 
-class HasFrame c mdl pln | c -> mdl pln where
-    frame :: Lens' c (Frame mdl pln)
+class HasMVar c a | c -> a where
+    mvar :: Lens' c (MVar a)
 
-instance HasFrame (Frame mdl pln) mdl pln where
-    frame = id
-    {-# INLINE frame #-}
+instance HasMVar (MVar a) a where
+    mvar = id
+    {-# INLINE mvar #-}
 
--- | A record of Scene and Frame.
-data Gizmo mdl pln = Gizmo
-    { _scene :: Scene mdl pln
-    , _frame :: Frame mdl pln
-    } deriving (G.Generic)
+class HasIVal c a | c -> a where
+    ival :: Lens' c a
 
--- | Undecidableinstances!
--- But this is safe because Scene is definitely smaller than Gizmo
-instance CD.Disposing (Scene mdl pln) => CD.Disposing (Gizmo mdl pln) where
-    disposing s = CD.disposing $ s ^. scene
+----------------------------------------------------------
+-- | This is used by the gadget to be able to purely manipulate a value
+-- as well as put into an MVar for other threads to access the value.
+newtype Shared a = Shared (MVar a, a)
+
+makeWrapped ''Shared
+
+-- | Undecidableinstances! This is safe because 'a' is definitely smaller than 'Shared a'
+instance CD.Disposing a => CD.Disposing (Shared a) where
+    disposing (Shared (_, a)) = CD.disposing a
     {-# INLINE disposing #-}
 
-class (HasScene c mdl pln, HasFrame c mdl pln) => HasGizmo c mdl pln | c -> mdl pln where
-    gizmo :: Lens' c (Gizmo mdl pln)
+-- class HasShared c a | c -> a where
+--     shared :: Lens' c (Shared a)
 
-instance HasGizmo (Gizmo mdl pln) mdl pln where
-    gizmo = id
-    {-# INLINE gizmo #-}
+-- instance HasShared (Shared a) a where
+--     shared = id
+--     {-# INLINE shared #-}
 
-instance HasFrame (Gizmo mdl pln) mdl pln where
-    frame f (Gizmo scn frm) = fmap (\frm' -> Gizmo scn frm') (f frm)
-    {-# INLINE frame #-}
+instance HasMVar (Shared mdl) mdl where
+    mvar = _Wrapped' . _1
+    {-# INLINE mvar #-}
 
-instance HasScene (Gizmo mdl pln) mdl pln where
-    scene f (Gizmo scn frm) = fmap (\scn' -> Gizmo scn' frm) (f scn)
-    {-# INLINE scene #-}
+instance HasIVal (Shared mdl) mdl where
+    ival = _Wrapped' . _2
+    {-# INLINE ival #-}
 
-instance HasPlan (Gizmo mdl pln) pln where
-    plan = scene . plan
-    {-# INLINE plan #-}
-
-instance HasModel (Gizmo mdl pln) mdl where
-    model = scene . model
+-- | Undecidableinstances! This is safe because (HasModel mdl dtl pln) is definitely smaller than (Shared mdl)
+instance HasModel mdl dtl pln => HasModel (Shared mdl) dtl pln where
+    model = ival . model
     {-# INLINE model #-}
 
--- | A Gizmo can be converted to Outline by using the Model
-instance ToOutline mdl o => ToOutline (Gizmo mdl pln) o where
-    outline = view (model . to outline)
+-- | Undecidableinstances! This is safe because (HasModel mdl dtl pln) is definitely smaller than (Shared mdl)
+instance HasModel mdl dtl pln => HasPlan (Shared mdl) pln where
+    plan = model . plan
+    {-# INLINE plan #-}
+
+-- | Undecidableinstances! This is safe because (HasModel mdl dtl pln) is definitely smaller than (Shared mdl)
+instance HasModel mdl dtl pln => HasDetail (Shared mdl) dtl where
+    detail = model . detail
+    {-# INLINE detail #-}
+
+-- | A Entity can be converted to Outline by using the Detail
+-- Undecidableinstances! This is safe because (HasModel mdl dtl pln) is definitely smaller than (Shared mdl)
+instance (HasModel mdl dtl pln, ToOutline dtl ol) => ToOutline (Shared mdl) ol where
+    outline = view (detail . to outline)
     {-# INLINE outline #-}
