@@ -14,6 +14,7 @@ import qualified Control.Disposable as CD
 import Control.Monad.Free.Church
 import qualified Data.DList as D
 import Data.Semigroup
+import qualified GHCJS.Types as J
 import qualified Glazier as G
 import qualified Glazier.React.Maker as R
 import qualified Glazier.React.Markup as R
@@ -21,9 +22,8 @@ import qualified Glazier.React.Model as R
 import qualified JavaScript.Extras as JE
 
 type family ActionOf w where
-    -- ActionOf (Widget act ol dtl pln cmd) = act
     ActionOf (Display act pln mdl) = act
-    ActionOf (G.Gadget act (R.Shared mdl) (D.DList cmd)) = act
+    -- ActionOf (G.Gadget act (R.Shared mdl) (D.DList cmd)) = act
     ActionOf (Device act pln cmd mdl) = act
 
 -- type family OutlineOf w where
@@ -34,14 +34,12 @@ type family ActionOf w where
 --     DetailOf (Device act pln mdl cmd) = dtl
 
 type family PlanOf w where
-    -- PlanOf (Widget act ol dtl pln cmd) = pln
     PlanOf (Display act pln mdl) = pln
     PlanOf (Device act pln cmd mdl) = pln
 
 type family CommandOf w where
-    CommandOf (G.Gadget act (R.Shared mdl) (D.DList cmd)) = cmd
+    -- CommandOf (G.Gadget act (R.Shared mdl) (D.DList cmd)) = cmd
     CommandOf (Device act pln cmd mdl) = cmd
---     CommandOf (Widget act ol dtl pln cmd) = cmd
 
 type family ModelOf w where
     ModelOf (Display act pln mdl) = mdl
@@ -104,7 +102,7 @@ class (CD.Disposing (PlanOf w)) => MkPlan w mdl where
 
 class IsWindow w mdl where
     -- | Rendering function that uses the Design of Model and Plan.
-    window :: w -> G.WindowT mdl R.ReactMl ()
+    window :: w -> J.JSVal -> G.WindowT mdl R.ReactMl ()
 
 class IsGadget w mdl where
     gadget :: w -> G.Gadget (ActionOf w) (R.Shared mdl) (D.DList (CommandOf w))
@@ -117,11 +115,14 @@ class (MkPlan w mdl, IsGadget w mdl) => IsDevice w mdl where
 
 ------------------------------------------------
 
--- | Using GADTs to ensure that all 'Display' are 'mkPlan' instances
+-- | Something that can start the React rendering (eg of the shim component)
+-- It has 'mkPlan' for creating the React render handler which calls
+-- the 'window' function
+-- Using GADTs to ensure that all 'Display' are 'mkPlan' instances
 data Display act pln mdl where
     Display :: (CD.Disposing pln)
         => (MVar mdl -> F (R.Maker act) pln)
-        -> G.WindowT mdl R.ReactMl ()
+        -> (J.JSVal -> G.WindowT mdl R.ReactMl ())
         -> Display act pln mdl
 
 instance CD.Disposing pln => MkPlan (Display act pln mdl) mdl where
@@ -132,12 +133,13 @@ instance IsWindow (Display act pln mdl) mdl where
 
 ------------------------------------------------
 
-instance IsGadget (G.Gadget a (R.Shared mdl) (D.DList c)) mdl where
-    gadget = id
+-- instance IsGadget (G.Gadget a (R.Shared mdl) (D.DList c)) mdl where
+--     gadget = id
 
 ------------------------------------------------
 
--- | Using GADTs to ensure that all 'Device' are 'mkPlan' instances
+-- | A device is something that has update logic but not rendering logic.
+-- Using GADTs to ensure that all 'Device' are 'mkPlan' instances
 data Device act pln cmd mdl where
     Device :: (CD.Disposing pln)
         => (MVar mdl -> F (R.Maker act) pln)
@@ -155,6 +157,8 @@ instance IsGadget (Device act pln cmd mdl) mdl where
 instance CD.Disposing pln => IsDevice (Device act pln cmd mdl) mdl where
     windowAttrs (Device _ _ f _) = f
     renderAttrs (Device _ _ _ f) = f
+
+------------------------------------------------
 
 -- | Record of functions for a widget. Contains everything you need to make the model,
 -- render, and run the event processing.
