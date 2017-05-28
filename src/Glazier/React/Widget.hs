@@ -22,28 +22,31 @@ import qualified Glazier.React.Model as R
 import qualified JavaScript.Extras as JE
 
 type family ActionOf w where
-    ActionOf (Display act pln mdl) = act
     -- ActionOf (G.Gadget act (R.Shared mdl) (D.DList cmd)) = act
+    ActionOf (Display act pln mdl) = act
     ActionOf (Device act pln cmd mdl) = act
+    ActionOf (Widget act ol dtl pln cmd mdl) = act
 
--- type family OutlineOf w where
---     OutlineOf (Device act pln mdl ol cmd) = ol
---     -- OutlineOf (Widget act ol dtl pln cmd) = ol
+type family OutlineOf w where
+    OutlineOf (Widget act ol dtl pln cmd mdl) = ol
 
--- type family DetailOf w where
---     DetailOf (Device act pln mdl cmd) = dtl
+type family DetailOf w where
+    DetailOf (Widget act ol dtl pln cmd mdl) = dtl
 
 type family PlanOf w where
     PlanOf (Display act pln mdl) = pln
     PlanOf (Device act pln cmd mdl) = pln
+    PlanOf (Widget act ol dtl pln cmd mdl) = pln
 
 type family CommandOf w where
     -- CommandOf (G.Gadget act (R.Shared mdl) (D.DList cmd)) = cmd
     CommandOf (Device act pln cmd mdl) = cmd
+    CommandOf (Widget act ol dtl pln cmd mdl) = cmd
 
-type family ModelOf w where
-    ModelOf (Display act pln mdl) = mdl
-    ModelOf (Device act pln cmd mdl) = mdl
+-- type family ModelOf w where
+--     ModelOf (Display act pln mdl) = mdl
+--     ModelOf (Device act pln cmd mdl) = mdl
+--     ModelOf (Widget act dtl pln cmd mdl) = mdl
 
 -- type ModelOf w s p = (R.HasDetail s (PlanOf w), R.HasPlan p (DetailOf w)) => R.Model s p
 
@@ -71,23 +74,23 @@ type family ModelOf w where
 ------------------------------------------------
 
 -- | This is used to attach additional Properties and Handles to the shim component.
-newtype WindowAttrs = WindowAttrs ([JE.Property], [R.Handle])
+newtype WindowAttributes = WindowAttributes ([JE.Property], [R.Handle])
 
-instance Semigroup WindowAttrs where
-    WindowAttrs (props, hdls) <> WindowAttrs (props', hdls') = WindowAttrs (props <> props', hdls <> hdls')
+instance Semigroup WindowAttributes where
+    WindowAttributes (props, hdls) <> WindowAttributes (props', hdls') = WindowAttributes (props <> props', hdls <> hdls')
 
-instance Monoid WindowAttrs where
-    mempty = WindowAttrs ([], [])
+instance Monoid WindowAttributes where
+    mempty = WindowAttributes ([], [])
     mappend = (<>)
 
 -- | This is used to attach additional Properties and Handles to the rendered widget.
-newtype RenderAttrs = RenderAttrs ([JE.Property], [R.Handle])
+newtype RenderAttributes = RenderAttributes ([JE.Property], [R.Handle])
 
-instance Semigroup RenderAttrs where
-    RenderAttrs (props, hdls) <> RenderAttrs (props', hdls') = RenderAttrs (props <> props', hdls <> hdls')
+instance Semigroup RenderAttributes where
+    RenderAttributes (props, hdls) <> RenderAttributes (props', hdls') = RenderAttributes (props <> props', hdls <> hdls')
 
-instance Monoid RenderAttrs where
-    mempty = RenderAttrs ([], [])
+instance Monoid RenderAttributes where
+    mempty = RenderAttributes ([], [])
     mappend = (<>)
 
 ------------------------------------------------
@@ -96,9 +99,9 @@ class (CD.Disposing (PlanOf w)) => MkPlan w mdl where
     -- | Given an empty MVar, make the Plan that uses the MVar for rendering
     mkPlan :: w -> MVar mdl -> F (R.Maker (ActionOf w)) (PlanOf w)
 
--- class (CD.Disposing (DetailOf w)) => MkDetail w mdl ol where
---     -- | Given a deserializable 'Outline', create the 'Detail'
---     mkDetail :: w -> ol -> F (R.Maker (ActionOf w)) (DetailOf w)
+class (CD.Disposing (DetailOf w)) => MkDetail w ol where
+    -- | Given a deserializable 'Outline', create the 'Detail'
+    mkDetail :: w -> ol -> F (R.Maker (ActionOf w)) (DetailOf w)
 
 class IsWindow w mdl where
     -- | Rendering function that uses the Design of Model and Plan.
@@ -107,11 +110,15 @@ class IsWindow w mdl where
 class IsGadget w mdl where
     gadget :: w -> G.Gadget (ActionOf w) (R.Shared mdl) (D.DList (CommandOf w))
 
-class (MkPlan w mdl, IsGadget w mdl) => IsDevice w mdl where
-    windowAttrs :: w -> mdl -> WindowAttrs
-    renderAttrs :: w -> mdl -> RenderAttrs
+-- | These contain the HTMl attributes that need to be added to the root React element
+-- of the initial 'window' and subsequent 'render' functions in order for the
+-- 'Device' or 'Widget' to work.
+class IsAttributes w mdl where
+    windowAttributes :: w -> mdl -> WindowAttributes
 
--- type IsWidget w = (IsDisplay w, IsGizmo w)
+type IsDevice w mdl = (MkPlan w mdl, IsGadget w mdl, IsAttributes w mdl)
+
+type IsWidget w ol mdl = (MkDetail w ol, IsWindow w mdl, IsDevice w mdl)
 
 ------------------------------------------------
 
@@ -144,59 +151,45 @@ data Device act pln cmd mdl where
     Device :: (CD.Disposing pln)
         => (MVar mdl -> F (R.Maker act) pln)
         -> G.Gadget act (R.Shared mdl) (D.DList cmd)
-        -> (mdl -> WindowAttrs)
-        -> (mdl -> RenderAttrs)
+        -> (mdl -> WindowAttributes)
         -> Device act pln cmd mdl
 
 instance CD.Disposing pln => MkPlan (Device act pln cmd mdl) mdl where
-    mkPlan (Device f _ _ _) = f
+    mkPlan (Device f _ _) = f
 
 instance IsGadget (Device act pln cmd mdl) mdl where
-    gadget (Device _ f _ _) = f
+    gadget (Device _ f _) = f
 
-instance CD.Disposing pln => IsDevice (Device act pln cmd mdl) mdl where
-    windowAttrs (Device _ _ f _) = f
-    renderAttrs (Device _ _ _ f) = f
+instance IsAttributes (Device act pln cmd mdl) mdl where
+    windowAttributes (Device _ _ f) = f
 
 ------------------------------------------------
 
 -- | Record of functions for a widget. Contains everything you need to make the model,
 -- render, and run the event processing.
--- This is a GADT to enforce the Disposing and ToOutline constraints at the time
--- of creating the Widget record, which ensures all values of Widget is a valid IsWidget instance.
--- data Widget a o s p c where
---     Widget :: (CD.Disposing s, CD.Disposing p, R.ToOutline s o)
---         => (o -> F (R.Maker a) s)
---         -- | HasModel allows using the mkPlan in composite widgets
---         -- so that larger models can be used to initialize the window function below.
---         -> (forall mdl. (R.HasModel mdl s p) => MVar mdl -> F (R.Maker a) p)
---         -- | HasModel allows using the window in composite widgets
---         -- so that the window can use data from larger models
---         -- (eg. to add to class properties of html elements).
---         -> (forall mdl. R.HasModel mdl s p => G.WindowT mdl R.ReactMl ())
---         -- | Gadget doesn't use HasEntity as it can be easily zoomed.
---         -> G.Gadget a (R.Entity m p) (D.DList c)
---         -> Widget a o s p c
+data Widget act ol dtl pln cmd mdl where
+    Widget :: (CD.Disposing pln, CD.Disposing dtl)
+        => (ol -> F (R.Maker act) dtl)
+        -> (MVar mdl -> F (R.Maker act) pln)
+        -> (J.JSVal -> G.WindowT mdl R.ReactMl ())
+        -> G.Gadget act (R.Shared mdl) (D.DList cmd)
+        -> (mdl -> WindowAttributes)
+        -> Widget act ol dtl pln cmd mdl
 
--- instance (CD.Disposing s, R.ToOutline s o) =>
---          MkModel (Widget a o s p c) where
---     mkModel (Widget f _ _ _) = f
+instance CD.Disposing dtl => MkDetail (Widget act ol dtl pln cmd mdl) ol where
+    mkDetail (Widget f _ _ _ _) = f
 
--- instance (CD.Disposing s, CD.Disposing p) =>
---          MkPlan (Widget a o s p c) where
---     mkPlan (Widget _ f _ _) = f
+instance CD.Disposing pln => MkPlan (Widget act ol dtl pln cmd mdl) mdl where
+    mkPlan (Widget _ f _ _ _) = f
 
--- instance (CD.Disposing s, CD.Disposing p) =>
---          IsWindow (Widget a o s p c) where
---     window (Widget _ _ f _) = f
+instance IsWindow (Widget act ol dtl pln cmd mdl) mdl where
+    window (Widget _ _ f _ _) = f
 
--- instance (CD.Disposing m, CD.Disposing p, R.ToOutline m o) =>
---          IsWidget (Widget a o m p c) where
---     mkModel (Widget f _ _ _) = f
---     mkPlan (Widget _ f _ _) = f
---     window (Widget _ _ f _) = f
---     gadget (Widget _ _ _ f) = f
+instance IsGadget (Widget act ol dtl pln cmd mdl) mdl where
+    gadget (Widget _ _ _ f _) = f
 
+instance IsAttributes (Widget act ol dtl pln cmd mdl) mdl where
+    windowAttributes (Widget _ _ _ _ f) = f
 
 -------------------------------------------------------------
 
