@@ -17,7 +17,6 @@ import qualified GHCJS.Types as J
 import qualified Glazier as G
 import qualified Glazier.React.Component as R
 import qualified Glazier.React.Markup as R
-import qualified Glazier.React.Model as R
 
 -- | DSL for IO effects required during making widget models and callbacks
 -- 'Maker' remembers the action type to allow 'withAction' for changing the action type by parent widgets.
@@ -28,7 +27,7 @@ data Maker act nxt where
         -> (J.Callback (J.JSVal -> IO ()) -> nxt)
         -> Maker act nxt
     MkEmptyFrame
-        :: (MVar (R.Model dtl pln) -> nxt)
+        :: (MVar mdl -> nxt)
         -> Maker act nxt
     MkRenderer
         :: MVar mdl
@@ -36,8 +35,8 @@ data Maker act nxt where
         -> (J.Callback (J.JSVal -> IO J.JSVal) -> nxt)
         -> Maker act nxt
     PutFrame
-        :: MVar (R.Model dtl pln)
-        -> R.Model dtl pln
+        :: MVar mdl
+        -> mdl
         -> nxt
         -> Maker act nxt
     GetComponent
