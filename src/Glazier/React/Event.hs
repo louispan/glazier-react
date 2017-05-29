@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -26,6 +27,7 @@ module Glazier.React.Event
 where
 
 import Control.DeepSeq
+import qualified GHC.Generics as G
 import qualified Data.JSString as J
 import qualified GHCJS.Foreign as J
 import qualified GHCJS.Marshal.Pure as J
@@ -34,7 +36,9 @@ import qualified JavaScript.Extras.Cast as JE
 
 -- | The object that dispatched the event.
 -- https://developer.mozilla.org/en-US/docs/Web/API/Event/target
-newtype DOMEventTarget = DOMEventTarget J.JSVal
+newtype DOMEventTarget =
+    DOMEventTarget J.JSVal
+    deriving (G.Generic)
 
 instance J.IsJSVal DOMEventTarget
 instance J.PToJSVal DOMEventTarget where
@@ -43,10 +47,13 @@ instance JE.ToJS DOMEventTarget
 instance JE.FromJS DOMEventTarget where
     fromJS a | js_isDOMEventTarget a = Just $ DOMEventTarget a
     fromJS _ = Nothing
+instance NFData DOMEventTarget
 
 -- | The native event
 -- https://developer.mozilla.org/en-US/docs/Web/API/Event
-newtype DOMEvent = DOMEvent J.JSVal
+newtype DOMEvent =
+    DOMEvent J.JSVal
+    deriving (G.Generic)
 
 instance J.IsJSVal DOMEvent
 instance J.PToJSVal DOMEvent where
@@ -55,9 +62,11 @@ instance JE.ToJS DOMEvent
 instance JE.FromJS DOMEvent where
     fromJS a | js_isDOMEvent a = Just $ DOMEvent a
     fromJS _ = Nothing
+instance NFData DOMEvent
 
 -- | Every event in React is a synthetic event, a cross-browser wrapper around the native event.
 -- 'SyntheticEvent' must only be used in the first part of 'eventHandler'.
+-- It is not an instance of NFData and so cannot be returned into the second lazy part of 'eventHandler'
 newtype SyntheticEvent = SyntheticEvent J.JSVal
 
 instance J.IsJSVal SyntheticEvent
@@ -120,6 +129,8 @@ data Event = Event
     -- type is a reserved word, so prefix to eventType
     , eventType :: J.JSString
     }
+    deriving (G.Generic)
+instance NFData Event
 
 -- | We can lie about this not being in IO because
 -- within the strict part of 'eventHandlerM'
@@ -176,6 +187,8 @@ data MouseEvent = MouseEvent
   , screenY :: Int
   , shiftKey :: Bool
   }
+    deriving (G.Generic)
+instance NFData MouseEvent
 
 -- | See https://www.w3.org/TR/DOM-Level-3-Events-key/#keys-modifier
 -- This will throw if J.JSVal is null, but shouldn't happen since we've
@@ -225,6 +238,8 @@ data KeyboardEvent = KeyboardEvent
   , shiftkey :: Bool
   , which :: Int
   }
+    deriving (G.Generic)
+instance NFData KeyboardEvent
 
 -- | We can lie about this not being in IO because
 -- within the strict part of 'eventHandlerM'

@@ -1,16 +1,19 @@
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE TypeOperators #-}
 
 module Glazier.React.Widget where
 
 import Control.Concurrent.MVar
 import qualified Control.Disposable as CD
+import Control.Lens
 import Control.Monad.Free.Church
 import qualified Data.DList as D
 import Data.Semigroup
@@ -22,7 +25,7 @@ import qualified Glazier.React.Model as R
 import qualified JavaScript.Extras as JE
 
 type family ActionOf w where
-    -- ActionOf (G.Gadget act (R.Shared mdl) (D.DList cmd)) = act
+    ActionOf (G.GadgetT act (R.Shared mdl) m (D.DList cmd)) = act
     ActionOf (Display act pln mdl) = act
     ActionOf (Device act pln cmd mdl) = act
     ActionOf (Widget act ol dtl pln cmd mdl) = act
@@ -39,39 +42,46 @@ type family PlanOf w where
     PlanOf (Widget act ol dtl pln cmd mdl) = pln
 
 type family CommandOf w where
-    -- CommandOf (G.Gadget act (R.Shared mdl) (D.DList cmd)) = cmd
+    CommandOf (G.GadgetT act (R.Shared mdl) m (D.DList cmd)) = cmd
     CommandOf (Device act pln cmd mdl) = cmd
     CommandOf (Widget act ol dtl pln cmd mdl) = cmd
 
--- type family ModelOf w where
---     ModelOf (Display act pln mdl) = mdl
---     ModelOf (Device act pln cmd mdl) = mdl
---     ModelOf (Widget act dtl pln cmd mdl) = mdl
+type family ModelOf w where
+    ModelOf (G.GadgetT act (R.Shared mdl) m (D.DList cmd)) = mdl
+    ModelOf (G.WindowT mdl m r) = mdl
+    ModelOf (Display act pln mdl) = mdl
+    ModelOf (Device act pln cmd mdl) = mdl
+    ModelOf (Widget act ol dtl pln cmd mdl) = mdl
 
--- type ModelOf w s p = (R.HasDetail s (PlanOf w), R.HasPlan p (DetailOf w)) => R.Model s p
+-- | This is the type used by Gadgets to update a pure Model and also to put it into a MVar forall
+-- rendering by other threads.
+type EntityOf w = R.Shared (ModelOf w)
 
--- type FrameOf w s p = (R.HasDetail s (PlanOf w), R.HasPlan p (DetailOf w)) => R.Frame s p
+-----------------------------------------------------------
 
--- type EntityOf w s p = (R.HasDetail s (PlanOf w), R.HasPlan p (DetailOf w)) => R.Entity s p
+-- | You can't use type family as a type variable for a data type. The workaround is to use
+-- a tag to choose between different type family functions.
+data Part = Action' | Outline' | Detail' | Plan' | Command' | Model' | Entity'
 
--- type WindowOf w s p = (R.HasDetail s (PlanOf w), R.HasPlan p (DetailOf w)) => G.WindowT (R.Model s p) R.ReactMl ()
+type family Widget's (p :: Part) w where
+    Widget's 'Action' w = ActionOf w
+    Widget's 'Outline' w = OutlineOf w
+    Widget's 'Detail' w = DetailOf w
+    Widget's 'Plan' w = PlanOf w
+    Widget's 'Command' w = CommandOf w
+    Widget's 'Model' w = ModelOf w
+    Widget's 'Entity' w = EntityOf w
 
--- type GadgetOf w s p = (R.HasDetail s (PlanOf w), R.HasPlan p (DetailOf w)) => G.Gadget (ActionOf w) (R.Entity s p) (D.DList (CommandOf w))
+-- --  These type synomyms exports the type constructors so importing module don't need DataKinds extension.
+-- type Action' = 'Action'
+-- type Outline' = 'Outline'
+-- type Detail' = 'Detail'
+-- type Plan' = 'Plan'
+-- type Command' = 'Command'
+-- type Model' = 'Model'
+-- type Entity' = 'Entity'
 
-------------------------------------------------
-
--- -- | You can't use type family as a type variable for a data type. The workaround is to use
--- -- a tag to choose between different type family functions.
--- type family Widget's tag w where
---     Widget's EntityType w = EntityOf w
---     Widget's OutlineType w = OutlineOf w
-
--- -- | tag used to choose EntityOf type function. See @Widget's@.
--- data EntityType
--- -- | tag used to choose OutlineOf type funciton. See @Widget's@.
--- data OutlineType
-
-------------------------------------------------
+-----------------------------------------------------------
 
 -- | This is used to attach additional Properties and Handles to the shim component.
 newtype WindowAttributes = WindowAttributes ([JE.Property], [R.Handle])
@@ -95,48 +105,93 @@ instance Monoid RenderAttributes where
 
 ------------------------------------------------
 
-class (CD.Disposing (PlanOf w)) => MkPlan w mdl where
-    -- | Given an empty MVar, make the Plan that uses the MVar for rendering
-    mkPlan :: w -> MVar mdl -> F (R.Maker (ActionOf w)) (PlanOf w)
+-- | Given an empty MVar, make the Plan that uses the MVar for rendering
+class MkPlan w where
+    mkPlan :: w -> MVar (ModelOf w) -> F (R.Maker (ActionOf w)) (PlanOf w)
 
-class (CD.Disposing (DetailOf w)) => MkDetail w ol where
-    -- | Given a deserializable 'Outline', create the 'Detail'
-    mkDetail :: w -> ol -> F (R.Maker (ActionOf w)) (DetailOf w)
+-- | Given a deserializable 'Outline', create the 'Detail'
+class MkDetail w where
+    mkDetail :: w -> OutlineOf w -> F (R.Maker (ActionOf w)) (DetailOf w)
 
-class IsWindow w mdl where
+-- | Convert to the serializable outline for saving and restoring
+-- This uses a widget parameter because parent widgets that contain other widgets (eg List widget)
+-- requires 'HasDetail' which uses a widget parameter.
+class ToOutline w where
+    outline :: w -> DetailOf w -> OutlineOf w
+
+-- | Lens to the callbacks and interactions with React
+-- This class uses a different signature to the standard lens HasXXX typeclasses.
+-- This uses a widget argument so that the lens can be explicitly
+-- passed into a Widget constructor instead of relying on typeclass inference.
+-- This is to avoid overlapping instances.
+-- Eg.
+-- data Plan1 = Plan1 ...
+-- data Plan2 = Plan2 Plan1 ... -- Plan2 contains Plan1
+-- class HasPlan1 c Plan1 where plan1 :: Lens c Plan1
+-- instance HasPlan1 Plan1
+-- class HasPlan2 c Plan2 where plan2 :: Lens c Plan2
+-- instance HasPlan1 Plan2 ...
+-- gadget1 :: HasPlan1 mdl => Gadget a mdl c
+-- gadget2 :: HasPlan2 mdl => Gadget a mdl c
+-- The implementation of gadget2 cannot use gadget1 because even though we
+-- know that there is a way to convert mdl to Plan2 and then to Plan1
+-- the typechecker doesn't know that.
+class HasPlan w where
+    plan :: w -> Lens' (ModelOf w) (PlanOf w)
+
+-- | Lens to the data for state and rendering.
+-- See the notes for 'HasPlan' for why this uses a widget parameter.
+class HasDetail w where
+    detail :: w -> Lens' (ModelOf w) (DetailOf w)
+
+class IsWindow w where
     -- | Rendering function that uses the Design of Model and Plan.
-    window :: w -> J.JSVal -> G.WindowT mdl R.ReactMl ()
+    window :: w -> J.JSVal -> G.WindowT (ModelOf w) R.ReactMl ()
 
-class IsGadget w mdl where
-    gadget :: w -> G.Gadget (ActionOf w) (R.Shared mdl) (D.DList (CommandOf w))
+class IsGadget w where
+    gadget :: w -> G.Gadget (ActionOf w) (R.Shared (ModelOf w)) (D.DList (CommandOf w))
 
 -- | These contain the HTMl attributes that need to be added to the root React element
 -- of the initial 'window' and subsequent 'render' functions in order for the
--- 'Device' or 'Widget' to work.
-class IsAttributes w mdl where
-    windowAttributes :: w -> mdl -> WindowAttributes
+-- 'Device' to work.
+class InjectAttributes w where
+    windowAttributes :: w -> (ModelOf w) -> WindowAttributes
 
-type IsDevice w mdl = (MkPlan w mdl, IsGadget w mdl, IsAttributes w mdl)
+-- | All Plan should be Disposable
+type MkPlan' w = (MkPlan w, CD.Disposing (PlanOf w))
 
-type IsWidget w ol mdl = (MkDetail w ol, IsWindow w mdl, IsDevice w mdl)
+-- | All Details should be Disposable, and convertible ToOutline
+type MkDetail' w = (MkDetail w, CD.Disposing (DetailOf w), ToOutline w)
 
+class (MkPlan' w, IsWindow w) => IsDisplay w
+
+class (MkPlan' w, IsGadget w, InjectAttributes w) => IsDevice w
+
+-- | NB. A Widget is not a 'InjectAttributes' since it is self contained.
+class (MkDetail' w, MkPlan' w, IsWindow w, IsGadget w) => IsWidget w
 ------------------------------------------------
 
 -- | Something that can start the React rendering (eg of the shim component)
 -- It has 'mkPlan' for creating the React render handler which calls
 -- the 'window' function
--- Using GADTs to ensure that all 'Display' are 'mkPlan' instances
+-- Using GADTs to ensure that all constructed Display are instances of IsDisplay.
 data Display act pln mdl where
     Display :: (CD.Disposing pln)
-        => (MVar mdl -> F (R.Maker act) pln)
+        => Lens' mdl pln
+        -> (MVar mdl -> F (R.Maker act) pln)
         -> (J.JSVal -> G.WindowT mdl R.ReactMl ())
         -> Display act pln mdl
 
-instance CD.Disposing pln => MkPlan (Display act pln mdl) mdl where
-    mkPlan (Display f _) = f
+instance CD.Disposing pln => IsDisplay (Display act pln mdl)
 
-instance IsWindow (Display act pln mdl) mdl where
-    window (Display _ f) = f
+instance HasPlan (Display act pln mdl) where
+    plan (Display f _ _) = f
+
+instance MkPlan (Display act pln mdl) where
+    mkPlan (Display _ f _) = f
+
+instance IsWindow (Display act pln mdl) where
+    window (Display _ _ f) = f
 
 ------------------------------------------------
 
@@ -146,50 +201,67 @@ instance IsWindow (Display act pln mdl) mdl where
 ------------------------------------------------
 
 -- | A device is something that has update logic but not rendering logic.
--- Using GADTs to ensure that all 'Device' are 'mkPlan' instances
+-- Using GADTs to ensure that all constructed Devices are instances of IsDevice.
 data Device act pln cmd mdl where
     Device :: (CD.Disposing pln)
-        => (MVar mdl -> F (R.Maker act) pln)
+        => Lens' mdl pln
+        -> (MVar mdl -> F (R.Maker act) pln)
         -> G.Gadget act (R.Shared mdl) (D.DList cmd)
         -> (mdl -> WindowAttributes)
         -> Device act pln cmd mdl
 
-instance CD.Disposing pln => MkPlan (Device act pln cmd mdl) mdl where
-    mkPlan (Device f _ _) = f
+instance CD.Disposing pln => IsDevice (Device act pln cmd mdl)
 
-instance IsGadget (Device act pln cmd mdl) mdl where
-    gadget (Device _ f _) = f
+instance HasPlan (Device act pln cmd mdl) where
+    plan (Device f _ _ _) = f
 
-instance IsAttributes (Device act pln cmd mdl) mdl where
-    windowAttributes (Device _ _ f) = f
+instance MkPlan (Device act pln cmd mdl) where
+    mkPlan (Device _ f _ _) = f
+
+instance IsGadget (Device act pln cmd mdl) where
+    gadget (Device _ _ f _) = f
+
+instance InjectAttributes (Device act pln cmd mdl) where
+    windowAttributes (Device _ _ _ f) = f
 
 ------------------------------------------------
 
 -- | Record of functions for a widget. Contains everything you need to make the model,
 -- render, and run the event processing.
+-- Using GADTs to ensure that all constructed Widgets are instances of IsWidget.
 data Widget act ol dtl pln cmd mdl where
     Widget :: (CD.Disposing pln, CD.Disposing dtl)
-        => (ol -> F (R.Maker act) dtl)
+        => (dtl -> ol)
+        -> Lens' mdl dtl
+        -> Lens' mdl pln
+        -> (ol -> F (R.Maker act) dtl)
         -> (MVar mdl -> F (R.Maker act) pln)
         -> (J.JSVal -> G.WindowT mdl R.ReactMl ())
         -> G.Gadget act (R.Shared mdl) (D.DList cmd)
-        -> (mdl -> WindowAttributes)
         -> Widget act ol dtl pln cmd mdl
 
-instance CD.Disposing dtl => MkDetail (Widget act ol dtl pln cmd mdl) ol where
-    mkDetail (Widget f _ _ _ _) = f
+instance (CD.Disposing pln, CD.Disposing dtl) => IsWidget (Widget act ol dtl pln cmd mdl)
 
-instance CD.Disposing pln => MkPlan (Widget act ol dtl pln cmd mdl) mdl where
-    mkPlan (Widget _ f _ _ _) = f
+instance ToOutline (Widget act ol dtl pln cmd mdl) where
+    outline (Widget f _ _ _ _ _ _) = f
 
-instance IsWindow (Widget act ol dtl pln cmd mdl) mdl where
-    window (Widget _ _ f _ _) = f
+instance HasDetail (Widget act ol dtl pln cmd mdl) where
+    detail (Widget _ f _ _ _ _ _) = f
 
-instance IsGadget (Widget act ol dtl pln cmd mdl) mdl where
-    gadget (Widget _ _ _ f _) = f
+instance HasPlan (Widget act ol dtl pln cmd mdl) where
+    plan (Widget _ _ f _ _ _ _) = f
 
-instance IsAttributes (Widget act ol dtl pln cmd mdl) mdl where
-    windowAttributes (Widget _ _ _ _ f) = f
+instance MkDetail (Widget act ol dtl pln cmd mdl) where
+    mkDetail (Widget _ _ _ f _ _ _) = f
+
+instance MkPlan (Widget act ol dtl pln cmd mdl) where
+    mkPlan (Widget _ _ _ _ f _ _) = f
+
+instance IsWindow (Widget act ol dtl pln cmd mdl) where
+    window (Widget _ _ _ _ _ f _) = f
+
+instance IsGadget (Widget act ol dtl pln cmd mdl) where
+    gadget (Widget _ _ _ _ _ _ f) = f
 
 -------------------------------------------------------------
 

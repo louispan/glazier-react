@@ -5,7 +5,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE UndecidableInstances #-}
 
 module Glazier.React.Model where
 
@@ -14,10 +13,10 @@ import qualified Control.Disposable as CD
 import Control.Lens
 -- import qualified GHC.Generics as G
 
--- | Convert to the serializable outline for saving and restoring
--- All Detail should be an instance of this
-class ToOutline dtl ol | dtl -> ol where
-    outline :: dtl -> ol
+-- -- | Convert to the serializable outline for saving and restoring
+-- -- All Detail should be an instance of this
+-- class ToOutline dtl ol | dtl -> ol where
+--     outline :: dtl -> ol
 
 -- -- | Lens to the data for state and rendering.
 -- class HasDetail mdl dtl | mdl -> dtl where
