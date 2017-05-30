@@ -23,8 +23,8 @@ function hgr$ReactDOM() {
 }
 
 var hgr$shimComponent_ = null;
-function hgr$shimComponent() {
-    if (!hgr$shimComponent_) {
+function hgr$mkComponent() {
+    if (!hgr$mkComponent_) {
         // Inheriting from Component means every call to this.setState will result in a render
         // Inheriting from PureComponet means a shallow comparison will be made
         // Protect "PureComponent" from closure compiler because it's not in the official externs
@@ -38,7 +38,7 @@ function hgr$shimComponent() {
 
             render() {
                 if (this.props['render'])
-                    return this.props['render'](this.state);
+                    return this.props['render']();
                 return null;
             }
         }

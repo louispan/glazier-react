@@ -25,8 +25,8 @@ library
                        Glazier.React.Maker
                        Glazier.React.Maker.Run
                        Glazier.React.Markup
-                       Glazier.React.Model
                        Glazier.React.ReactDOM
+                       Glazier.React.Shared
                        Glazier.React.Widget
   build-depends:       base >= 4.7 && < 5
                      , containers >= 0.5 && < 0.6

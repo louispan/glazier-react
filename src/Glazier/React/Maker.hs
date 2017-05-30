@@ -30,9 +30,9 @@ data Maker act nxt where
         :: (MVar mdl -> nxt)
         -> Maker act nxt
     MkRenderer
-        :: MVar mdl
-        -> (J.JSVal -> G.WindowT mdl R.ReactMl ())
-        -> (J.Callback (J.JSVal -> IO J.JSVal) -> nxt)
+        :: G.WindowT mdl R.ReactMl ()
+        -> MVar mdl
+        -> (J.Callback (IO J.JSVal) -> nxt)
         -> Maker act nxt
     PutFrame
         :: MVar mdl
@@ -49,7 +49,7 @@ data Maker act nxt where
 instance Functor (Maker act) where
   fmap f (MkHandler handler g) = MkHandler handler (f . g)
   fmap f (MkEmptyFrame g) = MkEmptyFrame (f . g)
-  fmap f (MkRenderer frm render g) = MkRenderer frm render (f . g)
+  fmap f (MkRenderer render frm g) = MkRenderer render frm (f . g)
   fmap f (PutFrame frm dsn x) = PutFrame frm dsn (f x)
   fmap f (GetComponent g) = GetComponent (f . g)
   fmap f (MkKey g) = MkKey (f . g)
@@ -60,7 +60,7 @@ makeFree ''Maker
 withAction :: (act -> act') -> Maker act a -> Maker act' a
 withAction f (MkHandler handler g) = MkHandler (\v -> fmap f <$> handler v) g
 withAction _ (MkEmptyFrame g) = MkEmptyFrame g
-withAction _ (MkRenderer frm render g) = MkRenderer frm render g
+withAction _ (MkRenderer render frm g) = MkRenderer render frm g
 withAction _ (PutFrame frm scn x) = PutFrame frm scn x
 withAction _ (GetComponent g) = GetComponent g
 withAction _ (MkKey g) = MkKey g
