@@ -25,7 +25,7 @@ import qualified Glazier.React.Shared as R
 import qualified JavaScript.Extras as JE
 
 type family ActionOf w where
-    ActionOf (G.GadgetT act (R.Shared mdl) m (D.DList cmd)) = act
+    -- ActionOf (G.GadgetT act (R.Shared mdl) m (D.DList cmd)) = act
     ActionOf (Display act pln mdl) = act
     ActionOf (Device act pln cmd mdl) = act
     ActionOf (Widget act ol dtl pln cmd mdl) = act
@@ -46,13 +46,13 @@ type family PlanOf w where
     -- PlanOf (R.Shared (BaseModel dtl pln)) = pln
 
 type family CommandOf w where
-    CommandOf (G.GadgetT act (R.Shared mdl) m (D.DList cmd)) = cmd
+    -- CommandOf (G.GadgetT act (R.Shared mdl) m (D.DList cmd)) = cmd
     CommandOf (Device act pln cmd mdl) = cmd
     CommandOf (Widget act ol dtl pln cmd mdl) = cmd
 
 type family ModelOf w where
-    ModelOf (G.GadgetT act (R.Shared mdl) m (D.DList cmd)) = mdl
-    ModelOf (G.WindowT mdl m r) = mdl
+    -- ModelOf (G.GadgetT act (R.Shared mdl) m (D.DList cmd)) = mdl
+    -- ModelOf (G.WindowT mdl m r) = mdl
     ModelOf (Display act pln mdl) = mdl
     ModelOf (Device act pln cmd mdl) = mdl
     ModelOf (Widget act ol dtl pln cmd mdl) = mdl
@@ -227,6 +227,7 @@ instance CD.Disposing pln => IsDisplay (Display act pln mdl)
 
 instance HasPlan (Display act pln mdl) where
     plan (Display f _ _) = f
+    {-# INLINE plan #-}
 
 instance MkRenderingPlan (Display act pln mdl) where
     mkRenderingPlan (Display _ f _) = f
@@ -234,17 +235,17 @@ instance MkRenderingPlan (Display act pln mdl) where
 instance IsWindow (Display act pln mdl) where
     window (Display _ _ f) = f
 
-------------------------------------------------
+-- ------------------------------------------------
 
-instance IsGadget (G.Gadget a (R.Shared mdl) (D.DList c)) where
-    gadget = id
+-- instance IsGadget (G.Gadget a (R.Shared mdl) (D.DList c)) where
+--     gadget = id
 
-------------------------------------------------
+-- ------------------------------------------------
 
-instance IsWindow (G.WindowT mdl R.ReactMl ()) where
-    window = id
+-- instance IsWindow (G.WindowT mdl R.ReactMl ()) where
+--     window = id
 
-------------------------------------------------
+-- ------------------------------------------------
 
 -- | A device is something that has update logic but not rendering logic.
 -- Using GADTs to ensure that all constructed Devices are instances of IsDevice.
@@ -260,6 +261,7 @@ instance CD.Disposing pln => IsDevice (Device act pln cmd mdl)
 
 instance HasPlan (Device act pln cmd mdl) where
     plan (Device f _ _ _) = f
+    {-# INLINE plan #-}
 
 instance MkPlan (Device act pln cmd mdl) where
     mkPlan (Device _ f _ _) = f
@@ -290,12 +292,15 @@ instance (CD.Disposing pln, CD.Disposing dtl) => IsWidget (Widget act ol dtl pln
 
 instance HasDetail (Widget act ol dtl pln cmd mdl) where
     detail (Widget f _ _ _ _ _ _) = f
+    {-# INLINE detail #-}
 
 instance HasPlan (Widget act ol dtl pln cmd mdl) where
     plan (Widget _ f _ _ _ _ _) = f
+    {-# INLINE plan #-}
 
 instance ToOutline (Widget act ol dtl pln cmd mdl) where
     outline (Widget _ _ f _ _ _ _) = f
+    {-# INLINE outline #-}
 
 instance MkDetail (Widget act ol dtl pln cmd mdl) where
     mkDetail (Widget _ _ _ f _ _ _) = f
