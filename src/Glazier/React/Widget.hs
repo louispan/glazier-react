@@ -1,5 +1,6 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
@@ -16,6 +17,7 @@ import Control.Lens
 import Control.Monad.Free.Church
 import qualified Data.DList as D
 import Data.Semigroup
+import qualified GHC.Generics as G
 import qualified Glazier as G
 import qualified Glazier.React.Maker as R
 import qualified Glazier.React.Markup as R
@@ -65,6 +67,8 @@ type EntityOf w = R.Shared (ModelOf w)
 
 -- | The Entity with a BaseModel
 type BaseEntityOf w = R.Shared (BaseModelOf w)
+
+type BaseEntity dtl pln = R.Shared (BaseModel dtl pln)
 
 -----------------------------------------------------------
 
@@ -184,7 +188,7 @@ class (MkDetail' w, MkRenderingPlan' w, IsWindow w, IsGadget w) => IsWidget w
 data BaseModel dtl pln = BaseModel
     { _detail :: dtl
     , _plan :: pln
-    }
+    } deriving (G.Generic)
 
 instance HasDetail (BaseModel dtl pln) where
     detail _ f (BaseModel dtl pln) = fmap (\dtl' -> BaseModel dtl' pln) (f dtl)
@@ -193,6 +197,8 @@ instance HasDetail (BaseModel dtl pln) where
 instance HasPlan (BaseModel dtl pln) where
     plan _ f (BaseModel dtl pln) = fmap (\pln' -> BaseModel dtl pln') (f pln)
     {-# INLINE plan #-}
+
+instance (CD.Disposing pln, CD.Disposing dtl) => CD.Disposing (BaseModel dtl pln)
 
 -- instance HasDetail (R.Shared (BaseModel dtl pln)) where
 --     detail s = R.ival . detail bm
@@ -271,9 +277,9 @@ instance InjectAttributes (Device act pln cmd mdl) where
 -- Using GADTs to ensure that all constructed Widgets are instances of IsWidget.
 data Widget act ol dtl pln cmd mdl where
     Widget :: (CD.Disposing pln, CD.Disposing dtl)
-        => (dtl -> ol)
-        -> Lens' mdl dtl
+        => Lens' mdl dtl
         -> Lens' mdl pln
+        -> (dtl -> ol)
         -> (ol -> F (R.Maker act) dtl)
         -> (MVar mdl -> F (R.Maker act) pln)
         -> G.WindowT mdl R.ReactMl ()
@@ -282,14 +288,14 @@ data Widget act ol dtl pln cmd mdl where
 
 instance (CD.Disposing pln, CD.Disposing dtl) => IsWidget (Widget act ol dtl pln cmd mdl)
 
-instance ToOutline (Widget act ol dtl pln cmd mdl) where
-    outline (Widget f _ _ _ _ _ _) = f
-
 instance HasDetail (Widget act ol dtl pln cmd mdl) where
-    detail (Widget _ f _ _ _ _ _) = f
+    detail (Widget f _ _ _ _ _ _) = f
 
 instance HasPlan (Widget act ol dtl pln cmd mdl) where
-    plan (Widget _ _ f _ _ _ _) = f
+    plan (Widget _ f _ _ _ _ _) = f
+
+instance ToOutline (Widget act ol dtl pln cmd mdl) where
+    outline (Widget _ _ f _ _ _ _) = f
 
 instance MkDetail (Widget act ol dtl pln cmd mdl) where
     mkDetail (Widget _ _ _ f _ _ _) = f
