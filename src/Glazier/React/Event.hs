@@ -222,6 +222,7 @@ parseMouseEvent _ | otherwise = Nothing
 -- | Keyboard events
 -- 'KeyboardEvent' must only be used in the first part of 'eventHandler'.
 -- https://facebook.github.io/react/docs/events.html#keyboard-events
+-- https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent
 -- Event names (eventType)
 -- onKeyDown (keydown) onKeyPress (keypress) onKeyUp (keyyp)
 data KeyboardEvent = KeyboardEvent
