@@ -8,8 +8,8 @@
 
 -- | This module based on React/Flux/PropertiesAndEvents.hs.
 module Glazier.React.Event
-  ( DOMEventTarget
-  , DOMEvent
+  ( EventTarget
+  , NativeEvent
   , SyntheticEvent
   , eventHandler
   , eventHandlerM
@@ -36,33 +36,33 @@ import qualified JavaScript.Extras.Cast as JE
 
 -- | The object that dispatched the event.
 -- https://developer.mozilla.org/en-US/docs/Web/API/Event/target
-newtype DOMEventTarget =
-    DOMEventTarget J.JSVal
+newtype EventTarget =
+    EventTarget J.JSVal
     deriving (G.Generic)
 
-instance J.IsJSVal DOMEventTarget
-instance J.PToJSVal DOMEventTarget where
+instance J.IsJSVal EventTarget
+instance J.PToJSVal EventTarget where
     pToJSVal = J.jsval
-instance JE.ToJS DOMEventTarget
-instance JE.FromJS DOMEventTarget where
-    fromJS a | js_isDOMEventTarget a = Just $ DOMEventTarget a
+instance JE.ToJS EventTarget
+instance JE.FromJS EventTarget where
+    fromJS a | js_isEventTarget a = Just $ EventTarget a
     fromJS _ = Nothing
-instance NFData DOMEventTarget
+instance NFData EventTarget
 
 -- | The native event
 -- https://developer.mozilla.org/en-US/docs/Web/API/Event
-newtype DOMEvent =
-    DOMEvent J.JSVal
+newtype NativeEvent =
+    NativeEvent J.JSVal
     deriving (G.Generic)
 
-instance J.IsJSVal DOMEvent
-instance J.PToJSVal DOMEvent where
+instance J.IsJSVal NativeEvent
+instance J.PToJSVal NativeEvent where
     pToJSVal = J.jsval
-instance JE.ToJS DOMEvent
-instance JE.FromJS DOMEvent where
-    fromJS a | js_isDOMEvent a = Just $ DOMEvent a
+instance JE.ToJS NativeEvent
+instance JE.FromJS NativeEvent where
+    fromJS a | js_isNativeEvent a = Just $ NativeEvent a
     fromJS _ = Nothing
-instance NFData DOMEvent
+instance NFData NativeEvent
 
 -- | Every event in React is a synthetic event, a cross-browser wrapper around the native event.
 -- 'SyntheticEvent' must only be used in the first part of 'eventHandler'.
@@ -119,12 +119,12 @@ isPropagationStopped = js_isPropagationStopped
 data Event = Event
     { bubbles :: Bool
     , cancelable :: Bool
-    , currentTarget :: DOMEventTarget
+    , currentTarget :: EventTarget
     , defaultPrevented :: Bool
     , eventPhase :: Int
     , isTrusted :: Bool
-    , nativeEvent :: DOMEvent
-    , target :: DOMEventTarget
+    , nativeEvent :: NativeEvent
+    , target :: EventTarget
     , timeStamp :: Int
     -- type is a reserved word, so prefix to eventType
     , eventType :: J.JSString
@@ -151,12 +151,12 @@ parseEvent (SyntheticEvent evt) =
     Event
     { bubbles = unsafeProperty evt "bubbles"
     , cancelable = unsafeProperty evt "cancelable"
-    , currentTarget = DOMEventTarget $ js_unsafeProperty evt "currentTarget"
+    , currentTarget = EventTarget $ js_unsafeProperty evt "currentTarget"
     , defaultPrevented = unsafeProperty evt "defaultPrevented"
     , eventPhase = unsafeProperty evt "eventPhase"
     , isTrusted = unsafeProperty evt "isTrusted"
-    , nativeEvent = DOMEvent evt
-    , target = DOMEventTarget $ js_unsafeProperty evt "target"
+    , nativeEvent = NativeEvent evt
+    , target = EventTarget $ js_unsafeProperty evt "target"
     , timeStamp = unsafeProperty evt "timeStamp"
     , eventType = unsafeProperty evt "type"
     }
@@ -182,7 +182,7 @@ data MouseEvent = MouseEvent
   , metaKey :: Bool
   , pageX :: Int
   , pageY :: Int
-  , relatedTarget :: DOMEventTarget
+  , relatedTarget :: EventTarget
   , screenX :: Int
   , screenY :: Int
   , shiftKey :: Bool
@@ -212,7 +212,7 @@ parseMouseEvent (SyntheticEvent evt) | js_isMouseEvent (js_unsafeProperty evt "n
     , metaKey = unsafeProperty evt "metaKey"
     , pageX = unsafeProperty evt "pageX"
     , pageY = unsafeProperty evt "pageY"
-    , relatedTarget = DOMEventTarget $ js_unsafeProperty evt "relatedTarget"
+    , relatedTarget = EventTarget $ js_unsafeProperty evt "relatedTarget"
     , screenX = unsafeProperty evt "screenX"
     , screenY = unsafeProperty evt "xcreenY"
     , shiftKey = unsafeProperty evt "shiftKey"
@@ -267,11 +267,11 @@ parseKeyboardEvent _ | otherwise = Nothing
 
 foreign import javascript unsafe
     "$1 instanceof EventTarget"
-    js_isDOMEventTarget :: J.JSVal -> Bool
+    js_isEventTarget :: J.JSVal -> Bool
 
 foreign import javascript unsafe
     "$1 instanceof Event"
-    js_isDOMEvent :: J.JSVal -> Bool
+    js_isNativeEvent :: J.JSVal -> Bool
 
 foreign import javascript unsafe
     "($1 && $1['nativeEvent'] && $1['nativeEvent'] instanceof Event)"
@@ -312,11 +312,11 @@ foreign import javascript unsafe
 
 #else
 
-js_isDOMEventTarget :: J.JSVal -> Bool
-js_isDOMEventTarget _ = False
+js_isEventTarget :: J.JSVal -> Bool
+js_isEventTarget _ = False
 
-js_isDOMEvent :: J.JSVal -> Bool
-js_isDOMEvent _ = False
+js_isNativeEvent :: J.JSVal -> Bool
+js_isNativeEvent _ = False
 
 js_isSyntheticEvent :: J.JSVal -> Bool
 js_isSyntheticEvent _ = False
