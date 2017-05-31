@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -27,52 +28,40 @@ module Glazier.React.Event
 where
 
 import Control.DeepSeq
-import qualified GHC.Generics as G
 import qualified Data.JSString as J
+import Data.String
+import qualified GHC.Generics as G
 import qualified GHCJS.Foreign as J
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
-import qualified JavaScript.Extras.Cast as JE
+import qualified JavaScript.Extras as JE
 
 -- | The object that dispatched the event.
 -- https://developer.mozilla.org/en-US/docs/Web/API/Event/target
 newtype EventTarget =
-    EventTarget J.JSVal
-    deriving (G.Generic)
+    EventTarget JE.JSVar
+    deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
-instance J.IsJSVal EventTarget
-instance J.PToJSVal EventTarget where
-    pToJSVal = J.jsval
-instance JE.ToJS EventTarget
 instance JE.FromJS EventTarget where
-    fromJS a | js_isEventTarget a = Just $ EventTarget a
+    fromJS a | js_isEventTarget a = Just $ EventTarget $ JE.JSVar a
     fromJS _ = Nothing
-instance NFData EventTarget
 
 -- | The native event
 -- https://developer.mozilla.org/en-US/docs/Web/API/Event
 newtype NativeEvent =
-    NativeEvent J.JSVal
-    deriving (G.Generic)
+    NativeEvent JE.JSVar
+    deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
-instance J.IsJSVal NativeEvent
-instance J.PToJSVal NativeEvent where
-    pToJSVal = J.jsval
-instance JE.ToJS NativeEvent
 instance JE.FromJS NativeEvent where
-    fromJS a | js_isNativeEvent a = Just $ NativeEvent a
+    fromJS a | js_isNativeEvent a = Just $ NativeEvent $ JE.JSVar a
     fromJS _ = Nothing
-instance NFData NativeEvent
 
 -- | Every event in React is a synthetic event, a cross-browser wrapper around the native event.
 -- 'SyntheticEvent' must only be used in the first part of 'eventHandler'.
 -- It is not an instance of NFData and so cannot be returned into the second lazy part of 'eventHandler'
 newtype SyntheticEvent = SyntheticEvent J.JSVal
+    deriving (G.Generic)
 
-instance J.IsJSVal SyntheticEvent
-instance J.PToJSVal SyntheticEvent where
-    pToJSVal = J.jsval
-instance JE.ToJS SyntheticEvent
 instance JE.FromJS SyntheticEvent where
     fromJS a | js_isSyntheticEvent a = Just $ SyntheticEvent a
     fromJS _ = Nothing
@@ -151,12 +140,12 @@ parseEvent (SyntheticEvent evt) =
     Event
     { bubbles = unsafeProperty evt "bubbles"
     , cancelable = unsafeProperty evt "cancelable"
-    , currentTarget = EventTarget $ js_unsafeProperty evt "currentTarget"
+    , currentTarget = EventTarget $ JE.JSVar $ js_unsafeProperty evt "currentTarget"
     , defaultPrevented = unsafeProperty evt "defaultPrevented"
     , eventPhase = unsafeProperty evt "eventPhase"
     , isTrusted = unsafeProperty evt "isTrusted"
-    , nativeEvent = NativeEvent evt
-    , target = EventTarget $ js_unsafeProperty evt "target"
+    , nativeEvent = NativeEvent $ JE.JSVar $ evt
+    , target = EventTarget $ JE.JSVar $ js_unsafeProperty evt "target"
     , timeStamp = unsafeProperty evt "timeStamp"
     , eventType = unsafeProperty evt "type"
     }
@@ -212,7 +201,7 @@ parseMouseEvent (SyntheticEvent evt) | js_isMouseEvent (js_unsafeProperty evt "n
     , metaKey = unsafeProperty evt "metaKey"
     , pageX = unsafeProperty evt "pageX"
     , pageY = unsafeProperty evt "pageY"
-    , relatedTarget = EventTarget $ js_unsafeProperty evt "relatedTarget"
+    , relatedTarget = EventTarget $ JE.JSVar $ js_unsafeProperty evt "relatedTarget"
     , screenX = unsafeProperty evt "screenX"
     , screenY = unsafeProperty evt "xcreenY"
     , shiftKey = unsafeProperty evt "shiftKey"

@@ -1,4 +1,6 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 -- | 'Lucid.HtmlT' inspired monad for creating 'ReactElement's
@@ -11,17 +13,21 @@ module Glazier.React.Element
     , mkCombinedElements
     ) where
 
+import Control.DeepSeq
+import qualified Control.Disposable as CD
+import Data.String
+import qualified GHC.Generics as G
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import qualified JavaScript.Array as JA
 import qualified JavaScript.Object as JO
 import qualified JavaScript.Extras as JE
 
-newtype ReactElement = ReactElement J.JSVal
-instance J.IsJSVal ReactElement
-instance J.PToJSVal ReactElement where
-    pToJSVal = J.jsval
-instance JE.ToJS ReactElement
+newtype ReactElement = ReactElement JE.JSVar
+    deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, JE.FromJS, IsString, NFData)
+
+instance CD.Disposing ReactElement where
+    disposing _ = CD.DisposeNone
 
 -- | Unfortunately, ReactJS did not export an easy way to check if something is a ReactElement,
 -- although they do so in the internal code with REACT_ELEMENT_TYPE.
@@ -30,7 +36,7 @@ instance JE.ToJS ReactElement
 -- This function is required when receiving ReactElement from javascript (eg in a callback)
 -- or to interface with foreign React Elements.
 unsafeCoerceElement :: J.JSVal -> ReactElement
-unsafeCoerceElement = ReactElement
+unsafeCoerceElement = ReactElement . JE.JSVar
 
 -- | Create a react element (with children) from a HashMap of properties
 mkBranchElement :: JE.JSVar -> [JE.Property] -> [ReactElement] -> IO ReactElement
@@ -80,15 +86,15 @@ foreign import javascript unsafe
 -- a different ReactElement may be created, because JSVal
 -- and JSArray are mutable.
 js_mkBranchElement :: JE.JSVar -> JO.Object -> JA.JSArray -> IO ReactElement
-js_mkBranchElement _ _ _ = pure (ReactElement J.nullRef)
+js_mkBranchElement _ _ _ = pure (ReactElement $ JE.JSVar J.nullRef)
 
 js_mkLeafElement :: JE.JSVar -> JO.Object -> IO ReactElement
-js_mkLeafElement _ _ =  pure (ReactElement J.nullRef)
+js_mkLeafElement _ _ =  pure (ReactElement $ JE.JSVar J.nullRef)
 
 js_textElement :: J.JSString -> ReactElement
-js_textElement _ = ReactElement J.nullRef
+js_textElement _ = ReactElement $ JE.JSVar J.nullRef
 
 js_mkCombinedElements :: JA.JSArray -> IO ReactElement
-js_mkCombinedElements _ = pure (ReactElement J.nullRef)
+js_mkCombinedElements _ = pure (ReactElement $ JE.JSVar J.nullRef)
 
 #endif

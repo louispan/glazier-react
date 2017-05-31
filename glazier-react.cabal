@@ -35,7 +35,7 @@ library
                      , dlist >= 0.8 && < 0.9
                      , free >= 4.12 && < 5
                      , glazier >= 0.10 && < 1
-                     , javascript-extras >= 0.3.0.0 && < 1
+                     , javascript-extras >= 0.3.2.0 && < 1
                      , lens >= 4 && < 5
                      , mmorph >= 1 && < 2
                      , mtl >= 2 && < 3
