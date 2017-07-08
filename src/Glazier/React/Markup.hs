@@ -4,12 +4,11 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
 -- | 'Lucid.HtmlT' inspired monad for creating 'ReactElement's
 module Glazier.React.Markup
-    ( Handle
+    ( Listener
     , ReactMarkup(..)
     , BranchParam(..)
     , LeafParam(..)
@@ -42,20 +41,20 @@ import qualified Glazier as G
 import qualified Glazier.React.Element as R
 import qualified JavaScript.Extras as JE
 
-type Handle = (J.JSString, J.Callback (J.JSVal -> IO ()))
+type Listener = (J.JSString, J.Callback (J.JSVal -> IO ()))
 
 -- | The parameters required to create a branch ReactElement with children
 data BranchParam = BranchParam
     JE.JSVar
     [JE.Property]
-    [Handle]
+    [Listener]
     (D.DList ReactMarkup)
 
 -- | The parameters required to create a leaf ReactElement (no children)
 data LeafParam = LeafParam
     JE.JSVar
     [JE.Property]
-    [Handle]
+    [Listener]
 
 data ReactMarkup
     = ElementMarkup R.ReactElement
@@ -67,9 +66,9 @@ data ReactMarkup
 fromMarkup :: ReactMarkup -> IO (R.ReactElement)
 fromMarkup (BranchMarkup (BranchParam n props hdls xs)) = do
     xs' <- sequenceA $ fromMarkup <$> D.toList xs
-    R.mkBranchElement n (props ++ dedupHandles hdls) xs'
+    R.mkBranchElement n (props ++ dedupListeners hdls) xs'
 
-fromMarkup (LeafMarkup (LeafParam n props hdls)) = R.mkLeafElement n (props ++ dedupHandles hdls)
+fromMarkup (LeafMarkup (LeafParam n props hdls)) = R.mkLeafElement n (props ++ dedupListeners hdls)
 
 fromMarkup (TextMarkup str) = pure $ R.textElement str
 
@@ -95,8 +94,6 @@ newtype ReactMlT m a = ReactMlT
 
 type ReactMl = ReactMlT Identity
 
--- makeWrapped ''ReactMlT
-
 instance (Semigroup a, Monad m) => Semigroup (ReactMlT m a) where
     (<>) = liftA2 (<>)
 
@@ -112,7 +109,7 @@ fromElement e = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` ElementMarkup e
 toElements :: MonadIO io => ReactMlT io () -> io [R.ReactElement]
 toElements m = do
     xs <- execStateT (runReactMlT m) mempty
-    liftIO $ sequenceA $ fromMarkup <$> (D.toList xs)
+    liftIO $ sequenceA $ fromMarkup <$> D.toList xs
 
 -- | Render the ReactMlt under a Glazier window
 markedWindow :: MonadIO io => G.WindowT s (ReactMlT io) () -> G.WindowT s io [R.ReactElement]
@@ -120,7 +117,7 @@ markedWindow = G.belowWindowT (toElements .)
 
 -- | Fully render the ReactMlt into a [R.ReactElement]
 markedElements :: MonadIO io => G.WindowT s (ReactMlT io) () -> s -> io [R.ReactElement]
-markedElements w s = view G._WindowT' (markedWindow w) s
+markedElements w = view G._WindowT' (markedWindow w)
 
 -- | Fully render the ReactMlt into a R.ReactElement
 markedElement :: MonadIO io => G.WindowT s (ReactMlT io) () -> s -> io R.ReactElement
@@ -140,7 +137,7 @@ lf
     :: Applicative m
     => JE.JSVar
     -> [JE.Property]
-    -> [Handle]
+    -> [Listener]
     -> ReactMlT m ()
 lf n props hdls = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` LeafMarkup (LeafParam n props hdls))
 
@@ -154,7 +151,7 @@ bh
     :: Functor m
     => JE.JSVar
     -> [JE.Property]
-    -> [Handle]
+    -> [Listener]
     -> ReactMlT m a
     -> ReactMlT m a
 bh n props hdls (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
@@ -162,8 +159,8 @@ bh n props hdls (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
     pure (a, xs `D.snoc` BranchMarkup (BranchParam n props hdls childs'))
 
 -- | dedups a list of (key, Callback1) by mergeing callbacks for the same key together.
-dedupHandles :: [Handle] -> [JE.Property]
-dedupHandles = M.toList . M.fromListWith js_combineCallback1 . fmap (fmap JE.toJS')
+dedupListeners :: [Listener] -> [JE.Property]
+dedupListeners = M.toList . M.fromListWith js_combineCallback1 . fmap (fmap JE.toJS')
 
 #ifdef __GHCJS__
 

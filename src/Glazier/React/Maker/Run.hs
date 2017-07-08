@@ -1,6 +1,6 @@
 module Glazier.React.Maker.Run where
 
-import Control.Concurrent.MVar
+import Control.Concurrent.STM.TMVar
 import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.Morph
@@ -18,9 +18,9 @@ import qualified Pipes.Concurrent as PC
 
 -- | This is called synchronously by React to render the DOM.
 -- This must not block!
-onRender :: G.WindowT mdl (R.ReactMlT IO) () -> MVar mdl -> IO J.JSVal
+onRender :: G.WindowT mdl (R.ReactMlT IO) () -> TMVar mdl -> IO J.JSVal
 onRender render frm = do
-    mdl <- readMVar frm
+    mdl <- atomically $ readTMVar frm
     JE.toJS <$> R.markedElement render mdl
 
 mkActionCallback
@@ -33,22 +33,24 @@ mkActionCallback output handler =
             acts <- handler evt
             traverse_ (\act -> lift $ atomically $ PC.send output act >>= guard) acts
 
-run :: MVar Int -> R.ReactComponent -> PC.Output act -> R.Maker act (IO a) -> IO a
+run :: TMVar Int -> R.ReactComponent -> PC.Output act -> R.Maker act (IO a) -> IO a
 run _ _ output (R.MkHandler handler g) = mkActionCallback output handler >>= g
 
-run _ _ _ (R.MkEmptyFrame g) = newEmptyMVar >>= g
+run _ _ _ (R.MkEmptyFrame g) = atomically newEmptyTMVar >>= g
 
 run _ _ _ (R.MkRenderer render frm g) = J.syncCallback' (onRender render' frm) >>= g
   where
     render' = hoist (hoist generalize) render
 
-run _ _ _ (R.PutFrame frm mdl g) = putMVar frm mdl >> g
+run _ _ _ (R.PutFrame frm mdl g) = atomically (putTMVar frm mdl) >> g
 
 run _ component _ (R.GetComponent g) = g component
 
 run muid _ _ (R.MkKey g) = do
-    -- expects that muid is not empty!
-    uid <- readMVar muid
-    let uid' = (uid `mod` JE.maxSafeInteger) + 1
-    void $ swapMVar muid uid'
+    uid' <- atomically $ do
+        -- expects that muid is not empty!
+        uid <- readTMVar muid
+        let uid' = (uid `mod` JE.maxSafeInteger) + 1
+        void $ swapTMVar muid uid'
+        pure uid'
     g (JS.pack . show $ uid')

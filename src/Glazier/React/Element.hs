@@ -5,7 +5,7 @@
 
 -- | 'Lucid.HtmlT' inspired monad for creating 'ReactElement's
 module Glazier.React.Element
-    ( ReactElement
+    ( ReactElement -- constructor is not exported
     , unsafeCoerceElement
     , mkBranchElement
     , mkLeafElement
@@ -14,20 +14,21 @@ module Glazier.React.Element
     ) where
 
 import Control.DeepSeq
-import qualified Control.Disposable as CD
 import Data.String
 import qualified GHC.Generics as G
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
+import qualified Glazier.React.Dispose as R
 import qualified JavaScript.Array as JA
 import qualified JavaScript.Object as JO
 import qualified JavaScript.Extras as JE
 
+-- | NB. No FromJS provided. See 'unsafeCoerceElement' below.
 newtype ReactElement = ReactElement JE.JSVar
-    deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, JE.FromJS, IsString, NFData)
+    deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
-instance CD.Disposing ReactElement where
-    disposing _ = CD.DisposeNone
+instance R.Dispose ReactElement where
+    dispose _ = pure ()
 
 -- | Unfortunately, ReactJS did not export an easy way to check if something is a ReactElement,
 -- although they do so in the internal code with REACT_ELEMENT_TYPE.

@@ -8,20 +8,20 @@ module Glazier.React.Component
     ) where
 
 import Control.DeepSeq
-import qualified Control.Disposable as CD
+import qualified Glazier.React.Dispose as R
 import Data.String
 import qualified GHC.Generics as G
 import qualified GHCJS.Types as J
 import qualified GHCJS.Marshal.Pure as J
 import qualified JavaScript.Extras as JE
 
--- | A newtype wrapper to give a noop disposable instance to React components
+-- | A newtype wrapper to give a noop dispose instance to React components
 -- This allows generic deriving of Plan.
 newtype ReactComponent = ReactComponent JE.JSVar
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, JE.FromJS, IsString, NFData)
 
-instance CD.Disposing ReactComponent where
-    disposing _ = CD.DisposeNone
+instance R.Dispose ReactComponent where
+    dispose _ = pure ()
 
 mkComponent :: IO ReactComponent
 mkComponent = ReactComponent <$> js_mkComponent
