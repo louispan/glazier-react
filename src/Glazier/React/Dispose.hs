@@ -1,29 +1,44 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DefaultSignatures #-}
+{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeOperators #-}
 
-module Glazier.React.Dispose where
+module Glazier.React.Dispose
+    ( Disposable -- constructor not exported
+    , runDisposable
+    , Dispose(..)
+    , GDispose(..)
+    ) where
 
 import Data.Foldable
+import Control.Monad
 import qualified GHC.Generics as G
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
 import qualified JavaScript.Extras.JSVar as JE
 
--- | A 'Dispose' is something with some resources to release
+-- | A wrapper around authorized IO actions.
+newtype Disposable a = Disposable { runDisposable :: IO a }
+   deriving (Functor, Applicative, Monad, Monoid)
+
+-- | A 'Dispose' is something with some resources tod release
 class Dispose a where
-    dispose :: a -> IO ()
-    default dispose :: (G.Generic a, GDispose (G.Rep a)) => a -> IO ()
+    dispose :: a -> Disposable ()
+    default dispose :: (G.Generic a, GDispose (G.Rep a)) => a -> Disposable ()
     dispose x = gDispose $ G.from x
+
+instance Dispose (Disposable a) where
+    dispose = void
 
 -- | Generic instance basically traverses the data type structure
 -- and expects the values to be all instances of 'Dispose'
 class GDispose f where
-    gDispose :: f p -> IO ()
+    gDispose :: f p -> Disposable ()
 
 instance GDispose G.U1 where
   gDispose G.U1 = pure ()
@@ -44,7 +59,7 @@ instance (GDispose f) => GDispose (G.M1 i t f) where
 ------------------------------
 
 instance Dispose (J.Callback a) where
-    dispose = J.releaseCallback
+    dispose = Disposable . J.releaseCallback
 
 instance Dispose J.JSString where
     dispose _ = pure ()
