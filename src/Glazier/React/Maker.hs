@@ -67,3 +67,7 @@ withAction _ (MkKey g) = MkKey g
 
 hoistWithAction :: (act -> act') -> F (Maker act) a -> F (Maker act') a
 hoistWithAction f = hoistF (withAction f)
+
+-- | Like 'mkHandler'' but for a single @act@ instead of @[act]@.
+mkHandler' :: (J.JSVal -> MaybeT IO act) -> F (Maker act) (J.Callback (J.JSVal -> IO ()))
+mkHandler' f = mkHandler (fmap pure <$> f)

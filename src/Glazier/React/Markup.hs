@@ -46,15 +46,15 @@ type Listener = (J.JSString, J.Callback (J.JSVal -> IO ()))
 -- | The parameters required to create a branch ReactElement with children
 data BranchParam = BranchParam
     JE.JSVar
-    (D.DList JE.Property)
-    (D.DList Listener)
-    (D.DList ReactMarkup)
+    [JE.Property]
+    [Listener]
+    [ReactMarkup]
 
 -- | The parameters required to create a leaf ReactElement (no children)
 data LeafParam = LeafParam
     JE.JSVar
-    (D.DList JE.Property)
-    (D.DList Listener)
+    [JE.Property]
+    [Listener]
 
 data ReactMarkup
     = ElementMarkup R.ReactElement
@@ -62,21 +62,21 @@ data ReactMarkup
     | BranchMarkup BranchParam
     | LeafMarkup LeafParam
 
--- | Create 'ReactElement's from a 'AtomMarkup'
+-- | Create 'ReactElement's from a 'ReactMarkup'
 fromMarkup :: ReactMarkup -> IO (R.ReactElement)
 fromMarkup (BranchMarkup (BranchParam n props ls xs)) = do
-    xs' <- sequenceA $ fromMarkup <$> D.toList xs
-    R.mkBranchElement n (D.apply props (dedupListeners $ D.toList ls)) xs'
+    xs' <- sequenceA $ fromMarkup <$> xs
+    R.mkBranchElement n (props <> dedupListeners ls) xs'
 
-fromMarkup (LeafMarkup (LeafParam n props ls)) = R.mkLeafElement n (D.apply props (dedupListeners $ D.toList ls))
+fromMarkup (LeafMarkup (LeafParam n props ls)) = R.mkLeafElement n (props <> dedupListeners ls)
 
 fromMarkup (TextMarkup str) = pure $ R.textElement str
 
 fromMarkup (ElementMarkup e) = pure e
 
--- | Monadic generator of ReactActom.
+-- | Monadic generator of ReactMarkup.
 -- It is a CPS-style WriterT (ie a StateT) to build up a function
--- build up a computations to generate a '[AtomMarkup]'.
+-- build up a computations to generate a '[ReactMarkup]'.
 -- You can use 'runStateT' with an initial state of 'mempty'.
 newtype ReactMlT m a = ReactMlT
     { runReactMlT :: StateT (D.DList ReactMarkup) m a
@@ -136,8 +136,8 @@ txt n = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` TextMarkup n)
 lf
     :: Applicative m
     => JE.JSVar
-    -> D.DList JE.Property
-    -> D.DList Listener
+    -> [JE.Property]
+    -> [Listener]
     -> ReactMlT m ()
 lf n props ls = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` LeafMarkup (LeafParam n props ls))
 
@@ -150,15 +150,15 @@ lf n props ls = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` LeafMarkup (Lea
 bh
     :: Functor m
     => JE.JSVar
-    -> D.DList JE.Property
-    -> D.DList Listener
+    -> [JE.Property]
+    -> [Listener]
     -> ReactMlT m a
     -> ReactMlT m a
 bh n props ls (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
     (a, childs') <- childs mempty
-    pure (a, xs `D.snoc` BranchMarkup (BranchParam n props ls childs'))
+    pure (a, xs `D.snoc` BranchMarkup (BranchParam n props ls (D.toList childs')))
 
--- | dedups a list of (key, Callback1) by mergeing callbacks for the same key together.
+-- | dedups a list of (key, Callback1) by merging callbacks for the same key together.
 dedupListeners :: [Listener] -> [JE.Property]
 dedupListeners = M.toList . M.fromListWith js_combineCallback1 . fmap (fmap JE.toJS')
 
