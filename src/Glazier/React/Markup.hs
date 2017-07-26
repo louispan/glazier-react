@@ -46,15 +46,15 @@ type Listener = (J.JSString, J.Callback (J.JSVal -> IO ()))
 -- | The parameters required to create a branch ReactElement with children
 data BranchParam = BranchParam
     JE.JSVar
-    [JE.Property]
     [Listener]
+    [JE.Property]
     [ReactMarkup]
 
 -- | The parameters required to create a leaf ReactElement (no children)
 data LeafParam = LeafParam
     JE.JSVar
-    [JE.Property]
     [Listener]
+    [JE.Property]
 
 data ReactMarkup
     = ElementMarkup R.ReactElement
@@ -64,11 +64,11 @@ data ReactMarkup
 
 -- | Create 'ReactElement's from a 'ReactMarkup'
 fromMarkup :: ReactMarkup -> IO (R.ReactElement)
-fromMarkup (BranchMarkup (BranchParam n props ls xs)) = do
+fromMarkup (BranchMarkup (BranchParam n ls props xs)) = do
     xs' <- sequenceA $ fromMarkup <$> xs
-    R.mkBranchElement n (props <> dedupListeners ls) xs'
+    R.mkBranchElement n (dedupListeners ls <> props) xs'
 
-fromMarkup (LeafMarkup (LeafParam n props ls)) = R.mkLeafElement n (props <> dedupListeners ls)
+fromMarkup (LeafMarkup (LeafParam n ls props)) = R.mkLeafElement n (dedupListeners ls <> props)
 
 fromMarkup (TextMarkup str) = pure $ R.textElement str
 
@@ -136,10 +136,10 @@ txt n = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` TextMarkup n)
 lf
     :: Applicative m
     => JE.JSVar
-    -> [JE.Property]
     -> [Listener]
+    -> [JE.Property]
     -> ReactMlT m ()
-lf n props ls = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` LeafMarkup (LeafParam n props ls))
+lf n ls props = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` LeafMarkup (LeafParam n ls props))
 
 -- | For the contentful elements: eg 'div_'
 -- It is ok to have duplicate keys in cbs, however, it is a hidden error
@@ -150,13 +150,13 @@ lf n props ls = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` LeafMarkup (Lea
 bh
     :: Functor m
     => JE.JSVar
-    -> [JE.Property]
     -> [Listener]
+    -> [JE.Property]
     -> ReactMlT m a
     -> ReactMlT m a
-bh n props ls (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
+bh n ls props (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
     (a, childs') <- childs mempty
-    pure (a, xs `D.snoc` BranchMarkup (BranchParam n props ls (D.toList childs')))
+    pure (a, xs `D.snoc` BranchMarkup (BranchParam n ls props (D.toList childs')))
 
 -- | dedups a list of (key, Callback1) by merging callbacks for the same key together.
 dedupListeners :: [Listener] -> [JE.Property]

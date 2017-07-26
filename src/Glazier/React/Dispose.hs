@@ -10,7 +10,7 @@
 
 module Glazier.React.Dispose
     ( Disposable -- constructor not exported
-    , runDisposable
+    , getDisposable
     , Dispose(..)
     , GDispose(..)
     ) where
@@ -23,7 +23,7 @@ import qualified GHCJS.Types as J
 import qualified JavaScript.Extras.JSVar as JE
 
 -- | A wrapper around authorized IO actions.
-newtype Disposable a = Disposable { runDisposable :: IO a }
+newtype Disposable a = Disposable { getDisposable :: IO a }
    deriving (Functor, Applicative, Monad, Monoid)
 
 -- | A 'Dispose' is something with some resources tod release
@@ -72,6 +72,9 @@ instance (Dispose a, Dispose b) => Dispose (a, b) where
 
 instance (Dispose a, Dispose b, Dispose c) => Dispose (a, b, c) where
     dispose (a, b, c) = dispose a >> dispose b >> dispose c
+
+instance (Dispose a, Dispose b, Dispose c, Dispose d) => Dispose (a, b, c, d) where
+    dispose (a, b, c, d) = dispose a >> dispose b >> dispose c >> dispose d
 
 instance Dispose a => Dispose [a] where
     dispose = traverse_ dispose

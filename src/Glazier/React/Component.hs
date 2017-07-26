@@ -4,7 +4,7 @@
 
 module Glazier.React.Component
     ( ReactComponent
-    , mkComponent
+    , mkReactComponent
     ) where
 
 import Control.DeepSeq
@@ -23,20 +23,20 @@ newtype ReactComponent = ReactComponent JE.JSVar
 instance R.Dispose ReactComponent where
     dispose _ = pure ()
 
-mkComponent :: IO ReactComponent
-mkComponent = ReactComponent <$> js_mkComponent
+mkReactComponent :: IO ReactComponent
+mkReactComponent = ReactComponent <$> js_mkReactComponent
 
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
   "$r = hgr$component();"
-  js_mkComponent
+  js_mkReactComponent
       :: IO JE.JSVar
 
 #else
 
-js_mkComponent :: IO JE.JSVar
-js_mkComponent = pure $ JE.JSVar J.nullRef
+js_mkReactComponent :: IO JE.JSVar
+js_mkReactComponent = pure $ JE.JSVar J.nullRef
 
 
 #endif

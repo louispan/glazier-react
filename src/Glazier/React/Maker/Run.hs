@@ -33,20 +33,20 @@ mkActionCallback output handler =
             acts <- handler evt
             traverse_ (\act -> lift $ atomically $ PC.send output act >>= guard) acts
 
-run :: TMVar Int -> R.ReactComponent -> PC.Output act -> R.Maker act (IO a) -> IO a
-run _ _ output (R.MkHandler handler g) = mkActionCallback output handler >>= g
+runMaker :: TMVar Int -> R.ReactComponent -> PC.Output act -> R.Maker act (IO a) -> IO a
+runMaker _ _ output (R.MkHandler handler g) = mkActionCallback output handler >>= g
 
-run _ _ _ (R.MkEmptyFrame g) = atomically newEmptyTMVar >>= g
+runMaker _ _ _ (R.MkEmptyFrame g) = atomically newEmptyTMVar >>= g
 
-run _ _ _ (R.MkRenderer render frm g) = J.syncCallback' (onRender render' frm) >>= g
+runMaker _ _ _ (R.MkRenderer render frm g) = J.syncCallback' (onRender render' frm) >>= g
   where
     render' = hoist (hoist generalize) render
 
-run _ _ _ (R.PutFrame frm mdl g) = atomically (putTMVar frm mdl) >> g
+runMaker _ _ _ (R.PutFrame frm mdl g) = atomically (putTMVar frm mdl) >> g
 
-run _ component _ (R.GetComponent g) = g component
+runMaker _ component _ (R.GetComponent g) = g component
 
-run muid _ _ (R.MkKey g) = do
+runMaker muid _ _ (R.MkKey g) = do
     uid' <- atomically $ do
         -- expects that muid is not empty!
         uid <- readTMVar muid
