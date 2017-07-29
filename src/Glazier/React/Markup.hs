@@ -17,12 +17,13 @@ module Glazier.React.Markup
     , ReactMl
     , fromElement
     , toElements
-    , markedWindow
-    , markedElements
-    , markedElement
     , txt
     , lf
     , bh
+    -- * Glazier Window
+    , markedWindow
+    , markedElements
+    , markedElement
     ) where
 
 import Control.Applicative
@@ -112,25 +113,6 @@ toElements m = do
     xs <- execStateT (runReactMlT m) mempty
     liftIO $ sequenceA $ fromMarkup <$> D.toList xs
 
--- | Render the ReactMlt under a Glazier window
-markedWindow :: MonadIO io => G.WindowT s (ReactMlT io) () -> G.WindowT s io [R.ReactElement]
-markedWindow = G.belowWindowT (toElements' .)
-  where
-    toElements' :: MonadIO io => ReactMlT io (Maybe ()) -> io (Maybe [R.ReactElement])
-    toElements' m = do
-        r <- runStateT (runReactMlT m) mempty
-        case r of
-            (Nothing, _) -> pure Nothing
-            (Just _, xs) -> Just <$> (liftIO $ sequenceA $ fromMarkup <$> D.toList xs)
-
--- | Fully render the ReactMlt into a [R.ReactElement]
-markedElements :: MonadIO io => G.WindowT s (ReactMlT io) () -> s -> io [R.ReactElement]
-markedElements w = (fmap (fromMaybe [])) <$> view G._WindowT' (markedWindow w)
-
--- | Fully render the ReactMlt into a R.ReactElement
-markedElement :: MonadIO io => G.WindowT s (ReactMlT io) () -> s -> io R.ReactElement
-markedElement w s = markedElements w s >>= liftIO . R.mkCombinedElements
-
 -- | For text content
 txt :: Applicative m => J.JSString -> ReactMlT m ()
 txt n = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` TextMarkup n)
@@ -169,6 +151,27 @@ bh n ls props (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
 -- | dedups a list of (key, Callback1) by merging callbacks for the same key together.
 dedupListeners :: [Listener] -> [JE.Property]
 dedupListeners = M.toList . M.fromListWith js_combineCallback1 . fmap (fmap JE.toJS')
+
+-------------------------------------------------
+
+-- | Render the ReactMlt under a Glazier window
+markedWindow :: MonadIO io => G.WindowT s (ReactMlT io) () -> G.WindowT s io [R.ReactElement]
+markedWindow = G.belowWindowT (toElements' .)
+  where
+    toElements' :: MonadIO io => ReactMlT io (Maybe ()) -> io (Maybe [R.ReactElement])
+    toElements' m = do
+        r <- runStateT (runReactMlT m) mempty
+        case r of
+            (Nothing, _) -> pure Nothing
+            (Just _, xs) -> Just <$> (liftIO $ sequenceA $ fromMarkup <$> D.toList xs)
+
+-- | Fully render the ReactMlt into a [R.ReactElement]
+markedElements :: MonadIO io => G.WindowT s (ReactMlT io) () -> s -> io [R.ReactElement]
+markedElements w = (fmap (fromMaybe [])) <$> view G._WindowT' (markedWindow w)
+
+-- | Fully render the ReactMlt into a R.ReactElement
+markedElement :: MonadIO io => G.WindowT s (ReactMlT io) () -> s -> io R.ReactElement
+markedElement w s = markedElements w s >>= liftIO . R.mkCombinedElements
 
 #ifdef __GHCJS__
 
