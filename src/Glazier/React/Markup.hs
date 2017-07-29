@@ -34,6 +34,7 @@ import Control.Monad.Reader
 import Control.Monad.State.Strict
 import qualified Data.DList as D
 import qualified Data.Map.Strict as M
+import Data.Maybe
 import Data.Semigroup
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
@@ -113,11 +114,18 @@ toElements m = do
 
 -- | Render the ReactMlt under a Glazier window
 markedWindow :: MonadIO io => G.WindowT s (ReactMlT io) () -> G.WindowT s io [R.ReactElement]
-markedWindow = G.belowWindowT (toElements .)
+markedWindow = G.belowWindowT (toElements' .)
+  where
+    toElements' :: MonadIO io => ReactMlT io (Maybe ()) -> io (Maybe [R.ReactElement])
+    toElements' m = do
+        r <- runStateT (runReactMlT m) mempty
+        case r of
+            (Nothing, _) -> pure Nothing
+            (Just _, xs) -> Just <$> (liftIO $ sequenceA $ fromMarkup <$> D.toList xs)
 
 -- | Fully render the ReactMlt into a [R.ReactElement]
 markedElements :: MonadIO io => G.WindowT s (ReactMlT io) () -> s -> io [R.ReactElement]
-markedElements w = view G._WindowT' (markedWindow w)
+markedElements w = (fmap (fromMaybe [])) <$> view G._WindowT' (markedWindow w)
 
 -- | Fully render the ReactMlt into a R.ReactElement
 markedElement :: MonadIO io => G.WindowT s (ReactMlT io) () -> s -> io R.ReactElement
