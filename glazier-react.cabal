@@ -24,7 +24,7 @@ library
                        Glazier.React.Element
                        Glazier.React.Event
                        Glazier.React.Maker
-                       Glazier.React.Maker.Run
+                       Glazier.React.Maker.Exec
                        Glazier.React.Markup
                        Glazier.React.ReactDOM
   build-depends:       base >= 4.7 && < 5

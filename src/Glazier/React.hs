@@ -4,7 +4,7 @@ module Glazier.React
     , module Glazier.React.Element
     , module Glazier.React.Event
     , module Glazier.React.Maker
-    , module Glazier.React.Maker.Run
+    , module Glazier.React.Maker.Exec
     , module Glazier.React.Markup
     , module Glazier.React.ReactDOM
     ) where
@@ -14,6 +14,6 @@ import Glazier.React.Dispose
 import Glazier.React.Element
 import Glazier.React.Event
 import Glazier.React.Maker
-import Glazier.React.Maker.Run
+import Glazier.React.Maker.Exec
 import Glazier.React.Markup
 import Glazier.React.ReactDOM

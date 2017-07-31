@@ -1,4 +1,4 @@
-module Glazier.React.Maker.Run where
+module Glazier.React.Maker.Exec where
 
 import Control.Concurrent.STM.TMVar
 import Control.Concurrent.STM
@@ -31,22 +31,22 @@ mkActionCallback output handler =
     J.syncCallback1 J.ContinueAsync $ \evt ->
         void $ runMaybeT $ do
             acts <- handler evt
-            traverse_ (\act -> lift $ atomically $ PC.send output act >>= guard) acts
+            lift $ atomically $ traverse_ (\act -> PC.send output act >>= guard) acts
 
-runMaker :: TMVar Int -> R.ReactComponent -> PC.Output act -> R.Maker act (IO a) -> IO a
-runMaker _ _ output (R.MkHandler handler g) = mkActionCallback output handler >>= g
+execMaker :: TMVar Int -> R.ReactComponent -> PC.Output act -> R.Maker act (IO a) -> IO a
+execMaker _ _ output (R.MkHandler handler g) = mkActionCallback output handler >>= g
 
-runMaker _ _ _ (R.MkEmptyFrame g) = atomically newEmptyTMVar >>= g
+execMaker _ _ _ (R.MkEmptyFrame g) = atomically newEmptyTMVar >>= g
 
-runMaker _ _ _ (R.MkRenderer render frm g) = J.syncCallback' (onRender render' frm) >>= g
+execMaker _ _ _ (R.MkRenderer render frm g) = J.syncCallback' (onRender render' frm) >>= g
   where
     render' = hoist (hoist generalize) render
 
-runMaker _ _ _ (R.PutFrame frm mdl g) = atomically (putTMVar frm mdl) >> g
+execMaker _ _ _ (R.PutFrame frm mdl g) = atomically (putTMVar frm mdl) >> g
 
-runMaker _ component _ (R.GetComponent g) = g component
+execMaker _ component _ (R.GetComponent g) = g component
 
-runMaker muid _ _ (R.MkKey g) = do
+execMaker muid _ _ (R.MkKey g) = do
     uid' <- atomically $ do
         -- expects that muid is not empty!
         uid <- readTMVar muid
