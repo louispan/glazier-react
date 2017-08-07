@@ -1,4 +1,3 @@
-{-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -96,6 +95,9 @@ newtype ReactMlT m a = ReactMlT
 
 type ReactMl = ReactMlT Identity
 
+instance MonadTrans ReactMlT where
+    lift = ReactMlT . lift
+
 instance (Semigroup a, Monad m) => Semigroup (ReactMlT m a) where
     (<>) = liftA2 (<>)
 
@@ -124,7 +126,7 @@ txt n = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` TextMarkup n)
 -- but it is safer to put them in the cbs arguments because
 -- multiple callbacks of the same key will be combined.
 lf
-    :: Applicative m
+    :: Monad m
     => JE.JSVar
     -> [Listener]
     -> [JE.Property]
@@ -138,7 +140,7 @@ lf n ls props = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` LeafMarkup (Lea
 -- but it is safer to put them in the cbs arguments because
 -- multiple callbacks of the same key will be combined.
 bh
-    :: Functor m
+    :: Monad m
     => JE.JSVar
     -> [Listener]
     -> [JE.Property]

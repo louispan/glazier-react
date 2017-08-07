@@ -15,8 +15,10 @@ module Glazier.React.Dispose
     , GDispose(..)
     ) where
 
+import Data.Coerce
 import Data.Foldable
 import Control.Monad
+import Control.Concurrent.STM.TVar
 import qualified GHC.Generics as G
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
@@ -84,3 +86,8 @@ instance Dispose Int where
 
 instance Dispose J.JSVal where
     dispose _ = pure ()
+
+instance Dispose a => Dispose (TVar a) where
+    dispose a = Disposable $ do
+        a' <- readTVarIO a
+        coerce (dispose a')
