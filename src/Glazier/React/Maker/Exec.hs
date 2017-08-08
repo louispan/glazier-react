@@ -51,3 +51,5 @@ execMaker muid _ _ (R.MkKey g) = atomically go >>= g
 execMaker _ _ _ (R.MkTVar a g) = atomically (newTVar a) >>= g
 
 execMaker _ _ _ (R.ChangeTVar v h x) = atomically (modifyTVar' v h) >> x
+
+execMaker _ _ output (R.SendAction act x) = atomically (PC.send output act) >> x

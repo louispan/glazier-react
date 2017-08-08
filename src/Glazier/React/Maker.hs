@@ -47,6 +47,10 @@ data Maker act nxt where
         -> (mdl -> mdl)
         -> nxt
         -> Maker act nxt
+    SendAction
+        :: act
+        -> nxt
+        -> Maker act nxt
 
 instance Functor (Maker act) where
   fmap f (MkHandler handler g) = MkHandler handler (f . g)
@@ -55,6 +59,7 @@ instance Functor (Maker act) where
   fmap f (MkKey g) = MkKey (f . g)
   fmap f (MkTVar a g) = MkTVar a (f . g)
   fmap f (ChangeTVar v h x) = ChangeTVar v h (f x)
+  fmap f (SendAction a x) = SendAction a (f x)
 
 makeFree ''Maker
 
@@ -66,6 +71,7 @@ withAction _ (GetComponent g) = GetComponent g
 withAction _ (MkKey g) = MkKey g
 withAction _ (MkTVar a g) = MkTVar a g
 withAction _ (ChangeTVar v h x) = ChangeTVar v h x
+withAction f (SendAction a x) = SendAction (f a) x
 
 hoistWithAction :: (act -> act') -> F (Maker act) a -> F (Maker act') a
 hoistWithAction f = hoistF (withAction f)
