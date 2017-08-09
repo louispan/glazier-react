@@ -158,7 +158,7 @@ dedupListeners = M.toList . M.fromListWith js_combineCallback1 . fmap (fmap JE.t
 
 -- | Render the ReactMlt under a Glazier window
 markedWindow :: MonadIO io => G.WindowT s (ReactMlT io) () -> G.WindowT s io [R.ReactElement]
-markedWindow = G.belowWindowT (toElements' .)
+markedWindow = G._WRMT %~ (toElements' .)
   where
     toElements' :: MonadIO io => ReactMlT io (Maybe ()) -> io (Maybe [R.ReactElement])
     toElements' m = do
@@ -169,7 +169,7 @@ markedWindow = G.belowWindowT (toElements' .)
 
 -- | Fully render the ReactMlt into a [R.ReactElement]
 markedElements :: MonadIO io => G.WindowT s (ReactMlT io) () -> s -> io [R.ReactElement]
-markedElements w = (fmap (fromMaybe [])) <$> view G._WindowT' (markedWindow w)
+markedElements w = (fmap (fromMaybe [])) <$> view G._WRMT' (markedWindow w)
 
 -- | Fully render the ReactMlt into a R.ReactElement
 markedElement :: MonadIO io => G.WindowT s (ReactMlT io) () -> s -> io R.ReactElement

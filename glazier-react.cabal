@@ -23,9 +23,9 @@ library
                        Glazier.React.Dispose
                        Glazier.React.Element
                        Glazier.React.Event
-                       Glazier.React.Glaze
-                       Glazier.React.Glaze.Run
                        Glazier.React.Markup
+                       Glazier.React.Reactor
+                       Glazier.React.Reactor.Run
                        Glazier.React.ReactDOM
   build-depends:       base >= 4.7 && < 5
                      , containers >= 0.5 && < 0.6

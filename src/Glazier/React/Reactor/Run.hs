@@ -1,4 +1,4 @@
-module Glazier.React.Glaze.Run where
+module Glazier.React.Reactor.Run where
 
 import Control.Concurrent.STM.TMVar
 import Control.Concurrent.STM
@@ -10,7 +10,7 @@ import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
 import qualified Glazier as G
 import qualified Glazier.React.Component as R
-import Glazier.React.Glaze as R
+import Glazier.React.Reactor as R
 import qualified Glazier.React.Markup as R
 import JavaScript.Extras as JE
 import qualified Pipes.Concurrent as PC
@@ -30,16 +30,16 @@ mkActionCallback output handler =
             acts <- handler evt
             lift $ atomically $ traverse_ (\act -> PC.send output act >>= guard) acts
 
-runGlaze :: TMVar Int -> R.ReactComponent -> PC.Output act -> R.Glaze act (IO a) -> IO a
-runGlaze _ _ output (R.MkHandler handler g) = mkActionCallback output handler >>= g
+runReactor :: TMVar Int -> R.ReactComponent -> PC.Output act -> R.Reactor act (IO a) -> IO a
+runReactor _ _ output (R.MkHandler handler g) = mkActionCallback output handler >>= g
 
-runGlaze _ _ _ (R.MkRenderer render mdl g) = J.syncCallback' (onRender render' mdl) >>= g
+runReactor _ _ _ (R.MkRenderer render mdl g) = J.syncCallback' (onRender render' mdl) >>= g
   where
     render' = hoist (hoist atomically) render
 
-runGlaze _ component _ (R.GetComponent g) = g component
+runReactor _ component _ (R.GetComponent g) = g component
 
-runGlaze muid _ _ (R.MkKey g) = atomically go >>= g
+runReactor muid _ _ (R.MkKey g) = atomically go >>= g
   where
     go = do
         -- expects that muid is not empty!
@@ -48,8 +48,8 @@ runGlaze muid _ _ (R.MkKey g) = atomically go >>= g
         void $ swapTMVar muid uid'
         pure uid'
 
-runGlaze _ _ _ (R.MkTVar a g) = atomically (newTVar a) >>= g
+runReactor _ _ _ (R.MkTVar a g) = atomically (newTVar a) >>= g
 
-runGlaze _ _ _ (R.ChangeTVar v h x) = atomically (modifyTVar' v h) >> x
+runReactor _ _ _ (R.ChangeTVar v h x) = atomically (modifyTVar' v h) >> x
 
-runGlaze _ _ output (R.SendAction act x) = atomically (PC.send output act) >> x
+runReactor _ _ output (R.SendAction act x) = atomically (PC.send output act) >> x
