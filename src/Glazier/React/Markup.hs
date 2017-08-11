@@ -38,7 +38,7 @@ import Data.Maybe
 import Data.Semigroup
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
-import qualified Glazier as G
+import qualified Glazier.Gizmo as G
 import qualified Glazier.React.Element as R
 import qualified JavaScript.Extras as JE
 
@@ -157,8 +157,8 @@ dedupListeners = M.toList . M.fromListWith js_combineCallback1 . fmap (fmap JE.t
 -------------------------------------------------
 
 -- | Render the ReactMlt under a Glazier window
-markedWindow :: MonadIO io => G.WindowT s (ReactMlT io) () -> G.WindowT s io [R.ReactElement]
-markedWindow = G._WRMT %~ (toElements' .)
+markedWindow :: MonadIO io => G.GizmoT s (ReactMlT io) () -> G.GizmoT s io [R.ReactElement]
+markedWindow = G._GRMT %~ (toElements' .)
   where
     toElements' :: MonadIO io => ReactMlT io (Maybe ()) -> io (Maybe [R.ReactElement])
     toElements' m = do
@@ -168,11 +168,11 @@ markedWindow = G._WRMT %~ (toElements' .)
             (Just _, xs) -> Just <$> (liftIO $ sequenceA $ fromMarkup <$> D.toList xs)
 
 -- | Fully render the ReactMlt into a [R.ReactElement]
-markedElements :: MonadIO io => G.WindowT s (ReactMlT io) () -> s -> io [R.ReactElement]
-markedElements w = (fmap (fromMaybe [])) <$> view G._WRMT' (markedWindow w)
+markedElements :: MonadIO io => G.GizmoT s (ReactMlT io) () -> s -> io [R.ReactElement]
+markedElements w = (fmap (fromMaybe [])) <$> view G._GRMT' (markedWindow w)
 
 -- | Fully render the ReactMlt into a R.ReactElement
-markedElement :: MonadIO io => G.WindowT s (ReactMlT io) () -> s -> io R.ReactElement
+markedElement :: MonadIO io => G.GizmoT s (ReactMlT io) () -> s -> io R.ReactElement
 markedElement w s = markedElements w s >>= liftIO . R.mkCombinedElements
 
 #ifdef __GHCJS__

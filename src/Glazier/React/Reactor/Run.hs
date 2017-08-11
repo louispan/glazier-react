@@ -8,7 +8,7 @@ import Control.Monad.Trans.Maybe
 import Data.Foldable
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
-import qualified Glazier as G
+import qualified Glazier.Gizmo as G
 import qualified Glazier.React.Component as R
 import Glazier.React.Reactor as R
 import qualified Glazier.React.Markup as R
@@ -17,7 +17,7 @@ import qualified Pipes.Concurrent as PC
 
 -- | This is called synchronously by React to render the DOM.
 -- This must not block!
-onRender :: G.WindowT s (R.ReactMlT IO) () -> s -> IO J.JSVal
+onRender :: G.GizmoT s (R.ReactMlT IO) () -> s -> IO J.JSVal
 onRender render s = JE.toJS <$> R.markedElement render s
 
 mkActionCallback

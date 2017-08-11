@@ -15,7 +15,7 @@ import Control.Monad.Trans.Maybe
 import qualified Data.JSString as J
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
-import qualified Glazier as G
+import qualified Glazier.Gizmo as G
 import qualified Glazier.React.Component as R
 import qualified Glazier.React.Markup as R
 import qualified Pipes.Concurrent as PC
@@ -29,7 +29,7 @@ data Reactor nxt where
         -> (J.Callback (J.JSVal -> IO ()) -> nxt)
         -> Reactor nxt
     MkRenderer
-        :: G.WindowT s (R.ReactMlT STM) ()
+        :: G.GizmoT s (R.ReactMlT STM) ()
         -> s
         -> (J.Callback (IO J.JSVal) -> nxt)
         -> Reactor nxt
