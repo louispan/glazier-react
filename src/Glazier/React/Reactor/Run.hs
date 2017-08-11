@@ -17,8 +17,8 @@ import qualified Pipes.Concurrent as PC
 
 -- | This is called synchronously by React to render the DOM.
 -- This must not block!
-onRender :: G.WindowT mdl (R.ReactMlT IO) () -> mdl -> IO J.JSVal
-onRender render mdl = JE.toJS <$> R.markedElement render mdl
+onRender :: G.WindowT s (R.ReactMlT IO) () -> s -> IO J.JSVal
+onRender render s = JE.toJS <$> R.markedElement render s
 
 mkActionCallback
     :: PC.Output act
@@ -30,16 +30,16 @@ mkActionCallback output handler =
             acts <- handler evt
             lift $ atomically $ traverse_ (\act -> PC.send output act >>= guard) acts
 
-runReactor :: TMVar Int -> R.ReactComponent -> PC.Output act -> R.Reactor act (IO a) -> IO a
-runReactor _ _ output (R.MkHandler handler g) = mkActionCallback output handler >>= g
+runReactor :: TMVar Int -> R.ReactComponent -> R.Reactor (IO a) -> IO a
+runReactor _ _ (R.MkHandler out handler g) = mkActionCallback out handler >>= g
 
-runReactor _ _ _ (R.MkRenderer render mdl g) = J.syncCallback' (onRender render' mdl) >>= g
+runReactor _ _ (R.MkRenderer render s g) = J.syncCallback' (onRender render' s) >>= g
   where
     render' = hoist (hoist atomically) render
 
-runReactor _ component _ (R.GetComponent g) = g component
+runReactor _ component (R.GetComponent g) = g component
 
-runReactor muid _ _ (R.MkKey g) = atomically go >>= g
+runReactor muid _ (R.MkKey g) = atomically go >>= g
   where
     go = do
         -- expects that muid is not empty!
@@ -48,8 +48,12 @@ runReactor muid _ _ (R.MkKey g) = atomically go >>= g
         void $ swapTMVar muid uid'
         pure uid'
 
-runReactor _ _ _ (R.MkTVar a g) = atomically (newTVar a) >>= g
+-- runReactor _ _ (R.DoNewTVar s g) = newTVarIO s >>= g
 
-runReactor _ _ _ (R.ChangeTVar v h x) = atomically (modifyTVar' v h) >> x
+-- runReactor _ _ (R.DoModifyTVar v h x) = atomically (modifyTVar' v h) >> x
 
-runReactor _ _ output (R.SendAction act x) = atomically (PC.send output act) >> x
+runReactor _ _ (R.DoNewEmptyTMVar g) = newEmptyTMVarIO >>= g
+
+runReactor _ _ (R.DoPutTMVar v a x) = atomically (putTMVar v a) >> x
+
+runReactor _ _ (R.SendAction o a x) = atomically (PC.send o a) >> x

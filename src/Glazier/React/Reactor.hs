@@ -18,67 +18,79 @@ import qualified GHCJS.Types as J
 import qualified Glazier as G
 import qualified Glazier.React.Component as R
 import qualified Glazier.React.Markup as R
+import qualified Pipes.Concurrent as PC
 
--- | DSL for IO effects required during making widget models and callbacks (which knows about the action type)
--- 'Reactor' remembers the action type to allow 'withAction' for changing the action type by parent widgets.
--- The model type does not need to be changed, so it is hidden in the GADT existential.
-data Reactor act nxt where
+-- | DSL for IO effects required during making widget models and callbacks
+-- FIMXE: Use MTL style instead of Free Monad?
+data Reactor nxt where
     MkHandler
-        :: (J.JSVal -> MaybeT IO [act]) -- this is why we need @act@ type variable
+        :: PC.Output act
+        -> (J.JSVal -> MaybeT IO [act])
         -> (J.Callback (J.JSVal -> IO ()) -> nxt)
-        -> Reactor act nxt
+        -> Reactor nxt
     MkRenderer
-        :: G.WindowT mdl (R.ReactMlT STM) ()
-        -> mdl
+        :: G.WindowT s (R.ReactMlT STM) ()
+        -> s
         -> (J.Callback (IO J.JSVal) -> nxt)
-        -> Reactor act nxt
+        -> Reactor nxt
     GetComponent
         :: (R.ReactComponent -> nxt)
-        -> Reactor act nxt
+        -> Reactor nxt
     MkKey
         :: (Int -> nxt)
-        -> Reactor act nxt
-    MkTVar
-        :: mdl
-        -> (TVar mdl -> nxt)
-        -> Reactor act nxt
-    ChangeTVar
-        :: TVar mdl
-        -> (mdl -> mdl)
+        -> Reactor nxt
+    DoNewEmptyTMVar
+        :: (TMVar s -> nxt)
+        -> Reactor nxt
+    DoPutTMVar
+        :: TMVar a
+        -> a
         -> nxt
-        -> Reactor act nxt
+        -> Reactor nxt
+    -- DoNewTVar
+    --     :: s
+    --     -> (TVar s -> nxt)
+    --     -> Reactor nxt
+    -- DoModifyTVar
+    --     :: TVar s
+    --     -> (s -> s)
+    --     -> nxt
+    --     -> Reactor nxt
     SendAction
-        :: act  -- this is why we need @act@ type variable
+        :: PC.Output act
+        -> act
         -> nxt
-        -> Reactor act nxt
+        -> Reactor nxt
 
-instance Functor (Reactor act) where
-  fmap f (MkHandler handler g) = MkHandler handler (f . g)
+instance Functor Reactor where
+  fmap f (MkHandler out handler g) = MkHandler out handler (f . g)
   fmap f (MkRenderer render frm g) = MkRenderer render frm (f . g)
   fmap f (GetComponent g) = GetComponent (f . g)
   fmap f (MkKey g) = MkKey (f . g)
-  fmap f (MkTVar a g) = MkTVar a (f . g)
-  fmap f (ChangeTVar v h x) = ChangeTVar v h (f x)
-  fmap f (SendAction a x) = SendAction a (f x)
+  fmap f (DoNewEmptyTMVar g) = DoNewEmptyTMVar (f . g)
+  fmap f (DoPutTMVar v h x) = DoPutTMVar v h (f x)
+  -- fmap f (DoNewTVar s g) = DoNewTVar s (f . g)
+  -- fmap f (DoModifyTVar v h x) = DoModifyTVar v h (f x)
+  fmap f (SendAction o a x) = SendAction o a (f x)
 
 makeFree ''Reactor
 
--- | Allows changing the action type of Reactor
-withAction :: (act -> act') -> Reactor act a -> Reactor act' a
-withAction f (MkHandler handler g) = MkHandler (\v -> fmap f <$> handler v) g
-withAction _ (MkRenderer render frm g) = MkRenderer render frm g
-withAction _ (GetComponent g) = GetComponent g
-withAction _ (MkKey g) = MkKey g
-withAction _ (MkTVar a g) = MkTVar a g
-withAction _ (ChangeTVar v h x) = ChangeTVar v h x
-withAction f (SendAction a x) = SendAction (f a) x
+-- -- | Allows changing the action type of Reactor
+-- withAction :: (act -> act') -> Reactor act a -> Reactor act' a
+-- withAction f (MkHandler handler g) = MkHandler (\v -> fmap f <$> handler v) g
+-- withAction _ (MkRenderer render frm g) = MkRenderer render frm g
+-- withAction _ (GetComponent g) = GetComponent g
+-- withAction _ (MkKey g) = MkKey g
+-- withAction _ (MkTVar a g) = MkTVar a g
+-- withAction _ (ChangeTVar v h x) = ChangeTVar v h x
+-- withAction f (SendAction a x) = SendAction (f a) x
 
-hoistWithAction :: (act -> act') -> F (Reactor act) a -> F (Reactor act') a
-hoistWithAction f = hoistF (withAction f)
+-- hoistWithAction :: (act -> act') -> F (Reactor act) a -> F (Reactor act') a
+-- hoistWithAction f = hoistF (withAction f)
 
 -- | Like 'mkHandler'' but for a single @act@ instead of @[act]@.
-mkHandler' :: (J.JSVal -> MaybeT IO act) -> F (Reactor act) (J.Callback (J.JSVal -> IO ()))
-mkHandler' f = mkHandler (fmap pure <$> f)
+mkHandler' :: PC.Output act -> (J.JSVal -> MaybeT IO act) -> F Reactor (J.Callback (J.JSVal -> IO ()))
+mkHandler' out f = mkHandler out (fmap pure <$> f)
 
-mkKey' :: F (Reactor a) J.JSString
+mkKey' :: F Reactor J.JSString
 mkKey' = (J.pack . show) <$> mkKey
