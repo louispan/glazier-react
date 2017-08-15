@@ -16,13 +16,10 @@ module Glazier.React.Markup
     , ReactMl
     , fromElement
     , toElements
+    , toElement
     , txt
     , lf
     , bh
-    -- * Glazier Window
-    , markedWindow
-    , markedElements
-    , markedElement
     ) where
 
 import Control.Applicative
@@ -34,11 +31,9 @@ import Control.Monad.Reader
 import Control.Monad.State.Strict
 import qualified Data.DList as D
 import qualified Data.Map.Strict as M
-import Data.Maybe
 import Data.Semigroup
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
-import qualified Glazier.Gizmo as G
 import qualified Glazier.React.Element as R
 import qualified JavaScript.Extras as JE
 
@@ -105,6 +100,8 @@ instance (Monoid a, Monad m) => Monoid (ReactMlT m a) where
     mempty = pure mempty
     mappend = liftA2 mappend
 
+-------------------------------------------------
+
 -- | To use an exisitng ReactElement
 fromElement :: Applicative m => R.ReactElement -> ReactMlT m ()
 fromElement e = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` ElementMarkup e)
@@ -114,6 +111,16 @@ toElements :: MonadIO io => ReactMlT io () -> io [R.ReactElement]
 toElements m = do
     xs <- execStateT (runReactMlT m) mempty
     liftIO $ sequenceA $ fromMarkup <$> D.toList xs
+
+-- | Fully render the ReactMlt into a R.ReactElement
+toElement :: MonadIO io => ReactMlT io () -> io R.ReactElement
+toElement m = toElements m >>= (liftIO . R.mkCombinedElements)
+
+-- -- | toElements reading an s from the environment
+-- toElements' :: MonadIO io => (s -> ReactMlT io ()) -> s -> io [R.ReactElement]
+-- toElements' f = (toElements . f)
+
+-------------------------------------------------
 
 -- | For text content
 txt :: Applicative m => J.JSString -> ReactMlT m ()
@@ -153,27 +160,6 @@ bh n ls props (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
 -- | dedups a list of (key, Callback1) by merging callbacks for the same key together.
 dedupListeners :: [Listener] -> [JE.Property]
 dedupListeners = M.toList . M.fromListWith js_combineCallback1 . fmap (fmap JE.toJS')
-
--------------------------------------------------
-
--- | Render the ReactMlt under a Glazier window
-markedWindow :: MonadIO io => G.GizmoT s (ReactMlT io) () -> G.GizmoT s io [R.ReactElement]
-markedWindow = G._GRMT %~ (toElements' .)
-  where
-    toElements' :: MonadIO io => ReactMlT io (Maybe ()) -> io (Maybe [R.ReactElement])
-    toElements' m = do
-        r <- runStateT (runReactMlT m) mempty
-        case r of
-            (Nothing, _) -> pure Nothing
-            (Just _, xs) -> Just <$> (liftIO $ sequenceA $ fromMarkup <$> D.toList xs)
-
--- | Fully render the ReactMlt into a [R.ReactElement]
-markedElements :: MonadIO io => G.GizmoT s (ReactMlT io) () -> s -> io [R.ReactElement]
-markedElements w = (fmap (fromMaybe [])) <$> view G._GRMT' (markedWindow w)
-
--- | Fully render the ReactMlt into a R.ReactElement
-markedElement :: MonadIO io => G.GizmoT s (ReactMlT io) () -> s -> io R.ReactElement
-markedElement w s = markedElements w s >>= liftIO . R.mkCombinedElements
 
 #ifdef __GHCJS__
 
