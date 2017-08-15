@@ -32,10 +32,6 @@ runReactor muid _ (R.MkKey g) = atomically go >>= g
         void $ swapTMVar muid uid'
         pure uid'
 
--- runReactor _ _ (R.DoNewEmptyTMVar g) = newEmptyTMVarIO >>= g
-
--- runReactor _ _ (R.DoPutTMVar v a x) = atomically (putTMVar v a) >> x
-
 runReactor _ _ (R.DoSpawn b g) = PC.spawn b >>= g
 
-runReactor _ _ (R.SendAction o a x) = atomically (PC.send o a) >> x
+runReactor _ _ (R.DoSTM m g) = atomically m >>= g

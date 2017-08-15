@@ -38,22 +38,15 @@ data Reactor nxt where
     MkKey
         :: (Int -> nxt)
         -> Reactor nxt
-    -- DoNewEmptyTMVar
-    --     :: (TMVar s -> nxt)
-    --     -> Reactor nxt
-    -- DoPutTMVar
-    --     :: TMVar a
-    --     -> a
-    --     -> nxt
-    --     -> Reactor nxt
+
     DoSpawn
         :: PC.Buffer a
         -> ((PC.Output a, PC.Input a) -> nxt)
         -> Reactor nxt
-    SendAction
-        :: PC.Output act
-        -> act
-        -> nxt
+
+    DoSTM
+        :: STM a
+        -> (a -> nxt)
         -> Reactor nxt
 
 instance Functor Reactor where
@@ -61,10 +54,8 @@ instance Functor Reactor where
   fmap f (MkRenderer rnd g) = MkRenderer rnd (f . g)
   fmap f (GetComponent g) = GetComponent (f . g)
   fmap f (MkKey g) = MkKey (f . g)
-  -- fmap f (DoNewEmptyTMVar g) = DoNewEmptyTMVar (f . g)
-  -- fmap f (DoPutTMVar v h x) = DoPutTMVar v h (f x)
   fmap f (DoSpawn b g) = DoSpawn b (f . g)
-  fmap f (SendAction o a x) = SendAction o a (f x)
+  fmap f (DoSTM m g) = DoSTM m (f . g)
 
 makeFree ''Reactor
 
