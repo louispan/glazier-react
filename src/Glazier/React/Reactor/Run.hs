@@ -3,6 +3,7 @@ module Glazier.React.Reactor.Run where
 import Control.Concurrent.STM.TMVar
 import Control.Concurrent.STM
 import Control.Monad
+import Control.Monad.Free.Church
 import Control.Monad.Morph
 import qualified GHCJS.Foreign.Callback as J
 import qualified Glazier.React.Component as R
@@ -35,3 +36,6 @@ runReactor muid _ (R.MkKey g) = atomically go >>= g
 runReactor _ _ (R.DoSpawn b g) = PC.spawn b >>= g
 
 runReactor _ _ (R.DoSTM m g) = atomically m >>= g
+
+execReactor :: TMVar Int -> R.ReactComponent -> F R.Reactor a -> IO a
+execReactor muid comp = iterM (runReactor muid comp)

@@ -79,5 +79,5 @@ makeFree ''Reactor
 mkKey' :: F Reactor J.JSString
 mkKey' = (J.pack . show) <$> mkKey
 
-mkHandler' :: (J.JSVal -> MaybeT IO a) -> (a -> STM ()) -> (J.JSVal -> IO ())
-mkHandler' trig f j = void . runMaybeT $ trig j >>= lift . atomically . f
+-- mkHandler' :: (J.JSVal -> MaybeT IO a) -> (a -> STM ()) -> (J.JSVal -> IO ())
+-- mkHandler' trig f j = void . runMaybeT $ trig j >>= lift . atomically . f
