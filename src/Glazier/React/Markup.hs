@@ -30,7 +30,6 @@ import Control.Monad.Morph
 import Control.Monad.Reader
 import Control.Monad.State.Strict
 import qualified Data.DList as D
-import qualified Data.Map.Strict as M
 import Data.Semigroup
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
@@ -62,9 +61,9 @@ data ReactMarkup
 fromMarkup :: ReactMarkup -> IO (R.ReactElement)
 fromMarkup (BranchMarkup (BranchParam n ls props xs)) = do
     xs' <- sequenceA $ fromMarkup <$> xs
-    R.mkBranchElement n (dedupListeners ls <> props) xs'
+    R.mkBranchElement n ((fmap JE.toJS' <$> ls) <> props) xs'
 
-fromMarkup (LeafMarkup (LeafParam n ls props)) = R.mkLeafElement n (dedupListeners ls <> props)
+fromMarkup (LeafMarkup (LeafParam n ls props)) = R.mkLeafElement n ((fmap JE.toJS' <$> ls) <> props)
 
 fromMarkup (TextMarkup str) = pure $ R.textElement str
 
@@ -127,11 +126,7 @@ txt :: Applicative m => J.JSString -> ReactMlT m ()
 txt n = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` TextMarkup n)
 
 -- | For the contentless elements: eg 'br_'
--- It is ok to have duplicate keys in cbs, however, it is a hidden error
--- to have duplicate keys in hdls, or across props and hdls.
--- It is possible to put callback in the props argument
--- but it is safer to put them in the cbs arguments because
--- multiple callbacks of the same key will be combined.
+-- Note: listeners or properties with the same name will silently overwrite previous settings.
 lf
     :: Monad m
     => JE.JSVar
@@ -141,11 +136,7 @@ lf
 lf n ls props = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` LeafMarkup (LeafParam n ls props))
 
 -- | For the contentful elements: eg 'div_'
--- It is ok to have duplicate keys in cbs, however, it is a hidden error
--- to have duplicate keys in props, or across props and cbs.
--- It is possible to put callback in the props argument
--- but it is safer to put them in the cbs arguments because
--- multiple callbacks of the same key will be combined.
+-- Note: listeners or properties with the same name will silently overwrite previous settings.
 bh
     :: Monad m
     => JE.JSVar
@@ -156,23 +147,3 @@ bh
 bh n ls props (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
     (a, childs') <- childs mempty
     pure (a, xs `D.snoc` BranchMarkup (BranchParam n ls props (D.toList childs')))
-
--- | dedups a list of (key, Callback1) by merging callbacks for the same key together.
-dedupListeners :: [Listener] -> [JE.Property]
-dedupListeners = M.toList . M.fromListWith js_combineCallback1 . fmap (fmap JE.toJS')
-
-#ifdef __GHCJS__
-
--- | Combine functions into a single function
--- Given two 'Callback (JSVal -> IO ())'
--- return a function that calls both callbacks
-foreign import javascript unsafe
-    "$r = function(j) { $1(j); $2(j); };"
-    js_combineCallback1 :: JE.JSVar -> JE.JSVar -> JE.JSVar
-
-#else
-
-js_combineCallback1 :: JE.JSVar -> JE.JSVar -> JE.JSVar
-js_combineCallback1 _ _ = JE.JSVar J.nullRef
-
-#endif

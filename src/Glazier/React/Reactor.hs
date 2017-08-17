@@ -8,12 +8,9 @@
 module Glazier.React.Reactor where
 
 import Control.Concurrent.STM
-import Control.Monad
 import Control.Monad.Free
 import Control.Monad.Free.Church
 import Control.Monad.Free.TH
-import Control.Monad.Trans.Class
-import Control.Monad.Trans.Maybe
 import qualified Data.JSString as J
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
@@ -58,23 +55,6 @@ instance Functor Reactor where
   fmap f (DoSTM m g) = DoSTM m (f . g)
 
 makeFree ''Reactor
-
--- -- | Allows changing the action type of Reactor
--- withAction :: (act -> act') -> Reactor act a -> Reactor act' a
--- withAction f (MkHandler handler g) = MkHandler (\v -> fmap f <$> handler v) g
--- withAction _ (MkRenderer render frm g) = MkRenderer render frm g
--- withAction _ (GetComponent g) = GetComponent g
--- withAction _ (MkKey g) = MkKey g
--- withAction _ (MkTVar a g) = MkTVar a g
--- withAction _ (ChangeTVar v h x) = ChangeTVar v h x
--- withAction f (SendAction a x) = SendAction (f a) x
-
--- hoistWithAction :: (act -> act') -> F (Reactor act) a -> F (Reactor act') a
--- hoistWithAction f = hoistF (withAction f)
-
--- -- | Like 'mkHandler'' but for a single @act@ instead of @[act]@.
--- mkHandler' :: (act -> STM ()) -> (J.JSVal -> MaybeT IO act) -> F Reactor (J.Callback (J.JSVal -> IO ()))
--- mkHandler' h f = mkHandler h (fmap pure <$> f)
 
 mkKey' :: F Reactor J.JSString
 mkKey' = (J.pack . show) <$> mkKey
