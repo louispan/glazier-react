@@ -12,8 +12,8 @@ module Glazier.React.Event
   ( EventTarget
   , NativeEvent
   , SyntheticEvent
-  , eventHandler
-  , eventHandlerM
+  , handleEvent
+  , handleEventM
   , Event(..)
   , preventDefault
   , isDefaultPrevented
@@ -57,8 +57,8 @@ instance JE.FromJS NativeEvent where
     fromJS _ = Nothing
 
 -- | Every event in React is a synthetic event, a cross-browser wrapper around the native event.
--- 'SyntheticEvent' must only be used in the first part of 'eventHandler'.
--- It is not an instance of NFData and so cannot be returned into the second lazy part of 'eventHandler'
+-- 'SyntheticEvent' must only be used in the first part of 'handleEvent'.
+-- It is not an instance of NFData and so cannot be returned into the second lazy part of 'handleEvent'
 newtype SyntheticEvent = SyntheticEvent J.JSVal
     deriving (G.Generic)
 
@@ -75,19 +75,19 @@ instance JE.FromJS SyntheticEvent where
 -- where a synchronous thread might be converted to an asynchronous thread if a "black hole" is encountered.
 -- See https://github.com/ghcjs/ghcjs-base/blob/master/GHCJS/Concurrent.hs
 -- This safe interface requires two input functions:
--- 1. a function to reduce SyntheticEvent to a NFData. The mkEventCallback will ensure that the
+-- 1. a function to reduce SyntheticEvent to a NFData. The handleEvent will ensure that the
 -- NFData is forced which will ensure all the required fields from Synthetic event has been parsed.
 -- This function must not block.
 -- 2. a second function that uses the NFData. This function is allowed to block.
--- mkEventHandler results in a function that you can safely pass into 'GHC.Foreign.Callback.syncCallback1'
+-- handleEvent results in a function that you can safely pass into 'GHC.Foreign.Callback.syncCallback1'
 -- with 'GHCJS.Foreign.Callback.ContinueAsync'.
-eventHandler :: NFData a => (evt -> a) -> (a -> b) -> (evt -> b)
-eventHandler goStrict goLazy evt = goLazy $!! goStrict evt
+handleEvent :: NFData a => (evt -> a) -> (a -> b) -> (evt -> b)
+handleEvent goStrict goLazy evt = goLazy $!! goStrict evt
 
--- | a monadic version of eventHandler
+-- | a monadic version of handleEvent
 -- The monad's effects must not block!
-eventHandlerM :: (Monad m, NFData a) => (evt -> m a) -> (a -> m b) -> (evt -> m b)
-eventHandlerM goStrict goLazy evt = do
+handleEventM :: (Monad m, NFData a) => (evt -> m a) -> (a -> m b) -> (evt -> m b)
+handleEventM goStrict goLazy evt = do
     r <- goStrict evt
     goLazy $!! r
 
@@ -104,7 +104,7 @@ isPropagationStopped :: SyntheticEvent -> Bool
 isPropagationStopped = js_isPropagationStopped
 
 -- | Every `SyntheticEvent` can be parsed to an `Event`.
--- 'Event' must only be used in the first part of 'eventHandler'.
+-- 'Event' must only be used in the first part of 'handleEvent'.
 data Event = Event
     { bubbles :: Bool
     , cancelable :: Bool
@@ -122,7 +122,7 @@ data Event = Event
 instance NFData Event
 
 -- | We can lie about this not being in IO because
--- within the strict part of 'eventHandlerM'
+-- within the strict part of 'handleEventM'
 -- the SyntheticEvent is effectively immutable.
 -- In reality SyntheticEvent is reused from a pool.
 -- We want to maintain this lie so that we can lazily parse only the
@@ -133,7 +133,7 @@ unsafeProperty :: J.PFromJSVal a => J.JSVal -> J.JSString -> a
 unsafeProperty v = J.pFromJSVal . js_unsafeProperty v
 
 -- | We can lie about this not being in IO because
--- within the strict part of 'eventHandlerM'
+-- within the strict part of 'handleEventM'
 -- the SyntheticEvent is effectively immutable.
 parseEvent :: SyntheticEvent -> Event
 parseEvent (SyntheticEvent evt) =
@@ -151,7 +151,7 @@ parseEvent (SyntheticEvent evt) =
     }
 
 -- | Mouse and Drag/Drop events
--- 'MouseEvent' must only be used in the first part of 'eventHandler'.
+-- 'MouseEvent' must only be used in the first part of 'handleEvent'.
 -- https://facebook.github.io/react/docs/events.html#mouse-events
 -- https://developer.mozilla.org/en-US/docs/Web/Events
 -- Event names (eventType)
@@ -186,7 +186,7 @@ unsafeGetModifierState :: J.JSVal -> J.JSString -> Bool
 unsafeGetModifierState obj k = J.fromJSBool $ js_unsafeGetModifierState obj k
 
 -- | We can lie about this not being in IO because
--- within the strict part of 'eventHandlerM'
+-- within the strict part of 'handleEventM'
 -- the SyntheticEvent is effectively immutable.
 parseMouseEvent :: SyntheticEvent -> Maybe MouseEvent
 parseMouseEvent (SyntheticEvent evt) | js_isMouseEvent (js_unsafeProperty evt "nativeEvent") = Just $
@@ -209,7 +209,7 @@ parseMouseEvent (SyntheticEvent evt) | js_isMouseEvent (js_unsafeProperty evt "n
 parseMouseEvent _ | otherwise = Nothing
 
 -- | Keyboard events
--- 'KeyboardEvent' must only be used in the first part of 'eventHandler'.
+-- 'KeyboardEvent' must only be used in the first part of 'handleEvent'.
 -- https://facebook.github.io/react/docs/events.html#keyboard-events
 -- https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent
 -- Event names (eventType)
@@ -232,7 +232,7 @@ data KeyboardEvent = KeyboardEvent
 instance NFData KeyboardEvent
 
 -- | We can lie about this not being in IO because
--- within the strict part of 'eventHandlerM'
+-- within the strict part of 'handleEventM'
 -- the SyntheticEvent is effectively immutable.
 parseKeyboardEvent :: SyntheticEvent -> Maybe KeyboardEvent
 parseKeyboardEvent (SyntheticEvent evt) | js_isKeyboardEvent (js_unsafeProperty evt "nativeEvent") = Just $
@@ -282,11 +282,11 @@ foreign import javascript unsafe
     "$1['isPropagationStopped']()"
     js_isPropagationStopped :: SyntheticEvent -> Bool
 
--- | unsafe and non-IO to enable lazy parsing. See mkEventHandler
+-- | unsafe and non-IO to enable lazy parsing. See handleEvent
 foreign import javascript unsafe "$1[$2]"
   js_unsafeProperty :: J.JSVal -> J.JSString -> J.JSVal
 
--- | unsafe to enable lazy parsing. See mkEventHandler
+-- | unsafe to enable lazy parsing. See handleEvent
 foreign import javascript unsafe
     "$1['getModifierState']($2)"
     js_unsafeGetModifierState :: J.JSVal -> J.JSString -> J.JSVal
@@ -322,11 +322,11 @@ js_stopPropagation _ = pure ()
 js_isPropagationStopped :: SyntheticEvent -> Bool
 js_isPropagationStopped _ = False
 
--- | unsafe and non-IO to enable lazy parsing. See mkEventHandler
+-- | unsafe and non-IO to enable lazy parsing. See handleEvent
 js_unsafeProperty :: J.JSVal -> J.JSString -> J.JSVal
 js_unsafeProperty _ _ = J.nullRef
 
--- | unsafe to enable lazy parsing. See mkEventHandler
+-- | unsafe to enable lazy parsing. See handleEvent
 js_unsafeGetModifierState :: J.JSVal -> J.JSString -> J.JSVal
 js_unsafeGetModifierState _ _ = J.nullRef
 
