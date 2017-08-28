@@ -29,7 +29,7 @@ import Control.Monad.Fix
 import Control.Monad.Morph
 import Control.Monad.Reader
 import Control.Monad.State.Strict
-import qualified Data.DList as D
+import qualified Data.DList as DL
 import Data.Semigroup
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
@@ -74,8 +74,8 @@ fromMarkup (ElementMarkup e) = pure e
 -- build up a computations to generate a '[ReactMarkup]'.
 -- You can use 'runStateT' with an initial state of 'mempty'.
 newtype ReactMlT m a = ReactMlT
-    { runReactMlT :: StateT (D.DList ReactMarkup) m a
-    } deriving ( MonadState (D.DList ReactMarkup)
+    { runReactMlT :: StateT (DL.DList ReactMarkup) m a
+    } deriving ( MonadState (DL.DList ReactMarkup)
                , Monad
                , Applicative
                , Functor
@@ -103,13 +103,13 @@ instance (Monoid a, Monad m) => Monoid (ReactMlT m a) where
 
 -- | To use an exisitng ReactElement
 fromElement :: Applicative m => R.ReactElement -> ReactMlT m ()
-fromElement e = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` ElementMarkup e)
+fromElement e = ReactMlT . StateT $ \xs -> pure ((), xs `DL.snoc` ElementMarkup e)
 
 -- | Convert the ReactMlt to [R.ReactElement]
 toElements :: MonadIO io => ReactMlT io () -> io [R.ReactElement]
 toElements m = do
     xs <- execStateT (runReactMlT m) mempty
-    liftIO $ sequenceA $ fromMarkup <$> D.toList xs
+    liftIO $ sequenceA $ fromMarkup <$> DL.toList xs
 
 -- | Fully render the ReactMlt into a R.ReactElement
 toElement :: MonadIO io => ReactMlT io () -> io R.ReactElement
@@ -123,7 +123,7 @@ toElement m = toElements m >>= (liftIO . R.mkCombinedElements)
 
 -- | For text content
 txt :: Applicative m => J.JSString -> ReactMlT m ()
-txt n = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` TextMarkup n)
+txt n = ReactMlT . StateT $ \xs -> pure ((), xs `DL.snoc` TextMarkup n)
 
 -- | For the contentless elements: eg 'br_'
 -- Note: listeners or properties with the same name will silently overwrite previous settings.
@@ -133,7 +133,7 @@ lf
     -> [Listener]
     -> [JE.Property]
     -> ReactMlT m ()
-lf n ls props = ReactMlT . StateT $ \xs -> pure ((), xs `D.snoc` LeafMarkup (LeafParam n ls props))
+lf n ls props = ReactMlT . StateT $ \xs -> pure ((), xs `DL.snoc` LeafMarkup (LeafParam n ls props))
 
 -- | For the contentful elements: eg 'div_'
 -- Note: listeners or properties with the same name will silently overwrite previous settings.
@@ -146,4 +146,4 @@ bh
     -> ReactMlT m a
 bh n ls props (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
     (a, childs') <- childs mempty
-    pure (a, xs `D.snoc` BranchMarkup (BranchParam n ls props (D.toList childs')))
+    pure (a, xs `DL.snoc` BranchMarkup (BranchParam n ls props (DL.toList childs')))
