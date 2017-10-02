@@ -18,7 +18,7 @@ import qualified JavaScript.Extras as JE
 -- | A newtype wrapper to give a noop dispose instance to React components
 -- This allows generic deriving of Plan.
 newtype ReactComponent = ReactComponent JE.JSVar
-    deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, JE.FromJS, IsString, NFData)
+    deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
 instance R.Dispose ReactComponent where
     dispose _ = pure ()

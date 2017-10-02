@@ -17,6 +17,7 @@ module Glazier.React.Dispose
 
 import Data.Coerce
 import Data.Foldable
+import Data.Semigroup
 import Control.Monad
 import Control.Concurrent.STM
 import qualified GHC.Generics as G
@@ -79,6 +80,9 @@ instance (Dispose a, Dispose b, Dispose c, Dispose d) => Dispose (a, b, c, d) wh
     dispose (a, b, c, d) = dispose a >> dispose b >> dispose c >> dispose d
 
 instance Dispose a => Dispose [a] where
+    dispose = traverse_ dispose
+
+instance Dispose a => Dispose (Maybe a) where
     dispose = traverse_ dispose
 
 instance Dispose Int where
