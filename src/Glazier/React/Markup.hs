@@ -58,7 +58,7 @@ data ReactMarkup
     | LeafMarkup LeafParam
 
 -- | Create 'ReactElement's from a 'ReactMarkup'
-fromMarkup :: ReactMarkup -> IO (R.ReactElement)
+fromMarkup :: ReactMarkup -> IO R.ReactElement
 fromMarkup (BranchMarkup (BranchParam n ls props xs)) = do
     xs' <- sequenceA $ fromMarkup <$> xs
     R.mkBranchElement n ((fmap JE.toJS' <$> ls) <> props) xs'
@@ -70,7 +70,7 @@ fromMarkup (TextMarkup str) = pure $ R.textElement str
 fromMarkup (ElementMarkup e) = pure e
 
 -- | Monadic generator of ReactMarkup.
--- It is a CPS-style WriterT (ie a StateT) to build up a function
+-- It is a CPS-style WriterT (ie a StateT) to build up a function to
 -- build up a computations to generate a '[ReactMarkup]'.
 -- You can use 'runStateT' with an initial state of 'mempty'.
 newtype ReactMlT m a = ReactMlT

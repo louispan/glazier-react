@@ -17,7 +17,6 @@ module Glazier.React.Dispose
 
 import Data.Coerce
 import Data.Foldable
-import Data.Semigroup
 import Control.Monad
 import Control.Concurrent.STM
 import qualified GHC.Generics as G
