@@ -1,14 +1,11 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
 module Glazier.React.Reactor.Run where
 
-import Control.Monad.Trans.Maybe
 import Control.Monad.Reader
 import Data.IORef
-import Data.Foldable
-import Control.Monad.Morph
 import qualified GHCJS.Foreign.Callback as J
 import qualified Glazier.React.Component as R
 import qualified Glazier.React.Event as R
@@ -31,10 +28,9 @@ instance MonadReactor IOReactor where
     doWriteIORef v a = liftIO $ writeIORef v a
     mkCallback goStrict goLazy exec = do
         env <- ask
-        let goLazy' a = hoist (\m -> runReaderT (runIOReactor m) env) (goLazy a)
-            goLazy'' a = goLazy' a >>= traverse_ exec
-            f = R.handleEventM goStrict (traverse_ goLazy'')
-        liftIO $ J.syncCallback1 J.ContinueAsync (void . runMaybeT . f)
+        let goLazy' = (`runReaderT` env) . runIOReactor . goLazy
+            f = R.handleEventM goStrict (goLazy' >=> exec)
+        liftIO $ J.syncCallback1 J.ContinueAsync (void . f)
     mkRenderer rnd = do
         env <- ask
         liftIO $ J.syncCallback' (runReaderT (runIOReactor (JE.toJS <$> R.toElement rnd)) env)

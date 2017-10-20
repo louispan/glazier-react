@@ -1,7 +1,6 @@
 module Glazier.React.Reactor where
 
 import Control.DeepSeq
-import Control.Monad.Trans.Maybe
 import Data.IORef
 import qualified Data.JSString as J
 import qualified GHCJS.Foreign.Callback as J
@@ -15,10 +14,10 @@ class Monad m =>
     doReadIORef :: IORef a -> m a
     doWriteIORef :: IORef a -> a -> m ()
     mkCallback
-        :: (Foldable t1, Foldable t2, NFData (t1 a))
-        => (J.JSVal -> MaybeT IO (t1 a))
-        -> (a -> MaybeT m (t2 c))
-        -> (c -> MaybeT IO ())
+        :: (NFData a)
+        => (J.JSVal -> IO a) -- generate event
+        -> (a -> m b) -- transform with limited effects
+        -> (b -> IO ()) -- final execution in IO
         -> m (J.Callback (J.JSVal -> IO ()))
     mkRenderer :: R.ReactMlT m () -> m (J.Callback (IO J.JSVal))
     getComponent :: m R.ReactComponent
