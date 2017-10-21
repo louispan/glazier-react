@@ -13,6 +13,7 @@ class Monad m =>
     doNewIORef :: a -> m (IORef a)
     doReadIORef :: IORef a -> m a
     doWriteIORef :: IORef a -> a -> m ()
+    doModifyIORef' :: IORef a -> (a -> a) -> m ()
     mkCallback
         :: (NFData a)
         => (J.JSVal -> IO a) -- generate event

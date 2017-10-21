@@ -26,6 +26,7 @@ instance MonadReactor IOReactor where
     doNewIORef = liftIO . newIORef
     doReadIORef = liftIO . readIORef
     doWriteIORef v a = liftIO $ writeIORef v a
+    doModifyIORef' v f = liftIO $ modifyIORef' v f
     mkCallback goStrict goLazy exec = do
         env <- ask
         let goLazy' = (`runReaderT` env) . runIOReactor . goLazy
