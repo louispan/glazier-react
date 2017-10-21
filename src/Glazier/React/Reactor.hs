@@ -14,11 +14,11 @@ class Monad m =>
     doReadIORef :: IORef a -> m a
     doWriteIORef :: IORef a -> a -> m ()
     doModifyIORef' :: IORef a -> (a -> a) -> m ()
+    mkIO :: (a -> m b) -> m (a -> IO b)
     mkCallback
         :: (NFData a)
         => (J.JSVal -> IO a) -- generate event
-        -> (a -> m b) -- transform with limited effects
-        -> (b -> IO ()) -- final execution in IO
+        -> (a -> IO ()) -- final execution in IO
         -> m (J.Callback (J.JSVal -> IO ()))
     mkRenderer :: R.ReactMlT m () -> m (J.Callback (IO J.JSVal))
     getComponent :: m R.ReactComponent

@@ -6,6 +6,7 @@ module Glazier.React.Reactor.Run where
 
 import Control.Monad.Reader
 import Data.IORef
+import Data.Function
 import qualified GHCJS.Foreign.Callback as J
 import qualified Glazier.React.Component as R
 import qualified Glazier.React.Event as R
@@ -27,14 +28,16 @@ instance MonadReactor IOReactor where
     doReadIORef = liftIO . readIORef
     doWriteIORef v a = liftIO $ writeIORef v a
     doModifyIORef' v f = liftIO $ modifyIORef' v f
-    mkCallback goStrict goLazy exec = do
+    mkIO f = do
         env <- ask
-        let goLazy' = (`runReaderT` env) . runIOReactor . goLazy
-            f = R.handleEventM goStrict (goLazy' >=> exec)
+        let g = (env &) . runReaderT . runIOReactor . f
+        pure g
+    mkCallback goStrict goLazy = do
+        let f = R.handleEventM goStrict goLazy
         liftIO $ J.syncCallback1 J.ContinueAsync (void . f)
     mkRenderer rnd = do
         env <- ask
-        liftIO $ J.syncCallback' (runReaderT (runIOReactor (JE.toJS <$> R.toElement rnd)) env)
+        liftIO $ J.syncCallback' ((env &) . runReaderT . runIOReactor $ JE.toJS <$> R.toElement rnd)
     getComponent = do
         (_, c) <- ask
         pure c
