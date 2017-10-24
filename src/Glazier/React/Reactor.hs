@@ -1,3 +1,5 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+
 module Glazier.React.Reactor where
 
 import Control.DeepSeq
@@ -6,7 +8,11 @@ import qualified Data.JSString as J
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
 import qualified Glazier.React.Component as R
+import qualified Glazier.React.Dispose as R
 import qualified Glazier.React.Markup as R
+
+newtype Renderer = Renderer { runRenderer :: J.Callback (IO J.JSVal) } deriving R.Dispose
+newtype Key = Key { runKey :: J.JSString } deriving (Read, Show, Eq, Ord, R.Dispose)
 
 class Monad m =>
       MonadReactor m where
@@ -20,9 +26,9 @@ class Monad m =>
         => (J.JSVal -> IO a) -- generate event
         -> (a -> IO ()) -- final execution in IO
         -> m (J.Callback (J.JSVal -> IO ()))
-    mkRenderer :: R.ReactMlT m () -> m (J.Callback (IO J.JSVal))
+    mkRenderer :: R.ReactMlT m () -> m Renderer
     getComponent :: m R.ReactComponent
-    mkKey :: m Int
+    mkSeq :: m Int
 
-mkKey' :: MonadReactor m => m J.JSString
-mkKey' = (J.pack . show) <$> mkKey
+mkKey :: MonadReactor m => m Key
+mkKey = (Key . J.pack . show) <$> mkKey

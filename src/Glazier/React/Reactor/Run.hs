@@ -5,6 +5,7 @@
 module Glazier.React.Reactor.Run where
 
 import Control.Monad.Reader
+import Data.Coerce
 import Data.IORef
 import Data.Function
 import qualified GHCJS.Foreign.Callback as J
@@ -37,11 +38,11 @@ instance MonadReactor IOReactor where
         liftIO $ J.syncCallback1 J.ContinueAsync (void . f)
     mkRenderer rnd = do
         env <- ask
-        liftIO $ J.syncCallback' ((env &) . runReaderT . runIOReactor $ JE.toJS <$> R.toElement rnd)
+        liftIO . coerce $ J.syncCallback' ((env &) . runReaderT . runIOReactor $ JE.toJS <$> R.toElement rnd)
     getComponent = do
         (_, c) <- ask
         pure c
-    mkKey = do
+    mkSeq = do
         (v, _) <- ask
         i <- liftIO $ readIORef v
         liftIO $ modifyIORef' v (\j -> (j `mod` JE.maxSafeInteger) + 1)
