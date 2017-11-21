@@ -19,6 +19,7 @@ import Data.Coerce
 import Data.Foldable
 import Control.Monad
 import Control.Concurrent.STM
+import qualified Data.DList as DL
 import qualified GHC.Generics as G
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
@@ -79,6 +80,9 @@ instance (Dispose a, Dispose b, Dispose c, Dispose d) => Dispose (a, b, c, d) wh
     dispose (a, b, c, d) = dispose a >> dispose b >> dispose c >> dispose d
 
 instance Dispose a => Dispose [a] where
+    dispose = traverse_ dispose
+
+instance Dispose a => Dispose (DL.DList a) where
     dispose = traverse_ dispose
 
 instance Dispose a => Dispose (Maybe a) where
