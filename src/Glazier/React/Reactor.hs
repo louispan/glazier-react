@@ -12,7 +12,7 @@ import qualified Glazier.React.Dispose as R
 import qualified Glazier.React.Markup as R
 
 newtype Renderer = Renderer { runRenderer :: J.Callback (IO J.JSVal) } deriving R.Dispose
-newtype Key = Key { runKey :: J.JSString } deriving (Read, Show, Eq, Ord, R.Dispose)
+newtype ReactKey = ReactKey { runReactKey :: J.JSString } deriving (Read, Show, Eq, Ord, R.Dispose)
 
 class Monad m =>
       MonadReactor m where
@@ -30,5 +30,5 @@ class Monad m =>
     getComponent :: m R.ReactComponent
     mkSeq :: m Int
 
-mkKey :: MonadReactor m => m Key
-mkKey = (Key . J.pack . show) <$> mkKey
+mkReactKey :: MonadReactor m => m ReactKey
+mkReactKey = (ReactKey . J.pack . show) <$> mkReactKey
