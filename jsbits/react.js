@@ -31,9 +31,10 @@ function hgr$component() {
         var ReactPureComponent = hgr$React()["PureComponent"];
         class Shim extends ReactPureComponent {
 
-            componentDidUpdate() {
-                if (this.props['componentDidUpdate'])
-                    this.props['componentDidUpdate'](this.state);
+            componentDidUpdate(prevProps, prevState) {
+                // ignore prevProps, prevState and forward to a custom callback that
+                if (this.props['updated'])
+                    this.props['updated'](this.state);
             }
 
             render() {
