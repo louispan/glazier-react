@@ -21,7 +21,7 @@ newtype ReactComponent = ReactComponent JE.JSVar
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
 instance R.Dispose ReactComponent where
-    dispose _ = pure ()
+    dispose _ = mempty
 
 mkReactComponent :: IO ReactComponent
 mkReactComponent = ReactComponent <$> js_mkReactComponent

@@ -28,7 +28,7 @@ newtype ReactElement = ReactElement JE.JSVar
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
 instance R.Dispose ReactElement where
-    dispose _ = pure ()
+    dispose _ = mempty
 
 -- | Unfortunately, ReactJS did not export an easy way to check if something is a ReactElement,
 -- although they do so in the internal code with REACT_ELEMENT_TYPE.

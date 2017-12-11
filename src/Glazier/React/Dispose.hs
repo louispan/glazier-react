@@ -15,20 +15,28 @@ module Glazier.React.Dispose
     , GDispose(..)
     ) where
 
-import Data.Coerce
-import Data.Foldable
 import Control.Monad
 import Control.Concurrent.STM
 import qualified Data.DList as DL
 import Data.IORef
+import Data.Semigroup
 import qualified GHC.Generics as G
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
 import qualified JavaScript.Extras.JSVar as JE
 
 -- | A wrapper around authorized IO actions.
-newtype Disposable a = Disposable { runDisposable :: IO a }
-   deriving (Functor, Applicative, Monad, Monoid)
+newtype Disposable a = Disposable { runDisposable :: Maybe (IO a) }
+    deriving (Functor) -- , Applicative, Monad, Monoid)
+
+instance Semigroup (Disposable ()) where
+    (Disposable Nothing) <> f = f
+    f <> (Disposable Nothing) = f
+    (Disposable (Just f)) <> (Disposable (Just g)) = Disposable (Just (f >> g))
+
+instance Monoid (Disposable ()) where
+    mempty = Disposable Nothing
+    mappend = (<>)
 
 -- | A 'Dispose' is something with some resources tod release
 class Dispose a where
@@ -45,14 +53,14 @@ class GDispose f where
     gDispose :: f p -> Disposable ()
 
 instance GDispose G.U1 where
-  gDispose G.U1 = pure ()
+  gDispose G.U1 = mempty
 
 instance (GDispose f, GDispose g) => GDispose (f G.:+: g) where
   gDispose (G.L1 x) = gDispose x
   gDispose (G.R1 x) = gDispose x
 
 instance (GDispose f, GDispose g) => GDispose (f G.:*: g) where
-  gDispose (x G.:*: y) = gDispose x >> gDispose y
+  gDispose (x G.:*: y) = gDispose x <> gDispose y
 
 instance (Dispose c) => GDispose (G.K1 i c) where
   gDispose (G.K1 x) = dispose x
@@ -63,49 +71,55 @@ instance (GDispose f) => GDispose (G.M1 i t f) where
 ------------------------------
 
 instance Dispose (J.Callback a) where
-    dispose = Disposable . J.releaseCallback
+    dispose = Disposable . Just . J.releaseCallback
 
 instance Dispose J.JSString where
-    dispose _ = pure ()
+    dispose _ = mempty
 
 instance Dispose JE.JSVar where
-    dispose _ = pure ()
+    dispose _ = mempty
 
 instance (Dispose a, Dispose b) => Dispose (a, b) where
-    dispose (a, b) = dispose a >> dispose b
+    dispose (a, b) = dispose a <> dispose b
 
 instance (Dispose a, Dispose b, Dispose c) => Dispose (a, b, c) where
-    dispose (a, b, c) = dispose a >> dispose b >> dispose c
+    dispose (a, b, c) = dispose a <> dispose b <> dispose c
 
 instance (Dispose a, Dispose b, Dispose c, Dispose d) => Dispose (a, b, c, d) where
-    dispose (a, b, c, d) = dispose a >> dispose b >> dispose c >> dispose d
+    dispose (a, b, c, d) = dispose a <> dispose b <> dispose c <> dispose d
 
 instance Dispose a => Dispose [a] where
-    dispose = traverse_ dispose
+    dispose = foldMap dispose
 
 instance Dispose a => Dispose (DL.DList a) where
-    dispose = traverse_ dispose
+    dispose = foldMap dispose
 
 instance Dispose a => Dispose (Maybe a) where
-    dispose = traverse_ dispose
+    dispose = foldMap dispose
 
 instance Dispose Int where
-    dispose _ = pure ()
+    dispose _ = mempty
 
 instance Dispose J.JSVal where
-    dispose _ = pure ()
+    dispose _ = mempty
 
 instance Dispose a => Dispose (TVar a) where
-    dispose a = Disposable $ do
+    dispose a = Disposable $ Just $ do
         a' <- readTVarIO a
-        coerce (dispose a')
+        let Disposable f = dispose a' in case f of
+           Nothing -> pure ()
+           Just f' -> f'
 
 instance Dispose a => Dispose (TMVar a) where
-    dispose a = Disposable $ do
+    dispose a = Disposable $ Just $ do
         a' <- atomically $ readTMVar a
-        coerce (dispose a')
+        let Disposable f = dispose a' in case f of
+           Nothing -> pure ()
+           Just f' -> f'
 
 instance Dispose a => Dispose (IORef a) where
-    dispose a = Disposable $ do
+    dispose a = Disposable $ Just $ do
         a' <- readIORef a
-        coerce (dispose a')
+        let Disposable f = dispose a' in case f of
+           Nothing -> pure ()
+           Just f' -> f'
