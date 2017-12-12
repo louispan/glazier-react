@@ -27,7 +27,7 @@ import qualified JavaScript.Extras.JSVar as JE
 
 -- | A wrapper around authorized IO actions.
 newtype Disposable a = Disposable { runDisposable :: Maybe (IO a) }
-    deriving (Functor) -- , Applicative, Monad, Monoid)
+    deriving Functor
 
 instance Semigroup (Disposable ()) where
     (Disposable Nothing) <> f = f
