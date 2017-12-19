@@ -1,8 +1,13 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
-module Glazier.React.Reactor.Run where
+module Glazier.React.Reactor.Run (
+    IOReactor(..)
+    ) where
 
 import Control.Monad.Reader
 import Data.Coerce
@@ -15,35 +20,33 @@ import qualified Glazier.React.Markup as R
 import Glazier.React.Reactor as R
 import JavaScript.Extras as JE
 
-newtype IOReactor a = IOReactor
-    { runIOReactor :: ReaderT (IORef Int, R.ReactComponent) IO a
+newtype IOReactor x a = IOReactor
+    { runIOReactor :: ReaderT (IORef Int, R.ReactComponent, x -> IO ()) IO a
     } deriving ( Functor
                , Applicative
                , Monad
                , MonadIO
-               , MonadReader (IORef Int, R.ReactComponent)
+               , MonadReader (IORef Int, R.ReactComponent, x -> IO ())
                )
 
-instance MonadReactor IOReactor where
+instance MonadReactor x (IOReactor x) where
     doNewIORef = liftIO . newIORef
     doReadIORef = liftIO . readIORef
     doWriteIORef v a = liftIO $ writeIORef v a
     doModifyIORef' v f = liftIO $ modifyIORef' v f
-    mkIO f = do
-        env <- ask
-        let g = (env &) . runReaderT . runIOReactor . f
-        pure g
     mkCallback goStrict goLazy = do
-        let f = R.handleEventM goStrict goLazy
+        env@(_, _, ex) <- ask
+        let goLazy' = (env &) . runReaderT . runIOReactor . goLazy
+        let f = R.handleEventM goStrict (goLazy' >=> ex)
         liftIO $ J.syncCallback1 J.ContinueAsync (void . f)
     mkRenderer rnd = do
         env <- ask
         liftIO . coerce $ J.syncCallback' ((env &) . runReaderT . runIOReactor $ JE.toJS <$> R.toElement rnd)
     getComponent = do
-        (_, c) <- ask
+        (_, c, _) <- ask
         pure c
     mkSeq = do
-        (v, _) <- ask
+        (v, _, _) <- ask
         i <- liftIO $ readIORef v
         liftIO $ modifyIORef' v (\j -> (j `mod` JE.maxSafeInteger) + 1)
         pure i

@@ -1,4 +1,6 @@
+{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module Glazier.React.Reactor where
 
@@ -19,21 +21,21 @@ newtype Renderer = Renderer { runRenderer :: J.Callback (IO J.JSVal) }
 newtype ReactKey = ReactKey { runReactKey :: J.JSString }
     deriving (Read, Show, Eq, Ord, R.Dispose, JE.ToJS, JE.FromJS, IsString, J.IsJSVal, J.PToJSVal)
 
+-- | x is the type of execution commands
 class Monad m =>
-      MonadReactor m where
+      MonadReactor x m | m -> x where
     doNewIORef :: a -> m (IORef a)
     doReadIORef :: IORef a -> m a
     doWriteIORef :: IORef a -> a -> m ()
     doModifyIORef' :: IORef a -> (a -> a) -> m ()
-    mkIO :: (a -> m b) -> m (a -> IO b)
     mkCallback
         :: (NFData a)
-        => (J.JSVal -> IO a) -- generate event
-        -> (a -> IO ()) -- final execution in IO
+        => (J.JSVal -> IO a) -- generate event strictly
+        -> (a -> m x) -- produce final execution lazily
         -> m (J.Callback (J.JSVal -> IO ()))
     mkRenderer :: R.ReactMlT m () -> m Renderer
     getComponent :: m R.ReactComponent
     mkSeq :: m Int
 
-mkReactKey :: MonadReactor m => m ReactKey
+mkReactKey :: MonadReactor x m => m ReactKey
 mkReactKey = (ReactKey . J.pack . show) <$> mkReactKey
