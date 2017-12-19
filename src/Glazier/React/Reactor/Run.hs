@@ -11,6 +11,7 @@ module Glazier.React.Reactor.Run (
 
 import Control.Monad.Reader
 import Data.Coerce
+import qualified Data.DList as DL
 import Data.IORef
 import Data.Function
 import qualified GHCJS.Foreign.Callback as J
@@ -21,12 +22,12 @@ import Glazier.React.Reactor as R
 import JavaScript.Extras as JE
 
 newtype IOReactor x a = IOReactor
-    { runIOReactor :: ReaderT (IORef Int, R.ReactComponent, x -> IO ()) IO a
+    { runIOReactor :: ReaderT (IORef Int, R.ReactComponent, DL.DList x -> IO ()) IO a
     } deriving ( Functor
                , Applicative
                , Monad
                , MonadIO
-               , MonadReader (IORef Int, R.ReactComponent, x -> IO ())
+               , MonadReader (IORef Int, R.ReactComponent, DL.DList x -> IO ())
                )
 
 instance MonadReactor x (IOReactor x) where

@@ -5,6 +5,7 @@
 module Glazier.React.Reactor where
 
 import Control.DeepSeq
+import qualified Data.DList as DL
 import Data.IORef
 import qualified Data.JSString as J
 import Data.String
@@ -31,7 +32,7 @@ class Monad m =>
     mkCallback
         :: (NFData a)
         => (J.JSVal -> IO a) -- generate event strictly
-        -> (a -> m x) -- produce final execution lazily
+        -> (a -> m (DL.DList x)) -- produce final execution lazily
         -> m (J.Callback (J.JSVal -> IO ()))
     mkRenderer :: R.ReactMlT m () -> m Renderer
     getComponent :: m R.ReactComponent
