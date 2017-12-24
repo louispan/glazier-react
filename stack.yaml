@@ -37,16 +37,13 @@ resolver: lts-7.19
 # will not be run. This is useful for tweaking upstream packages.
 packages:
 - '.'
-- location: '/Users/louis/repo/hs/glazier'
-  extra-dep: true
-- location: '/Users/louis/repo/js/javascript-extras'
-  extra-dep: true
+# - location: '/Users/louis/repo/js/javascript-extras'
+#   extra-dep: true
 
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
 extra-deps:
-# - glazier-0.12.0.0
-# - javascript-extras-0.3.2.0
+- javascript-extras-0.3.2.0
 - ghcjs-base-stub-0.1.0.4
 
 # Override default flag values for local packages and extra-deps
