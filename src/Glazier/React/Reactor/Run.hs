@@ -35,6 +35,12 @@ instance MonadReactor x (IOReactor x) where
     doReadIORef = liftIO . readIORef
     doWriteIORef v a = liftIO $ writeIORef v a
     doModifyIORef' v f = liftIO $ modifyIORef' v f
+    doModifyIORefM v f = do
+        env <- ask
+        liftIO $ do
+            x <- readIORef v
+            x' <- (env &) . runReaderT . runIOReactor $ f x
+            writeIORef v x'
     mkCallback goStrict goLazy = do
         env@(_, _, ex) <- ask
         let goLazy' = (env &) . runReaderT . runIOReactor . goLazy
@@ -42,7 +48,7 @@ instance MonadReactor x (IOReactor x) where
         liftIO $ J.syncCallback1 J.ContinueAsync (void . f)
     mkRenderer rnd = do
         env <- ask
-        liftIO . coerce $ J.syncCallback' ((env &) . runReaderT . runIOReactor $ JE.toJS <$> R.toElement rnd)
+        liftIO  $ J.syncCallback' ((env &) . runReaderT . runIOReactor $ JE.toJS <$> R.toElement rnd)
     getComponent = do
         (_, c, _) <- ask
         pure c
