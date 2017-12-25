@@ -10,7 +10,6 @@ module Glazier.React.Reactor.Run (
     ) where
 
 import Control.Monad.Reader
-import Data.Coerce
 import qualified Data.DList as DL
 import Data.IORef
 import Data.Function
