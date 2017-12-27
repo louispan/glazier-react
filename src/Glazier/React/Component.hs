@@ -8,7 +8,7 @@ module Glazier.React.Component
     ) where
 
 import Control.DeepSeq
-import qualified Glazier.React.Dispose as R
+import qualified Control.Disposable as CD
 import Data.String
 import qualified GHC.Generics as G
 import qualified GHCJS.Types as J
@@ -20,7 +20,7 @@ import qualified JavaScript.Extras as JE
 newtype ReactComponent = ReactComponent JE.JSVar
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
-instance R.Dispose ReactComponent where
+instance CD.Dispose ReactComponent where
     dispose _ = mempty
 
 mkReactComponent :: IO ReactComponent

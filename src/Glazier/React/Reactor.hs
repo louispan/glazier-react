@@ -5,20 +5,17 @@
 module Glazier.React.Reactor where
 
 import Control.DeepSeq
+import Control.Disposable as CD
 import qualified Data.DList as DL
 import Data.IORef
-import qualified Data.JSString as J
+import qualified Data.JSString as JS
 import Data.String
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import qualified Glazier.React.Component as R
-import qualified Glazier.React.Dispose as R
 import qualified Glazier.React.Markup as R
 import JavaScript.Extras.Cast as JE
-
-newtype ReactKey = ReactKey { runReactKey :: J.JSString }
-    deriving (Read, Show, Eq, Ord, R.Dispose, JE.ToJS, JE.FromJS, IsString, J.IsJSVal, J.PToJSVal)
 
 -- | x is the type of execution commands
 class Monad m =>
@@ -37,5 +34,8 @@ class Monad m =>
     getComponent :: m R.ReactComponent
     mkSeq :: m Int
 
-mkReactKey :: MonadReactor x m => m ReactKey
-mkReactKey = (ReactKey . J.pack . show) <$> mkReactKey
+newtype ReactKey = ReactKey { runReactKey :: J.JSString }
+    deriving (Read, Show, Eq, Ord, CD.Dispose, JE.ToJS, JE.FromJS, IsString, J.IsJSVal, J.PToJSVal)
+
+mkReactKey :: MonadReactor x m => JS.JSString -> m ReactKey
+mkReactKey n = (ReactKey . JS.append n . JS.cons ':' . JS.pack . show) <$> mkSeq

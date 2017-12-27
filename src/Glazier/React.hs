@@ -1,6 +1,5 @@
 module Glazier.React
     ( module Glazier.React.Component
-    , module Glazier.React.Dispose
     , module Glazier.React.Element
     , module Glazier.React.Event
     , module Glazier.React.Markup
@@ -10,7 +9,6 @@ module Glazier.React
     ) where
 
 import Glazier.React.Component
-import Glazier.React.Dispose
 import Glazier.React.Element
 import Glazier.React.Event
 import Glazier.React.Markup

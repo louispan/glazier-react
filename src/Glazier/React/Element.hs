@@ -14,11 +14,11 @@ module Glazier.React.Element
     ) where
 
 import Control.DeepSeq
+import qualified Control.Disposable as CD
 import Data.String
 import qualified GHC.Generics as G
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
-import qualified Glazier.React.Dispose as R
 import qualified JavaScript.Array as JA
 import qualified JavaScript.Object as JO
 import qualified JavaScript.Extras as JE
@@ -27,7 +27,7 @@ import qualified JavaScript.Extras as JE
 newtype ReactElement = ReactElement JE.JSVar
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
-instance R.Dispose ReactElement where
+instance CD.Dispose ReactElement where
     dispose _ = mempty
 
 -- | Unfortunately, ReactJS did not export an easy way to check if something is a ReactElement,
