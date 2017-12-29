@@ -14,7 +14,6 @@ module Glazier.React.Element
     ) where
 
 import Control.DeepSeq
-import qualified Control.Disposable as CD
 import Data.String
 import qualified GHC.Generics as G
 import qualified GHCJS.Marshal.Pure as J
@@ -26,9 +25,6 @@ import qualified JavaScript.Extras as JE
 -- | NB. No FromJS provided. See 'unsafeCoerceElement' below.
 newtype ReactElement = ReactElement JE.JSVar
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
-
-instance CD.Dispose ReactElement where
-    dispose _ = mempty
 
 -- | Unfortunately, ReactJS did not export an easy way to check if something is a ReactElement,
 -- although they do so in the internal code with REACT_ELEMENT_TYPE.

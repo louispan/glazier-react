@@ -9,6 +9,7 @@ module Glazier.React.Reactor.Run (
     IOReactor(..)
     ) where
 
+import qualified Control.Disposable as CD
 import Control.Monad.Reader
 import qualified Data.DList as DL
 import Data.IORef
@@ -44,10 +45,14 @@ instance MonadReactor x (IOReactor x) where
         env@(_, _, ex) <- ask
         let goLazy' = (env &) . runReaderT . runIOReactor . goLazy
         let f = R.handleEventM goStrict (goLazy' >=> ex)
-        liftIO $ J.syncCallback1 J.ContinueAsync (void . f)
+        liftIO $ do
+            cb <- J.syncCallback1 J.ContinueAsync (void . f)
+            let d = CD.dispose cb in pure (d, cb)
     mkRenderer rnd = do
         env <- ask
-        liftIO  $ J.syncCallback' ((env &) . runReaderT . runIOReactor $ JE.toJS <$> R.toElement rnd)
+        liftIO $ do
+            cb <- J.syncCallback' ((env &) . runReaderT . runIOReactor $ JE.toJS <$> R.toElement rnd)
+            let d = CD.dispose cb in pure (d, cb)
     getComponent = do
         (_, c, _) <- ask
         pure c

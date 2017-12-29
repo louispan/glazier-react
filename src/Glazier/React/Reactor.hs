@@ -29,13 +29,13 @@ class Monad m =>
         :: (NFData a)
         => (J.JSVal -> IO a) -- generate event strictly
         -> (a -> m (DL.DList x)) -- produce final execution lazily
-        -> m (J.Callback (J.JSVal -> IO ()))
-    mkRenderer :: R.ReactMlT m () -> m (J.Callback (IO J.JSVal))
+        -> m (Disposable, J.Callback (J.JSVal -> IO ()))
+    mkRenderer :: R.ReactMlT m () -> m (Disposable, J.Callback (IO J.JSVal))
     getComponent :: m R.ReactComponent
     mkSeq :: m Int
 
 newtype ReactKey = ReactKey { runReactKey :: J.JSString }
-    deriving (Read, Show, Eq, Ord, CD.Dispose, JE.ToJS, JE.FromJS, IsString, J.IsJSVal, J.PToJSVal)
+    deriving (Read, Show, Eq, Ord, JE.ToJS, JE.FromJS, IsString, J.IsJSVal, J.PToJSVal)
 
 mkReactKey :: MonadReactor x m => JS.JSString -> m ReactKey
 mkReactKey n = (ReactKey . JS.append n . JS.cons ':' . JS.pack . show) <$> mkSeq

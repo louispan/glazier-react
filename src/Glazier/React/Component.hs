@@ -8,7 +8,6 @@ module Glazier.React.Component
     ) where
 
 import Control.DeepSeq
-import qualified Control.Disposable as CD
 import Data.String
 import qualified GHC.Generics as G
 import qualified GHCJS.Types as J
@@ -19,9 +18,6 @@ import qualified JavaScript.Extras as JE
 -- This allows generic deriving of Plan.
 newtype ReactComponent = ReactComponent JE.JSVar
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
-
-instance CD.Dispose ReactComponent where
-    dispose _ = mempty
 
 mkReactComponent :: IO ReactComponent
 mkReactComponent = ReactComponent <$> js_mkReactComponent
