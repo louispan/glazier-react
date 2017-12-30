@@ -8,7 +8,7 @@ import Control.DeepSeq
 import Control.Disposable as CD
 import qualified Data.DList as DL
 import Data.IORef
-import qualified Data.JSString as JS
+import qualified Data.JSString as J
 import Data.String
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Marshal.Pure as J
@@ -37,5 +37,5 @@ class Monad m =>
 newtype ReactKey = ReactKey { runReactKey :: J.JSString }
     deriving (Read, Show, Eq, Ord, JE.ToJS, JE.FromJS, IsString, J.IsJSVal, J.PToJSVal)
 
-mkReactKey :: MonadReactor x m => JS.JSString -> m ReactKey
-mkReactKey n = (ReactKey . JS.append n . JS.cons ':' . JS.pack . show) <$> mkSeq
+mkReactKey :: MonadReactor x m => J.JSString -> m ReactKey
+mkReactKey n = (ReactKey . J.append n . J.cons ':' . J.pack . show) <$> mkSeq
