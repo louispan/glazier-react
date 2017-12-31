@@ -22,6 +22,7 @@ library
                        Glazier.React.Component
                        Glazier.React.Element
                        Glazier.React.Event
+                       Glazier.React.Event.Internal
                        Glazier.React.Markup
                        Glazier.React.Reactor
                        Glazier.React.Reactor.Run

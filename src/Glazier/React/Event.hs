@@ -9,7 +9,7 @@
 
 -- | This module based on React/Flux/PropertiesAndEvents.hs.
 module Glazier.React.Event
-  ( EventTarget
+  ( EventTarget -- constructor not exported
   , NativeEvent
   , SyntheticEvent
   , handleEvent
@@ -30,21 +30,12 @@ where
 import Control.DeepSeq
 import qualified Data.JSString as J
 import Data.String
+import Glazier.React.Event.Internal
 import qualified GHC.Generics as G
 import qualified GHCJS.Foreign as J
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import qualified JavaScript.Extras as JE
-
--- | The object that dispatched the event.
--- https://developer.mozilla.org/en-US/docs/Web/API/Event/target
-newtype EventTarget =
-    EventTarget JE.JSVar
-    deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
-
-instance JE.FromJS EventTarget where
-    fromJS a | js_isEventTarget a = Just $ EventTarget $ JE.JSVar a
-    fromJS _ = Nothing
 
 -- | The native event
 -- https://developer.mozilla.org/en-US/docs/Web/API/Event
@@ -255,10 +246,6 @@ parseKeyboardEvent _ | otherwise = Nothing
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
-    "$1 instanceof EventTarget"
-    js_isEventTarget :: J.JSVal -> Bool
-
-foreign import javascript unsafe
     "$1 instanceof Event"
     js_isNativeEvent :: J.JSVal -> Bool
 
@@ -300,9 +287,6 @@ foreign import javascript unsafe
     js_isKeyboardEvent :: J.JSVal -> Bool
 
 #else
-
-js_isEventTarget :: J.JSVal -> Bool
-js_isEventTarget _ = False
 
 js_isNativeEvent :: J.JSVal -> Bool
 js_isNativeEvent _ = False
