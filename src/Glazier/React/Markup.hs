@@ -18,8 +18,8 @@ module Glazier.React.Markup
     , toElements
     , toElement
     , txt
-    , lf
-    , bh
+    , leaf
+    , branch
     ) where
 
 import Control.Applicative
@@ -130,26 +130,26 @@ txt n = ReactMlT . StateT $ \xs -> pure ((), xs `DL.snoc` TextMarkup n)
 -- Duplicate listeners with the same key will be combined, but it is a silent error
 -- if the same key is used across listeners and props.
 -- It is also a silent error to have duplicate props with the key.
-lf
+leaf
     :: Monad m
     => JE.JSVar
     -> [Listener]
     -> [JE.Property]
     -> ReactMlT m ()
-lf n ls props = ReactMlT . StateT $ \xs -> pure ((), xs `DL.snoc` LeafMarkup (LeafParam n ls props))
+leaf n ls props = ReactMlT . StateT $ \xs -> pure ((), xs `DL.snoc` LeafMarkup (LeafParam n ls props))
 
 -- | For the contentful elements: eg 'div_'
 -- Duplicate listeners with the same key will be combined, but it is a silent error
 -- if the same key is used across listeners and props.
 -- It is also a silent error to have duplicate props with the key.
-bh
+branch
     :: Monad m
     => JE.JSVar
     -> [Listener]
     -> [JE.Property]
     -> ReactMlT m a
     -> ReactMlT m a
-bh n ls props (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
+branch n ls props (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
     (a, childs') <- childs mempty
     pure (a, xs `DL.snoc` BranchMarkup (BranchParam n ls props (DL.toList childs')))
 
