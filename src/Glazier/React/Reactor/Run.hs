@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -12,14 +13,16 @@ module Glazier.React.Reactor.Run (
 import qualified Control.Disposable as CD
 import Control.Monad.Reader
 import qualified Data.DList as DL
-import Data.IORef
 import Data.Function
+import Data.IORef
+import Data.Maybe
 import qualified GHCJS.Foreign.Callback as J
 import qualified Glazier.React.Component as R
 import qualified Glazier.React.Event as R
 import qualified Glazier.React.Markup as R
 import Glazier.React.Reactor as R
 import JavaScript.Extras as JE
+import qualified JavaScript.Object as JO
 
 newtype IOReactor x a = IOReactor
     { runIOReactor :: ReaderT (IORef Int, R.ReactComponent, DL.DList x -> IO ()) IO a
@@ -61,3 +64,26 @@ instance MonadReactor x (IOReactor x) where
         i <- liftIO $ readIORef v
         liftIO $ modifyIORef' v (\j -> (j `mod` JE.maxSafeInteger) + 1)
         pure i
+    dispose d = liftIO $ fromMaybe (pure ()) (CD.runDisposable d)
+    setComponentState p j = liftIO $ js_setComponentState p j
+    focus j = liftIO $ js_focus j
+
+#ifdef __GHCJS__
+
+foreign import javascript unsafe
+  "if ($2 && $2['setState']) { $2['setState']($1); }"
+  js_setComponentState :: JO.Object -> R.ReactComponent -> IO ()
+
+foreign import javascript unsafe
+  "if ($1 && $1['focus']) { $1['focus'](); }"
+  js_focus :: R.EventTarget -> IO ()
+
+#else
+
+js_setComponentState :: JO.Object -> R.ReactComponent -> IO ()
+js_setComponentState _ _ = pure ()
+
+js_focus :: R.EventTarget -> IO ()
+js_focus _ = pure ()
+
+#endif

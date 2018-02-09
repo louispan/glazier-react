@@ -5,7 +5,7 @@
 module Glazier.React.Reactor where
 
 import Control.DeepSeq
-import Control.Disposable as CD
+import qualified Control.Disposable as CD
 import qualified Data.DList as DL
 import Data.IORef
 import qualified Data.JSString as J
@@ -14,8 +14,10 @@ import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import qualified Glazier.React.Component as R
+import qualified Glazier.React.Event as R
 import qualified Glazier.React.Markup as R
 import JavaScript.Extras.Cast as JE
+import qualified JavaScript.Object as JO
 
 -- | x is the type of execution commands
 class Monad m =>
@@ -29,10 +31,13 @@ class Monad m =>
         :: (NFData a)
         => (J.JSVal -> IO a) -- generate event strictly
         -> (a -> m (DL.DList x)) -- produce final execution lazily
-        -> m (Disposable, J.Callback (J.JSVal -> IO ()))
-    mkRenderer :: R.ReactMlT m () -> m (Disposable, J.Callback (IO J.JSVal))
+        -> m (CD.Disposable, J.Callback (J.JSVal -> IO ()))
+    mkRenderer :: R.ReactMlT m () -> m (CD.Disposable, J.Callback (IO J.JSVal))
     getComponent :: m R.ReactComponent
     mkSeq :: m Int
+    dispose :: CD.Disposable -> m ()
+    setComponentState :: JO.Object -> R.ReactComponent -> m ()
+    focus :: R.EventTarget -> m ()
 
 newtype ReactKey = ReactKey { runReactKey :: J.JSString }
     deriving (Read, Show, Eq, Ord, JE.ToJS, JE.FromJS, IsString, J.IsJSVal, J.PToJSVal)
