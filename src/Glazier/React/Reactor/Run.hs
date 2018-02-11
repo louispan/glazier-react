@@ -21,7 +21,7 @@ import qualified Glazier.React.Component as R
 import qualified Glazier.React.Event as R
 import qualified Glazier.React.Markup as R
 import Glazier.React.Reactor as R
-import JavaScript.Extras as JE
+import qualified JavaScript.Extras as JE
 import qualified JavaScript.Object as JO
 
 newtype IOReactor x a = IOReactor
@@ -44,29 +44,31 @@ instance MonadReactor x (IOReactor x) where
             x <- readIORef v
             x' <- (env &) . runReaderT . runIOReactor $ f x
             writeIORef v x'
-    mkCallback goStrict goLazy = do
+    doMkCallback goStrict goLazy = do
         env@(_, _, ex) <- ask
         let goLazy' = (env &) . runReaderT . runIOReactor . goLazy
         let f = R.handleEventM goStrict (goLazy' >=> ex)
         liftIO $ do
             cb <- J.syncCallback1 J.ContinueAsync (void . f)
             let d = CD.dispose cb in pure (d, cb)
-    mkRenderer rnd = do
+    doMkRenderer rnd = do
         env <- ask
         liftIO $ do
             cb <- J.syncCallback' ((env &) . runReaderT . runIOReactor $ JE.toJS <$> R.toElement rnd)
             let d = CD.dispose cb in pure (d, cb)
-    getComponent = do
+    doGetComponent = do
         (_, c, _) <- ask
         pure c
-    mkSeq = do
+    doMkSeq = do
         (v, _, _) <- ask
         i <- liftIO $ readIORef v
         liftIO $ modifyIORef' v (\j -> (j `mod` JE.maxSafeInteger) + 1)
         pure i
-    dispose d = liftIO $ fromMaybe (pure ()) (CD.runDisposable d)
-    setComponentState p j = liftIO $ js_setComponentState p j
-    focus j = liftIO $ js_focus j
+    doDispose d = liftIO $ fromMaybe (pure ()) (CD.runDisposable d)
+    doSetComponentState p j = liftIO $ js_setComponentState p j
+    doFocus j = liftIO $ js_focus j
+    doGetProperty n j = liftIO $ JE.getProperty n j
+    doSetProperty props j = liftIO $ JE.setProperty props j
 
 #ifdef __GHCJS__
 

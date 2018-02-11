@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -16,7 +17,7 @@ import qualified GHCJS.Types as J
 import qualified Glazier.React.Component as R
 import qualified Glazier.React.Event as R
 import qualified Glazier.React.Markup as R
-import JavaScript.Extras.Cast as JE
+import qualified JavaScript.Extras as JE
 import qualified JavaScript.Object as JO
 
 -- | x is the type of execution commands
@@ -27,20 +28,22 @@ class Monad m =>
     doWriteIORef :: IORef a -> a -> m ()
     doModifyIORef' :: IORef a -> (a -> a) -> m ()
     doModifyIORefM :: IORef a -> (a -> m a) -> m ()
-    mkCallback
+    doMkCallback
         :: (NFData a)
         => (J.JSVal -> IO a) -- generate event strictly
         -> (a -> m (DL.DList x)) -- produce final execution lazily
         -> m (CD.Disposable, J.Callback (J.JSVal -> IO ()))
-    mkRenderer :: R.ReactMlT m () -> m (CD.Disposable, J.Callback (IO J.JSVal))
-    getComponent :: m R.ReactComponent
-    mkSeq :: m Int
-    dispose :: CD.Disposable -> m ()
-    setComponentState :: JO.Object -> R.ReactComponent -> m ()
-    focus :: R.EventTarget -> m ()
+    doMkRenderer :: R.ReactMlT m () -> m (CD.Disposable, J.Callback (IO J.JSVal))
+    doGetComponent :: m R.ReactComponent
+    doMkSeq :: m Int
+    doDispose :: CD.Disposable -> m ()
+    doSetComponentState :: JO.Object -> R.ReactComponent -> m ()
+    doFocus :: R.EventTarget -> m ()
+    doGetProperty :: J.JSString -> J.JSVal -> m JE.JSVar
+    doSetProperty :: JE.Property -> J.JSVal -> m ()
 
 newtype ReactKey = ReactKey { runReactKey :: J.JSString }
     deriving (Read, Show, Eq, Ord, JE.ToJS, JE.FromJS, IsString, J.IsJSVal, J.PToJSVal)
 
-mkReactKey :: MonadReactor x m => J.JSString -> m ReactKey
-mkReactKey n = (ReactKey . J.append n . J.cons ':' . J.pack . show) <$> mkSeq
+doMkReactKey :: MonadReactor x m => J.JSString -> m ReactKey
+doMkReactKey n = (ReactKey . J.append n . J.cons ':' . J.pack . show) <$> doMkSeq
