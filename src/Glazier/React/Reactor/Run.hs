@@ -44,10 +44,13 @@ instance MonadReactor x (IOReactor x) where
             x <- readIORef v
             x' <- (env &) . runReaderT . runIOReactor $ f x
             writeIORef v x'
+    doExecute xs = do
+        (_, _, ex) <- ask
+        liftIO $ ex xs
     doMkCallback goStrict goLazy = do
-        env@(_, _, ex) <- ask
+        env <- ask
         let goLazy' = (env &) . runReaderT . runIOReactor . goLazy
-        let f = R.handleEventM goStrict (goLazy' >=> ex)
+        let f = R.handleEventM goStrict goLazy'
         liftIO $ do
             cb <- J.syncCallback1 J.ContinueAsync (void . f)
             let d = CD.dispose cb in pure (d, cb)
@@ -66,9 +69,6 @@ instance MonadReactor x (IOReactor x) where
         pure i
     doDispose d = liftIO $ fromMaybe (pure ()) (CD.runDisposable d)
     doSetComponentState p j = liftIO $ js_setComponentState p j
-    doFocus j = liftIO $ js_focus j
-    doGetProperty n j = liftIO $ JE.getProperty n j
-    doSetProperty props j = liftIO $ JE.setProperty props j
 
 #ifdef __GHCJS__
 
@@ -76,16 +76,9 @@ foreign import javascript unsafe
   "if ($2 && $2['setState']) { $2['setState']($1); }"
   js_setComponentState :: JO.Object -> R.ReactComponent -> IO ()
 
-foreign import javascript unsafe
-  "if ($1 && $1['focus']) { $1['focus'](); }"
-  js_focus :: R.EventTarget -> IO ()
-
 #else
 
 js_setComponentState :: JO.Object -> R.ReactComponent -> IO ()
 js_setComponentState _ _ = pure ()
-
-js_focus :: R.EventTarget -> IO ()
-js_focus _ = pure ()
 
 #endif
