@@ -7,7 +7,6 @@ module Glazier.React.Reactor where
 
 import Control.DeepSeq
 import qualified Control.Disposable as CD
-import qualified Data.DList as DL
 import Data.IORef
 import qualified Data.JSString as J
 import Data.String
@@ -23,13 +22,12 @@ import qualified JavaScript.Object as JO
 -- This contains the base allowed effects within MonadReactor.
 -- All other extra effects must be the type of @x@.
 class Monad m =>
-      MonadReactor x m | m -> x where
+      MonadReactor m where
     doNewIORef :: a -> m (IORef a)
     doReadIORef :: IORef a -> m a
     doWriteIORef :: IORef a -> a -> m ()
     doModifyIORef' :: IORef a -> (a -> a) -> m ()
     doModifyIORefM :: IORef a -> (a -> m a) -> m ()
-    doExecute :: DL.DList x -> m ()
     doMkCallback :: (NFData a)
         => (J.JSVal -> IO a) -- generate event strictly
         -> (a -> m ()) -- produce final execution lazily
@@ -43,5 +41,5 @@ class Monad m =>
 newtype ReactKey = ReactKey { runReactKey :: J.JSString }
     deriving (Read, Show, Eq, Ord, JE.ToJS, JE.FromJS, IsString, J.IsJSVal, J.PToJSVal)
 
-doMkReactKey :: MonadReactor x m => J.JSString -> m ReactKey
+doMkReactKey :: MonadReactor m => J.JSString -> m ReactKey
 doMkReactKey n = (ReactKey . J.append n . J.cons ':' . J.pack . show) <$> doMkSeq

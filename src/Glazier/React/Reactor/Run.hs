@@ -33,7 +33,7 @@ newtype IOReactor x a = IOReactor
                , MonadReader (IORef Int, R.ReactComponent, DL.DList x -> IO ())
                )
 
-instance MonadReactor x (IOReactor x) where
+instance MonadReactor (IOReactor x) where
     doNewIORef = liftIO . newIORef
     doReadIORef = liftIO . readIORef
     doWriteIORef v a = liftIO $ writeIORef v a
@@ -44,9 +44,6 @@ instance MonadReactor x (IOReactor x) where
             x <- readIORef v
             x' <- (env &) . runReaderT . runIOReactor $ f x
             writeIORef v x'
-    doExecute xs = do
-        (_, _, ex) <- ask
-        liftIO $ ex xs
     doMkCallback goStrict goLazy = do
         env <- ask
         let goLazy' = (env &) . runReaderT . runIOReactor . goLazy
