@@ -12,7 +12,6 @@ module Glazier.React.Reactor.Run (
 
 import qualified Control.Disposable as CD
 import Control.Monad.Reader
-import qualified Data.DList as DL
 import Data.Function
 import Data.IORef
 import Data.Maybe
@@ -24,16 +23,16 @@ import Glazier.React.Reactor as R
 import qualified JavaScript.Extras as JE
 import qualified JavaScript.Object as JO
 
-newtype IOReactor x a = IOReactor
-    { runIOReactor :: ReaderT (IORef Int, R.ReactComponent, DL.DList x -> IO ()) IO a
+newtype IOReactor a = IOReactor
+    { runIOReactor :: ReaderT (IORef Int, R.ReactComponent) IO a
     } deriving ( Functor
                , Applicative
                , Monad
                , MonadIO
-               , MonadReader (IORef Int, R.ReactComponent, DL.DList x -> IO ())
+               , MonadReader (IORef Int, R.ReactComponent)
                )
 
-instance MonadReactor (IOReactor x) where
+instance MonadReactor IOReactor where
     doNewIORef = liftIO . newIORef
     doReadIORef = liftIO . readIORef
     doWriteIORef v a = liftIO $ writeIORef v a
@@ -57,10 +56,10 @@ instance MonadReactor (IOReactor x) where
             cb <- J.syncCallback' ((env &) . runReaderT . runIOReactor $ JE.toJS <$> R.toElement rnd)
             let d = CD.dispose cb in pure (d, cb)
     doGetComponent = do
-        (_, c, _) <- ask
+        (_, c) <- ask
         pure c
     doMkSeq = do
-        (v, _, _) <- ask
+        (v, _) <- ask
         i <- liftIO $ readIORef v
         liftIO $ modifyIORef' v (\j -> (j `mod` JE.maxSafeInteger) + 1)
         pure i
