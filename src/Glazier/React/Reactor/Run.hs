@@ -4,6 +4,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
 module Glazier.React.Reactor.Run (
@@ -23,16 +24,16 @@ import Glazier.React.Reactor as R
 import qualified JavaScript.Extras as JE
 import qualified JavaScript.Object as JO
 
-newtype IOReactor a = IOReactor
-    { runIOReactor :: ReaderT (IORef Int, R.ReactComponent) IO a
+newtype IOReactor x a = IOReactor
+    { runIOReactor :: ReaderT (IORef Int, R.ReactComponent, x -> IO ()) IO a
     } deriving ( Functor
                , Applicative
                , Monad
                , MonadIO
-               , MonadReader (IORef Int, R.ReactComponent)
+               , MonadReader (IORef Int, R.ReactComponent, x -> IO ())
                )
 
-instance MonadReactor IOReactor where
+instance MonadReactor x (IOReactor x) where
     doNewIORef = liftIO . newIORef
     doReadIORef = liftIO . readIORef
     doWriteIORef v a = liftIO $ writeIORef v a
@@ -56,15 +57,18 @@ instance MonadReactor IOReactor where
             cb <- J.syncCallback' ((env &) . runReaderT . runIOReactor $ JE.toJS <$> R.toElement rnd)
             let d = CD.dispose cb in pure (d, cb)
     doGetComponent = do
-        (_, c) <- ask
+        (_, c, _) <- ask
         pure c
     doMkSeq = do
-        (v, _) <- ask
+        (v, _, _) <- ask
         i <- liftIO $ readIORef v
         liftIO $ modifyIORef' v (\j -> (j `mod` JE.maxSafeInteger) + 1)
         pure i
     doDispose d = liftIO $ fromMaybe (pure ()) (CD.runDisposable d)
     doSetComponentState p j = liftIO $ js_setComponentState p j
+    doEffect x = do
+        (_, _, exec) <- ask
+        liftIO $ exec x
 
 #ifdef __GHCJS__
 

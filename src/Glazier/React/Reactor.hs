@@ -2,6 +2,7 @@
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeFamilyDependencies #-}
 
 module Glazier.React.Reactor where
 
@@ -21,8 +22,7 @@ import qualified JavaScript.Object as JO
 -- | x is the type of execution commands
 -- This contains the base allowed effects within MonadReactor.
 -- All other extra effects must be the type of @x@.
-class Monad m =>
-      MonadReactor m where
+class Monad m => MonadReactor x m | m -> x where
     doNewIORef :: a -> m (IORef a)
     doReadIORef :: IORef a -> m a
     doWriteIORef :: IORef a -> a -> m ()
@@ -37,9 +37,11 @@ class Monad m =>
     doMkSeq :: m Int
     doDispose :: CD.Disposable -> m ()
     doSetComponentState :: JO.Object -> R.ReactComponent -> m ()
+    -- Other effects not explicitly defined above
+    doEffect :: x -> m ()
 
 newtype ReactKey = ReactKey { runReactKey :: J.JSString }
     deriving (Read, Show, Eq, Ord, JE.ToJS, JE.FromJS, IsString, J.IsJSVal, J.PToJSVal)
 
-doMkReactKey :: MonadReactor m => J.JSString -> m ReactKey
+doMkReactKey :: MonadReactor x m => J.JSString -> m ReactKey
 doMkReactKey n = (ReactKey . J.append n . J.cons ':' . J.pack . show) <$> doMkSeq
