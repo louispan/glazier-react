@@ -25,13 +25,14 @@ import qualified JavaScript.Extras as JE
 import qualified JavaScript.Object as JO
 
 newtype IOReactor a = IOReactor
-    { runIOReactor :: ReaderT (IORef Int, R.ReactComponent) IO a
+    { runIOReactor :: ReaderT (IORef Int) IO a
     } deriving ( Functor
                , Applicative
                , Monad
                , MonadIO
-               , MonadReader (IORef Int, R.ReactComponent)
+               , MonadReader (IORef Int)
                )
+
 
 instance MonadReactor IOReactor where
     doNewIORef = liftIO . newIORef
@@ -56,11 +57,9 @@ instance MonadReactor IOReactor where
         liftIO $ do
             cb <- J.syncCallback' ((env &) . runReaderT . runIOReactor $ JE.toJS <$> R.toElement rnd)
             let d = CD.dispose cb in pure (d, cb)
-    doGetComponent = do
-        (_, c) <- ask
-        pure c
+    doGetComponent = liftIO R.mkReactComponent
     doMkSeq = do
-        (v, _) <- ask
+        v <- ask
         i <- liftIO $ readIORef v
         liftIO $ modifyIORef' v (\j -> (j `mod` JE.maxSafeInteger) + 1)
         pure i
