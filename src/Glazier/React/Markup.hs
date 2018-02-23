@@ -19,9 +19,7 @@ module Glazier.React.Markup
     , toElement
     , txt
     , leaf
-    , leaf'
     , branch
-    , branch'
     ) where
 
 import Control.Applicative
@@ -64,9 +62,9 @@ data ReactMarkup
 fromMarkup :: ReactMarkup -> IO R.ReactElement
 fromMarkup (BranchMarkup (BranchParam n ls props xs)) = do
     xs' <- sequenceA $ fromMarkup <$> xs
-    R.mkBranchElement n (dedupListeners ls <> props) xs'
+    R.mkBranchElement n (props <> dedupListeners ls) xs'
 
-fromMarkup (LeafMarkup (LeafParam n ls props)) = R.mkLeafElement n (dedupListeners ls <> props)
+fromMarkup (LeafMarkup (LeafParam n ls props)) = R.mkLeafElement n (props <> dedupListeners ls)
 
 fromMarkup (TextMarkup str) = pure $ R.textElement str
 
@@ -131,7 +129,10 @@ txt n = ReactMlT . StateT $ \xs -> pure ((), xs `DL.snoc` TextMarkup n)
 -- | For the contentless elements: eg 'br_'
 -- Duplicate listeners with the same key will be combined, but it is a silent error
 -- if the same key is used across listeners and props.
--- It is also a silent error to have duplicate props with the key.
+-- "If an attribute/prop is duplicated the last one defined wins."
+-- https://www.reactenlightenment.com/react-nodes/4.4.html
+-- Listeners are more important than properties so they will be rendered
+-- after properties so they do not get overridden.
 leaf
     :: Monad m
     => JE.JSVar
@@ -140,18 +141,13 @@ leaf
     -> ReactMlT m ()
 leaf n ls props = ReactMlT . StateT $ \xs -> pure ((), xs `DL.snoc` LeafMarkup (LeafParam n ls props))
 
--- | A variation of 'leaf' without specifying [Listener]
-leaf'
-    :: Monad m
-    => JE.JSVar
-    -> [JE.Property]
-    -> ReactMlT m ()
-leaf' n  = leaf n []
-
 -- | For the contentful elements: eg 'div_'
 -- Duplicate listeners with the same key will be combined, but it is a silent error
 -- if the same key is used across listeners and props.
--- It is also a silent error to have duplicate props with the key.
+-- "If an attribute/prop is duplicated the last one defined wins."
+-- https://www.reactenlightenment.com/react-nodes/4.4.html
+-- Listeners are more important than properties so they will be rendered
+-- after properties so they do not get overridden.
 branch
     :: Monad m
     => JE.JSVar
@@ -162,15 +158,6 @@ branch
 branch n ls props (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
     (a, childs') <- childs mempty
     pure (a, xs `DL.snoc` BranchMarkup (BranchParam n ls props (DL.toList childs')))
-
--- | A variation of branch without specifying [Listener]
-branch'
-    :: Monad m
-    => JE.JSVar
-    -> [JE.Property]
-    -> ReactMlT m a
-    -> ReactMlT m a
-branch' n = branch n []
 
 -- | dedups a list of (key, Callback1) by merging callbacks for the same key together.
 dedupListeners :: [Listener] -> [JE.Property]
