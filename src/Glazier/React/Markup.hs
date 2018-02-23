@@ -18,8 +18,10 @@ module Glazier.React.Markup
     , toElements
     , toElement
     , txt
-    , leaf
-    , branch
+    , lf
+    , lf'
+    , bh
+    , bh'
     , modifyMarkup
     , overChildrenProperties
     ) where
@@ -43,15 +45,15 @@ type Listener = (J.JSString, J.Callback (J.JSVal -> IO ()))
 
 -- | The parameters required to create a branch ReactElement with children
 data BranchParam = BranchParam
-    JE.JSVar
     [Listener]
+    JE.JSVar
     [JE.Property]
     [ReactMarkup]
 
 -- | The parameters required to create a leaf ReactElement (no children)
 data LeafParam = LeafParam
-    JE.JSVar
     [Listener]
+    JE.JSVar
     [JE.Property]
 
 data ReactMarkup
@@ -62,11 +64,11 @@ data ReactMarkup
 
 -- | Create 'ReactElement's from a 'ReactMarkup'
 fromMarkup :: ReactMarkup -> IO R.ReactElement
-fromMarkup (BranchMarkup (BranchParam n ls props xs)) = do
+fromMarkup (BranchMarkup (BranchParam ls n props xs)) = do
     xs' <- sequenceA $ fromMarkup <$> xs
     R.mkBranchElement n (props <> dedupListeners ls) xs'
 
-fromMarkup (LeafMarkup (LeafParam n ls props)) = R.mkLeafElement n (props <> dedupListeners ls)
+fromMarkup (LeafMarkup (LeafParam ls n props)) = R.mkLeafElement n (props <> dedupListeners ls)
 
 fromMarkup (TextMarkup str) = pure $ R.textElement str
 
@@ -135,13 +137,22 @@ txt n = ReactMlT . StateT $ \xs -> pure ((), xs `DL.snoc` TextMarkup n)
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
 -- Listeners are more important than properties so they will be rendered
 -- after properties so they do not get overridden.
-leaf
+lf'
     :: Monad m
-    => JE.JSVar
-    -> [Listener]
+    => [Listener]
+    -> JE.JSVar
     -> [JE.Property]
     -> ReactMlT m ()
-leaf n ls props = ReactMlT . StateT $ \xs -> pure ((), xs `DL.snoc` LeafMarkup (LeafParam n ls props))
+lf' ls n props = ReactMlT . StateT $ \xs -> pure ((), xs `DL.snoc` LeafMarkup (LeafParam ls n props))
+
+-- | Convenient version of 'lf'' without listeners
+-- Memonic: the listener version has a prime'
+lf
+    :: Monad m
+    => JE.JSVar
+    -> [JE.Property]
+    -> ReactMlT m ()
+lf = lf' []
 
 -- | For the contentful elements: eg 'div_'
 -- Duplicate listeners with the same key will be combined, but it is a silent error
@@ -150,16 +161,26 @@ leaf n ls props = ReactMlT . StateT $ \xs -> pure ((), xs `DL.snoc` LeafMarkup (
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
 -- Listeners are more important than properties so they will be rendered
 -- after properties so they do not get overridden.
-branch
+bh'
     :: Monad m
-    => JE.JSVar
-    -> [Listener]
+    => [Listener]
+    -> JE.JSVar
     -> [JE.Property]
     -> ReactMlT m a
     -> ReactMlT m a
-branch n ls props (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
+bh' ls n props (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
     (a, childs') <- childs mempty
-    pure (a, xs `DL.snoc` BranchMarkup (BranchParam n ls props (DL.toList childs')))
+    pure (a, xs `DL.snoc` BranchMarkup (BranchParam ls n props (DL.toList childs')))
+
+-- | Convenient version of 'bh'' without listeners
+-- Memonic: the listener version has a prime'
+bh
+    :: Monad m
+    => JE.JSVar
+    -> [JE.Property]
+    -> ReactMlT m a
+    -> ReactMlT m a
+bh = bh' []
 
 -- | dedups a list of (key, Callback1) by merging callbacks for the same key together.
 dedupListeners :: [Listener] -> [JE.Property]
@@ -179,10 +200,10 @@ overChildrenProperties ::
     ([JE.Property] -> [JE.Property])
     -> (DL.DList ReactMarkup -> DL.DList ReactMarkup)
 overChildrenProperties f childs = DL.fromList $ case DL.toList childs of
-    LeafMarkup (LeafParam j ls ps) : bs ->
-        LeafMarkup (LeafParam j ls (f ps)) : bs
-    BranchMarkup (BranchParam j ls ps as) : bs ->
-        BranchMarkup (BranchParam j ls (f ps) as) : bs
+    LeafMarkup (LeafParam ls j ps) : bs ->
+        LeafMarkup (LeafParam ls j (f ps)) : bs
+    BranchMarkup (BranchParam ls j ps as) : bs ->
+        BranchMarkup (BranchParam ls j (f ps) as) : bs
     bs -> bs
 
 #ifdef __GHCJS__
