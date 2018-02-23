@@ -20,6 +20,8 @@ module Glazier.React.Markup
     , txt
     , leaf
     , branch
+    , modifyMarkup
+    , overChildrenProperties
     ) where
 
 import Control.Applicative
@@ -162,6 +164,26 @@ branch n ls props (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
 -- | dedups a list of (key, Callback1) by merging callbacks for the same key together.
 dedupListeners :: [Listener] -> [JE.Property]
 dedupListeners = M.toList . M.fromListWith js_combineCallback1 . fmap (fmap JE.toJS')
+
+-- Given a mapping function, apply it to children of the markup
+modifyMarkup :: Monad m
+    => (DL.DList ReactMarkup -> DL.DList ReactMarkup)
+    -> ReactMlT m a -> ReactMlT m a
+modifyMarkup f (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
+    (a, childs') <- childs mempty
+    pure (a, xs `DL.append` f childs')
+
+-- Given a mapping function, apply it to all child BranchMarkup or LeafMarkup (if possible)
+-- Does not recurse into decendants.
+overChildrenProperties ::
+    ([JE.Property] -> [JE.Property])
+    -> (DL.DList ReactMarkup -> DL.DList ReactMarkup)
+overChildrenProperties f childs = DL.fromList $ case DL.toList childs of
+    LeafMarkup (LeafParam j ls ps) : bs ->
+        LeafMarkup (LeafParam j ls (f ps)) : bs
+    BranchMarkup (BranchParam j ls ps as) : bs ->
+        BranchMarkup (BranchParam j ls (f ps) as) : bs
+    bs -> bs
 
 #ifdef __GHCJS__
 
