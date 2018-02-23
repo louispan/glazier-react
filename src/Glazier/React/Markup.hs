@@ -18,10 +18,10 @@ module Glazier.React.Markup
     , toElements
     , toElement
     , txt
+    , leaf
     , lf
-    , lf'
+    , branch
     , bh
-    , bh'
     , modifyMarkup
     , overChildrenProperties
     ) where
@@ -137,22 +137,22 @@ txt n = ReactMlT . StateT $ \xs -> pure ((), xs `DL.snoc` TextMarkup n)
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
 -- Listeners are more important than properties so they will be rendered
 -- after properties so they do not get overridden.
-lf'
+leaf
     :: Monad m
     => [Listener]
     -> JE.JSVar
     -> [JE.Property]
     -> ReactMlT m ()
-lf' ls n props = ReactMlT . StateT $ \xs -> pure ((), xs `DL.snoc` LeafMarkup (LeafParam ls n props))
+leaf ls n props = ReactMlT . StateT $ \xs -> pure ((), xs `DL.snoc` LeafMarkup (LeafParam ls n props))
 
--- | Convenient version of 'lf'' without listeners
+-- | Convenient version of 'leaf' without listeners
 -- Memonic: the listener version has a prime'
 lf
     :: Monad m
     => JE.JSVar
     -> [JE.Property]
     -> ReactMlT m ()
-lf = lf' []
+lf = leaf []
 
 -- | For the contentful elements: eg 'div_'
 -- Duplicate listeners with the same key will be combined, but it is a silent error
@@ -161,18 +161,18 @@ lf = lf' []
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
 -- Listeners are more important than properties so they will be rendered
 -- after properties so they do not get overridden.
-bh'
+branch
     :: Monad m
     => [Listener]
     -> JE.JSVar
     -> [JE.Property]
     -> ReactMlT m a
     -> ReactMlT m a
-bh' ls n props (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
+branch ls n props (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
     (a, childs') <- childs mempty
     pure (a, xs `DL.snoc` BranchMarkup (BranchParam ls n props (DL.toList childs')))
 
--- | Convenient version of 'bh'' without listeners
+-- | Convenient version of 'branch' without listeners
 -- Memonic: the listener version has a prime'
 bh
     :: Monad m
@@ -180,7 +180,7 @@ bh
     -> [JE.Property]
     -> ReactMlT m a
     -> ReactMlT m a
-bh = bh' []
+bh = branch []
 
 -- | dedups a list of (key, Callback1) by merging callbacks for the same key together.
 dedupListeners :: [Listener] -> [JE.Property]
