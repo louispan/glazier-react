@@ -46,14 +46,14 @@ type Listener = (J.JSString, J.Callback (J.JSVal -> IO ()))
 -- | The parameters required to create a branch ReactElement with children
 data BranchParam = BranchParam
     [Listener]
-    JE.JSVar
+    JE.JSRep
     [JE.Property]
     [ReactMarkup]
 
 -- | The parameters required to create a leaf ReactElement (no children)
 data LeafParam = LeafParam
     [Listener]
-    JE.JSVar
+    JE.JSRep
     [JE.Property]
 
 data ReactMarkup
@@ -140,7 +140,7 @@ txt n = ReactMlT . StateT $ \xs -> pure ((), xs `DL.snoc` TextMarkup n)
 leaf
     :: Monad m
     => [Listener]
-    -> JE.JSVar
+    -> JE.JSRep
     -> [JE.Property]
     -> ReactMlT m ()
 leaf ls n props = ReactMlT . StateT $ \xs -> pure ((), xs `DL.snoc` LeafMarkup (LeafParam ls n props))
@@ -149,7 +149,7 @@ leaf ls n props = ReactMlT . StateT $ \xs -> pure ((), xs `DL.snoc` LeafMarkup (
 -- Memonic: the listener version has a prime'
 lf
     :: Monad m
-    => JE.JSVar
+    => JE.JSRep
     -> [JE.Property]
     -> ReactMlT m ()
 lf = leaf []
@@ -164,7 +164,7 @@ lf = leaf []
 branch
     :: Monad m
     => [Listener]
-    -> JE.JSVar
+    -> JE.JSRep
     -> [JE.Property]
     -> ReactMlT m a
     -> ReactMlT m a
@@ -176,7 +176,7 @@ branch ls n props (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
 -- Memonic: the listener version has a prime'
 bh
     :: Monad m
-    => JE.JSVar
+    => JE.JSRep
     -> [JE.Property]
     -> ReactMlT m a
     -> ReactMlT m a
@@ -184,7 +184,7 @@ bh = branch []
 
 -- | dedups a list of (key, Callback1) by merging callbacks for the same key together.
 dedupListeners :: [Listener] -> [JE.Property]
-dedupListeners = M.toList . M.fromListWith js_combineCallback1 . fmap (fmap JE.toJS')
+dedupListeners = M.toList . M.fromListWith js_combineCallback1 . fmap (fmap JE.toJSR)
 
 -- Given a mapping function, apply it to children of the markup
 modifyMarkup :: Monad m
@@ -213,11 +213,11 @@ overChildrenProperties f childs = DL.fromList $ case DL.toList childs of
 -- return a function that calls both callbacks
 foreign import javascript unsafe
     "$r = function(j) { $1(j); $2(j); };"
-    js_combineCallback1 :: JE.JSVar -> JE.JSVar -> JE.JSVar
+    js_combineCallback1 :: JE.JSRep -> JE.JSRep -> JE.JSRep
 
 #else
 
-js_combineCallback1 :: JE.JSVar -> JE.JSVar -> JE.JSVar
-js_combineCallback1 _ _ = JE.JSVar J.nullRef
+js_combineCallback1 :: JE.JSRep -> JE.JSRep -> JE.JSRep
+js_combineCallback1 _ _ = JE.JSRep J.nullRef
 
 #endif

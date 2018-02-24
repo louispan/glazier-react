@@ -19,11 +19,11 @@ import qualified GHC.Generics as G
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import qualified JavaScript.Array as JA
-import qualified JavaScript.Object as JO
 import qualified JavaScript.Extras as JE
+import qualified JavaScript.Object as JO
 
 -- | NB. No FromJS provided. See 'unsafeCoerceElement' below.
-newtype ReactElement = ReactElement JE.JSVar
+newtype ReactElement = ReactElement JE.JSRep
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
 -- | Unfortunately, ReactJS did not export an easy way to check if something is a ReactElement,
@@ -33,15 +33,15 @@ newtype ReactElement = ReactElement JE.JSVar
 -- This function is required when receiving ReactElement from javascript (eg in a callback)
 -- or to interface with foreign React Elements.
 unsafeCoerceElement :: J.JSVal -> ReactElement
-unsafeCoerceElement = ReactElement . JE.JSVar
+unsafeCoerceElement = ReactElement . JE.JSRep
 
 -- | Create a react element (with children) from a HashMap of properties
-mkBranchElement :: JE.JSVar -> [JE.Property] -> [ReactElement] -> IO ReactElement
+mkBranchElement :: JE.JSRep -> [JE.Property] -> [ReactElement] -> IO ReactElement
 mkBranchElement n props xs =
     js_mkBranchElement n (JE.fromProperties props) (JA.fromList $ JE.toJS <$> xs)
 
 -- | Create a react element (with no children) from a HashMap of properties
-mkLeafElement :: JE.JSVar -> [JE.Property] -> IO ReactElement
+mkLeafElement :: JE.JSRep -> [JE.Property] -> IO ReactElement
 mkLeafElement n props =
     js_mkLeafElement n (JE.fromProperties props)
 
@@ -62,11 +62,11 @@ mkCombinedElements xs = js_mkCombinedElements (JA.fromList $ JE.toJS <$> xs)
 -- and JSArray are mutable.
 foreign import javascript unsafe
     "$r = hgr$React().createElement($1, $2, $3);"
-    js_mkBranchElement :: JE.JSVar -> JO.Object -> JA.JSArray -> IO ReactElement
+    js_mkBranchElement :: JE.JSRep -> JO.Object -> JA.JSArray -> IO ReactElement
 
 foreign import javascript unsafe
     "$r = hgr$React().createElement($1, $2);"
-    js_mkLeafElement :: JE.JSVar -> JO.Object -> IO ReactElement
+    js_mkLeafElement :: JE.JSRep -> JO.Object -> IO ReactElement
 
 foreign import javascript unsafe
     "$r = $1;"
@@ -82,16 +82,16 @@ foreign import javascript unsafe
 -- | This is an IO action because even if the same args was used
 -- a different ReactElement may be created, because JSVal
 -- and JSArray are mutable.
-js_mkBranchElement :: JE.JSVar -> JO.Object -> JA.JSArray -> IO ReactElement
-js_mkBranchElement _ _ _ = pure (ReactElement $ JE.JSVar J.nullRef)
+js_mkBranchElement :: JE.JSRep -> JO.Object -> JA.JSArray -> IO ReactElement
+js_mkBranchElement _ _ _ = pure (ReactElement $ JE.JSRep J.nullRef)
 
-js_mkLeafElement :: JE.JSVar -> JO.Object -> IO ReactElement
-js_mkLeafElement _ _ =  pure (ReactElement $ JE.JSVar J.nullRef)
+js_mkLeafElement :: JE.JSRep -> JO.Object -> IO ReactElement
+js_mkLeafElement _ _ =  pure (ReactElement $ JE.JSRep J.nullRef)
 
 js_textElement :: J.JSString -> ReactElement
-js_textElement _ = ReactElement $ JE.JSVar J.nullRef
+js_textElement _ = ReactElement $ JE.JSRep J.nullRef
 
 js_mkCombinedElements :: JA.JSArray -> IO ReactElement
-js_mkCombinedElements _ = pure (ReactElement $ JE.JSVar J.nullRef)
+js_mkCombinedElements _ = pure (ReactElement $ JE.JSRep J.nullRef)
 
 #endif

@@ -22,7 +22,6 @@ library
                        Glazier.React.Component
                        Glazier.React.Element
                        Glazier.React.Event
-                       Glazier.React.Event.Internal
                        Glazier.React.Markup
                        Glazier.React.Reactor
                        Glazier.React.Reactor.Run
@@ -32,7 +31,7 @@ library
                      , deepseq >= 1.4
                      , disposable >= 0.3.0.0
                      , dlist >= 0.8
-                     , javascript-extras >= 0.3.2.0
+                     , javascript-extras >= 0.4.0.0
                      , lens >= 4
                      , mmorph >= 1
                      , mtl >= 2

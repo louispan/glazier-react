@@ -9,9 +9,9 @@
 
 -- | This module based on React/Flux/PropertiesAndEvents.hs.
 module Glazier.React.Event
-  ( EventTarget -- constructor not exported
-  , NativeEvent
-  , SyntheticEvent
+  ( EventTarget(..)
+  , NativeEvent(..)
+  , SyntheticEvent  -- constructor not exported
   , handleEvent
   , handleEventM
   , Event(..)
@@ -30,7 +30,6 @@ where
 import Control.DeepSeq
 import qualified Data.JSString as J
 import Data.String
-import Glazier.React.Event.Internal
 import qualified GHC.Generics as G
 import qualified GHCJS.Foreign as J
 import qualified GHCJS.Marshal.Pure as J
@@ -40,21 +39,31 @@ import qualified JavaScript.Extras as JE
 -- | The native event
 -- https://developer.mozilla.org/en-US/docs/Web/API/Event
 newtype NativeEvent =
-    NativeEvent JE.JSVar
+    NativeEvent JE.JSRep -- not J.JSVal so the show instance is more useful
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
 instance JE.FromJS NativeEvent where
-    fromJS a | js_isNativeEvent a = Just $ NativeEvent $ JE.JSVar a
+    fromJS a | js_isNativeEvent a = Just $ NativeEvent $ JE.JSRep a
+    fromJS _ = Nothing
+
+-- | The object that dispatched the event.
+-- https://developer.mozilla.org/en-US/docs/Web/API/Event/target
+newtype EventTarget =
+    EventTarget JE.JSRep -- not J.JSVal so the show instance is more useful
+    deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
+
+instance JE.FromJS EventTarget where
+    fromJS a | js_isEventTarget a = Just $ EventTarget $ JE.JSRep a
     fromJS _ = Nothing
 
 -- | Every event in React is a synthetic event, a cross-browser wrapper around the native event.
 -- 'SyntheticEvent' must only be used in the first part of 'handleEvent'.
 -- It is not an instance of NFData and so cannot be returned into the second lazy part of 'handleEvent'
-newtype SyntheticEvent = SyntheticEvent J.JSVal
-    deriving (G.Generic)
+newtype SyntheticEvent = SyntheticEvent JE.JSRep -- not J.JSVal so the show instance is more useful
+    deriving (G.Generic, Show)
 
 instance JE.FromJS SyntheticEvent where
-    fromJS a | js_isSyntheticEvent a = Just $ SyntheticEvent a
+    fromJS a | js_isSyntheticEvent a = Just $ SyntheticEvent $ JE.JSRep a
     fromJS _ = Nothing
 
 -- | Using the NFData idea from React/Flux/PropertiesAndEvents.hs
@@ -127,16 +136,16 @@ unsafeProperty v = J.pFromJSVal . js_unsafeProperty v
 -- within the strict part of 'handleEventM'
 -- the SyntheticEvent is effectively immutable.
 parseEvent :: SyntheticEvent -> Event
-parseEvent (SyntheticEvent evt) =
+parseEvent (SyntheticEvent (JE.JSRep evt)) =
     Event
     { bubbles = unsafeProperty evt "bubbles"
     , cancelable = unsafeProperty evt "cancelable"
-    , currentTarget = EventTarget $ JE.JSVar $ js_unsafeProperty evt "currentTarget"
+    , currentTarget = EventTarget $ JE.JSRep $ js_unsafeProperty evt "currentTarget"
     , defaultPrevented = unsafeProperty evt "defaultPrevented"
     , eventPhase = unsafeProperty evt "eventPhase"
     , isTrusted = unsafeProperty evt "isTrusted"
-    , nativeEvent = NativeEvent $ JE.JSVar $ evt
-    , target = EventTarget $ JE.JSVar $ js_unsafeProperty evt "target"
+    , nativeEvent = NativeEvent $ JE.JSRep $ evt
+    , target = EventTarget $ JE.JSRep $ js_unsafeProperty evt "target"
     , timeStamp = unsafeProperty evt "timeStamp"
     , eventType = unsafeProperty evt "type"
     }
@@ -180,7 +189,7 @@ unsafeGetModifierState obj k = J.fromJSBool $ js_unsafeGetModifierState obj k
 -- within the strict part of 'handleEventM'
 -- the SyntheticEvent is effectively immutable.
 parseMouseEvent :: SyntheticEvent -> Maybe MouseEvent
-parseMouseEvent (SyntheticEvent evt) | js_isMouseEvent (js_unsafeProperty evt "nativeEvent") = Just $
+parseMouseEvent (SyntheticEvent (JE.JSRep evt)) | js_isMouseEvent (js_unsafeProperty evt "nativeEvent") = Just $
     MouseEvent
     { altKey = unsafeProperty evt "altKey"
     , button = unsafeProperty evt "button"
@@ -192,7 +201,7 @@ parseMouseEvent (SyntheticEvent evt) | js_isMouseEvent (js_unsafeProperty evt "n
     , metaKey = unsafeProperty evt "metaKey"
     , pageX = unsafeProperty evt "pageX"
     , pageY = unsafeProperty evt "pageY"
-    , relatedTarget = EventTarget $ JE.JSVar $ js_unsafeProperty evt "relatedTarget"
+    , relatedTarget = EventTarget $ JE.JSRep $ js_unsafeProperty evt "relatedTarget"
     , screenX = unsafeProperty evt "screenX"
     , screenY = unsafeProperty evt "xcreenY"
     , shiftKey = unsafeProperty evt "shiftKey"
@@ -226,7 +235,7 @@ instance NFData KeyboardEvent
 -- within the strict part of 'handleEventM'
 -- the SyntheticEvent is effectively immutable.
 parseKeyboardEvent :: SyntheticEvent -> Maybe KeyboardEvent
-parseKeyboardEvent (SyntheticEvent evt) | js_isKeyboardEvent (js_unsafeProperty evt "nativeEvent") = Just $
+parseKeyboardEvent (SyntheticEvent (JE.JSRep evt)) | js_isKeyboardEvent (js_unsafeProperty evt "nativeEvent") = Just $
     KeyboardEvent
     { altKey = unsafeProperty evt "altKey"
     , charCode = unsafeProperty evt "charCode"
@@ -244,6 +253,10 @@ parseKeyboardEvent (SyntheticEvent evt) | js_isKeyboardEvent (js_unsafeProperty 
 parseKeyboardEvent _ | otherwise = Nothing
 
 #ifdef __GHCJS__
+
+foreign import javascript unsafe
+    "$1 instanceof EventTarget"
+    js_isEventTarget :: J.JSVal -> Bool
 
 foreign import javascript unsafe
     "$1 instanceof Event"
@@ -287,6 +300,9 @@ foreign import javascript unsafe
     js_isKeyboardEvent :: J.JSVal -> Bool
 
 #else
+
+js_isEventTarget :: J.JSVal -> Bool
+js_isEventTarget _ = False
 
 js_isNativeEvent :: J.JSVal -> Bool
 js_isNativeEvent _ = False
