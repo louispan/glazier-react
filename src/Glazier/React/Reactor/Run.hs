@@ -50,7 +50,7 @@ instance MonadReactor IOReactor where
         let goLazy' = (env &) . runReaderT . runIOReactor . goLazy
         let f = R.handleEventM goStrict goLazy'
         liftIO $ do
-            cb <- J.syncCallback1 J.ContinueAsync (void . f)
+            cb <- J.syncCallback1 J.ContinueAsync (f . JE.JSRep)
             let d = CD.dispose cb in pure (d, cb)
     doMkRenderer rnd = do
         env <- ask

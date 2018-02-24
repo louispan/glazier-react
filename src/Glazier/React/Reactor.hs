@@ -29,7 +29,7 @@ class Monad m => MonadReactor m where
     doModifyIORef' :: IORef a -> (a -> a) -> m ()
     doModifyIORefM :: IORef a -> (a -> m a) -> m ()
     doMkCallback :: (NFData a)
-        => (J.JSVal -> IO a) -- generate event strictly
+        => (JE.JSRep -> IO a) -- generate event strictly
         -> (a -> m ()) -- produce final execution lazily
         -> m (CD.Disposable, J.Callback (J.JSVal -> IO ()))
     doMkRenderer :: R.ReactMlT m () -> m (CD.Disposable, J.Callback (IO J.JSVal))
