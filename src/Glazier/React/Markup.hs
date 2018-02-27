@@ -23,7 +23,8 @@ module Glazier.React.Markup
     , branch
     , bh
     , modifyMarkup
-    , overChildrenProperties
+    , overSurfaceProperties
+    , modifySurfaceProperties
     ) where
 
 import Control.Applicative
@@ -196,15 +197,20 @@ modifyMarkup f (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
 
 -- Given a mapping function, apply it to all child BranchMarkup or LeafMarkup (if possible)
 -- Does not recurse into decendants.
-overChildrenProperties ::
+overSurfaceProperties ::
     ([JE.Property] -> [JE.Property])
     -> (DL.DList ReactMarkup -> DL.DList ReactMarkup)
-overChildrenProperties f childs = DL.fromList $ case DL.toList childs of
+overSurfaceProperties f childs = DL.fromList $ case DL.toList childs of
     LeafMarkup (LeafParam ls j ps) : bs ->
         LeafMarkup (LeafParam ls j (f ps)) : bs
     BranchMarkup (BranchParam ls j ps as) : bs ->
         BranchMarkup (BranchParam ls j (f ps) as) : bs
     bs -> bs
+
+modifySurfaceProperties :: Monad m
+    => ([JE.Property] -> [JE.Property])
+    -> ReactMlT m a -> ReactMlT m a
+modifySurfaceProperties f = modifyMarkup (overSurfaceProperties f)
 
 #ifdef __GHCJS__
 
