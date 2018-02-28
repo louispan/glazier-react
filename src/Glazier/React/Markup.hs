@@ -46,16 +46,16 @@ type Listener = (J.JSString, J.Callback (J.JSVal -> IO ()))
 
 -- | The parameters required to create a branch ReactElement with children
 data BranchParam = BranchParam
-    [Listener]
+    (DL.DList Listener)
     JE.JSRep
-    [JE.Property]
+    (DL.DList JE.Property)
     [ReactMarkup]
 
 -- | The parameters required to create a leaf ReactElement (no children)
 data LeafParam = LeafParam
-    [Listener]
+    (DL.DList Listener)
     JE.JSRep
-    [JE.Property]
+    (DL.DList JE.Property)
 
 data ReactMarkup
     = ElementMarkup R.ReactElement
@@ -67,9 +67,10 @@ data ReactMarkup
 fromMarkup :: ReactMarkup -> IO R.ReactElement
 fromMarkup (BranchMarkup (BranchParam ls n props xs)) = do
     xs' <- sequenceA $ fromMarkup <$> xs
-    R.mkBranchElement n (props <> dedupListeners ls) xs'
+    R.mkBranchElement n (DL.toList props <> dedupListeners (DL.toList ls)) xs'
 
-fromMarkup (LeafMarkup (LeafParam ls n props)) = R.mkLeafElement n (props <> dedupListeners ls)
+fromMarkup (LeafMarkup (LeafParam ls n props)) =
+    R.mkLeafElement n (DL.toList props <> dedupListeners (DL.toList ls))
 
 fromMarkup (TextMarkup str) = pure $ R.textElement str
 
@@ -140,9 +141,9 @@ txt n = ReactMlT . StateT $ \xs -> pure ((), xs `DL.snoc` TextMarkup n)
 -- after properties so they do not get overridden.
 leaf
     :: Monad m
-    => [Listener]
+    => (DL.DList Listener)
     -> JE.JSRep
-    -> [JE.Property]
+    -> (DL.DList JE.Property)
     -> ReactMlT m ()
 leaf ls n props = ReactMlT . StateT $ \xs -> pure ((), xs `DL.snoc` LeafMarkup (LeafParam ls n props))
 
@@ -153,7 +154,7 @@ lf
     => JE.JSRep
     -> [JE.Property]
     -> ReactMlT m ()
-lf = leaf []
+lf n ps = leaf DL.empty n (DL.fromList ps)
 
 -- | For the contentful elements: eg 'div_'
 -- Duplicate listeners with the same key will be combined, but it is a silent error
@@ -164,9 +165,9 @@ lf = leaf []
 -- after properties so they do not get overridden.
 branch
     :: Monad m
-    => [Listener]
+    => (DL.DList Listener)
     -> JE.JSRep
-    -> [JE.Property]
+    -> (DL.DList JE.Property)
     -> ReactMlT m a
     -> ReactMlT m a
 branch ls n props (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
@@ -181,7 +182,7 @@ bh
     -> [JE.Property]
     -> ReactMlT m a
     -> ReactMlT m a
-bh = branch []
+bh n ps = branch DL.empty n (DL.fromList ps)
 
 -- | dedups a list of (key, Callback1) by merging callbacks for the same key together.
 dedupListeners :: [Listener] -> [JE.Property]
@@ -198,7 +199,7 @@ modifyMarkup f (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
 -- Given a mapping function, apply it to all child BranchMarkup or LeafMarkup (if possible)
 -- Does not recurse into decendants.
 overSurfaceProperties ::
-    ([JE.Property] -> [JE.Property])
+    (DL.DList JE.Property -> DL.DList JE.Property)
     -> (DL.DList ReactMarkup -> DL.DList ReactMarkup)
 overSurfaceProperties f childs = DL.fromList $ case DL.toList childs of
     LeafMarkup (LeafParam ls j ps) : bs ->
@@ -208,7 +209,7 @@ overSurfaceProperties f childs = DL.fromList $ case DL.toList childs of
     bs -> bs
 
 modifySurfaceProperties :: Monad m
-    => ([JE.Property] -> [JE.Property])
+    => (DL.DList JE.Property -> DL.DList JE.Property)
     -> ReactMlT m a -> ReactMlT m a
 modifySurfaceProperties f = modifyMarkup (overSurfaceProperties f)
 
