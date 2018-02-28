@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 
@@ -152,9 +153,9 @@ leaf ls n props = ReactMlT . StateT $ \xs -> pure ((), xs `DL.snoc` LeafMarkup (
 lf
     :: Monad m
     => JE.JSRep
-    -> [JE.Property]
+    -> (DL.DList JE.Property)
     -> ReactMlT m ()
-lf n ps = leaf DL.empty n (DL.fromList ps)
+lf = leaf []
 
 -- | For the contentful elements: eg 'div_'
 -- Duplicate listeners with the same key will be combined, but it is a silent error
@@ -179,10 +180,10 @@ branch ls n props (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
 bh
     :: Monad m
     => JE.JSRep
-    -> [JE.Property]
+    -> (DL.DList JE.Property)
     -> ReactMlT m a
     -> ReactMlT m a
-bh n ps = branch DL.empty n (DL.fromList ps)
+bh = branch []
 
 -- | dedups a list of (key, Callback1) by merging callbacks for the same key together.
 dedupListeners :: [Listener] -> [JE.Property]
