@@ -149,7 +149,6 @@ leaf
 leaf ls n props = ReactMlT . StateT $ \xs -> pure ((), xs `DL.snoc` LeafMarkup (LeafParam ls n props))
 
 -- | Convenient version of 'leaf' without listeners
--- Memonic: the listener version has a prime'
 lf
     :: Monad m
     => JE.JSRep
@@ -176,7 +175,6 @@ branch ls n props (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
     pure (a, xs `DL.snoc` BranchMarkup (BranchParam ls n props (DL.toList childs')))
 
 -- | Convenient version of 'branch' without listeners
--- Memonic: the listener version has a prime'
 bh
     :: Monad m
     => JE.JSRep

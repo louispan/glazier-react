@@ -19,11 +19,11 @@ module Glazier.React.Event
   , isDefaultPrevented
   , stopPropagation
   , isPropagationStopped
-  , parseEvent
+  , toEvent
   , MouseEvent(..)
-  , parseMouseEvent
+  , toMouseEvent
   , KeyboardEvent(..)
-  , parseKeyboardEvent
+  , toKeyboardEvent
   )
 where
 
@@ -135,8 +135,8 @@ unsafeProperty v = J.pFromJSVal . js_unsafeProperty v
 -- | We can lie about this not being in IO because
 -- within the strict part of 'handleEventM'
 -- the SyntheticEvent is effectively immutable.
-parseEvent :: SyntheticEvent -> Event
-parseEvent (SyntheticEvent (JE.JSRep evt)) =
+toEvent :: SyntheticEvent -> Event
+toEvent (SyntheticEvent (JE.JSRep evt)) =
     Event
     { bubbles = unsafeProperty evt "bubbles"
     , cancelable = unsafeProperty evt "cancelable"
@@ -188,8 +188,8 @@ unsafeGetModifierState obj k = J.fromJSBool $ js_unsafeGetModifierState obj k
 -- | We can lie about this not being in IO because
 -- within the strict part of 'handleEventM'
 -- the SyntheticEvent is effectively immutable.
-parseMouseEvent :: SyntheticEvent -> Maybe MouseEvent
-parseMouseEvent (SyntheticEvent (JE.JSRep evt)) | js_isMouseEvent (js_unsafeProperty evt "nativeEvent") = Just $
+toMouseEvent :: SyntheticEvent -> Maybe MouseEvent
+toMouseEvent (SyntheticEvent (JE.JSRep evt)) | js_isMouseEvent (js_unsafeProperty evt "nativeEvent") = Just $
     MouseEvent
     { altKey = unsafeProperty evt "altKey"
     , button = unsafeProperty evt "button"
@@ -206,7 +206,7 @@ parseMouseEvent (SyntheticEvent (JE.JSRep evt)) | js_isMouseEvent (js_unsafeProp
     , screenY = unsafeProperty evt "xcreenY"
     , shiftKey = unsafeProperty evt "shiftKey"
     }
-parseMouseEvent _ | otherwise = Nothing
+toMouseEvent _ | otherwise = Nothing
 
 -- | Keyboard events
 -- 'KeyboardEvent' must only be used in the first part of 'handleEvent'.
@@ -234,8 +234,8 @@ instance NFData KeyboardEvent
 -- | We can lie about this not being in IO because
 -- within the strict part of 'handleEventM'
 -- the SyntheticEvent is effectively immutable.
-parseKeyboardEvent :: SyntheticEvent -> Maybe KeyboardEvent
-parseKeyboardEvent (SyntheticEvent (JE.JSRep evt)) | js_isKeyboardEvent (js_unsafeProperty evt "nativeEvent") = Just $
+toKeyboardEvent :: SyntheticEvent -> Maybe KeyboardEvent
+toKeyboardEvent (SyntheticEvent (JE.JSRep evt)) | js_isKeyboardEvent (js_unsafeProperty evt "nativeEvent") = Just $
     KeyboardEvent
     { altKey = unsafeProperty evt "altKey"
     , charCode = unsafeProperty evt "charCode"
@@ -250,7 +250,7 @@ parseKeyboardEvent (SyntheticEvent (JE.JSRep evt)) | js_isKeyboardEvent (js_unsa
     , shiftkey = unsafeProperty evt "shiftkey"
     , which = unsafeProperty evt "which"
     }
-parseKeyboardEvent _ | otherwise = Nothing
+toKeyboardEvent _ | otherwise = Nothing
 
 #ifdef __GHCJS__
 
