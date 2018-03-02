@@ -17,10 +17,10 @@ import Data.Function
 import Data.IORef
 import Data.Maybe
 import qualified GHCJS.Foreign.Callback as J
-import qualified Glazier.React.Component as R
-import qualified Glazier.React.Event as R
-import qualified Glazier.React.Markup as R
-import Glazier.React.Reactor as R
+import qualified Glazier.React.Component as Z
+import qualified Glazier.React.Event as Z
+import qualified Glazier.React.Markup as Z
+import Glazier.React.Reactor as Z
 import qualified JavaScript.Extras as JE
 import qualified JavaScript.Object as JO
 
@@ -39,25 +39,25 @@ instance MonadReactor IOReactor where
     doReadIORef = liftIO . readIORef
     doWriteIORef v a = liftIO $ writeIORef v a
     doModifyIORef' v f = liftIO $ modifyIORef' v f
-    doModifyIORefM v f = do
-        env <- ask
-        liftIO $ do
-            x <- readIORef v
-            x' <- (env &) . runReaderT . runIOReactor $ f x
-            writeIORef v x'
+    -- doModifyIORefM v f = do
+    --     env <- ask
+    --     liftIO $ do
+    --         x <- readIORef v
+    --         x' <- (env &) . runReaderT . runIOReactor $ f x
+    --         writeIORef v x'
     doMkCallback goStrict goLazy = do
         env <- ask
         let goLazy' = (env &) . runReaderT . runIOReactor . goLazy
-        let f = R.handleEventM goStrict goLazy'
+        let f = Z.handleEventM goStrict goLazy'
         liftIO $ do
             cb <- J.syncCallback1 J.ContinueAsync (f . JE.JSRep)
             let d = CD.dispose cb in pure (d, cb)
     doMkRenderer rnd = do
         env <- ask
         liftIO $ do
-            cb <- J.syncCallback' ((env &) . runReaderT . runIOReactor $ JE.toJS <$> R.toElement rnd)
+            cb <- J.syncCallback' ((env &) . runReaderT . runIOReactor $ JE.toJS <$> Z.toElement rnd)
             let d = CD.dispose cb in pure (d, cb)
-    doGetComponent = liftIO R.mkReactComponent
+    doGetComponent = liftIO Z.mkReactComponent
     doMkSeq = do
         v <- ask
         i <- liftIO $ readIORef v
@@ -70,11 +70,11 @@ instance MonadReactor IOReactor where
 
 foreign import javascript unsafe
   "if ($2 && $2['setState']) { $2['setState']($1); }"
-  js_setComponentState :: JO.Object -> R.ReactComponent -> IO ()
+  js_setComponentState :: JO.Object -> Z.ReactComponent -> IO ()
 
 #else
 
-js_setComponentState :: JO.Object -> R.ReactComponent -> IO ()
+js_setComponentState :: JO.Object -> Z.ReactComponent -> IO ()
 js_setComponentState _ _ = pure ()
 
 #endif

@@ -40,7 +40,7 @@ import qualified Data.Map.Strict as M
 import Data.Semigroup
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
-import qualified Glazier.React.Element as R
+import qualified Glazier.React.Element as Z
 import qualified JavaScript.Extras as JE
 
 type Listener = (J.JSString, J.Callback (J.JSVal -> IO ()))
@@ -59,21 +59,21 @@ data LeafParam = LeafParam
     (DL.DList JE.Property)
 
 data ReactMarkup
-    = ElementMarkup R.ReactElement
+    = ElementMarkup Z.ReactElement
     | TextMarkup J.JSString
     | BranchMarkup BranchParam
     | LeafMarkup LeafParam
 
 -- | Create 'ReactElement's from a 'ReactMarkup'
-fromMarkup :: ReactMarkup -> IO R.ReactElement
+fromMarkup :: ReactMarkup -> IO Z.ReactElement
 fromMarkup (BranchMarkup (BranchParam ls n props xs)) = do
     xs' <- sequenceA $ fromMarkup <$> xs
-    R.mkBranchElement n (DL.toList props <> dedupListeners (DL.toList ls)) xs'
+    Z.mkBranchElement n (DL.toList props <> dedupListeners (DL.toList ls)) xs'
 
 fromMarkup (LeafMarkup (LeafParam ls n props)) =
-    R.mkLeafElement n (DL.toList props <> dedupListeners (DL.toList ls))
+    Z.mkLeafElement n (DL.toList props <> dedupListeners (DL.toList ls))
 
-fromMarkup (TextMarkup str) = pure $ R.textElement str
+fromMarkup (TextMarkup str) = pure $ Z.textElement str
 
 fromMarkup (ElementMarkup e) = pure e
 
@@ -110,21 +110,21 @@ instance (Monoid a, Monad m) => Monoid (ReactMlT m a) where
 -------------------------------------------------
 
 -- | To use an exisitng ReactElement
-fromElement :: Applicative m => R.ReactElement -> ReactMlT m ()
+fromElement :: Applicative m => Z.ReactElement -> ReactMlT m ()
 fromElement e = ReactMlT . StateT $ \xs -> pure ((), xs `DL.snoc` ElementMarkup e)
 
--- | Convert the ReactMlt to [R.ReactElement]
-toElements :: MonadIO io => ReactMlT io () -> io [R.ReactElement]
+-- | Convert the ReactMlt to [Z.ReactElement]
+toElements :: MonadIO io => ReactMlT io () -> io [Z.ReactElement]
 toElements m = do
     xs <- execStateT (runReactMlT m) mempty
     liftIO $ sequenceA $ fromMarkup <$> DL.toList xs
 
--- | Fully render the ReactMlt into a R.ReactElement
-toElement :: MonadIO io => ReactMlT io () -> io R.ReactElement
-toElement m = toElements m >>= (liftIO . R.mkCombinedElements)
+-- | Fully render the ReactMlt into a Z.ReactElement
+toElement :: MonadIO io => ReactMlT io () -> io Z.ReactElement
+toElement m = toElements m >>= (liftIO . Z.mkCombinedElements)
 
 -- -- | toElements reading an s from the environment
--- toElements' :: MonadIO io => (s -> ReactMlT io ()) -> s -> io [R.ReactElement]
+-- toElements' :: MonadIO io => (s -> ReactMlT io ()) -> s -> io [Z.ReactElement]
 -- toElements' f = (toElements . f)
 
 -------------------------------------------------
