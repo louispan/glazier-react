@@ -18,7 +18,7 @@ import Data.IORef
 import Data.Maybe
 import qualified GHCJS.Foreign.Callback as J
 import qualified Glazier.React.Component as Z
-import qualified Glazier.React.Event as Z
+import qualified Glazier.React.Handle as Z
 import qualified Glazier.React.Markup as Z
 import Glazier.React.Reactor as Z
 import qualified JavaScript.Extras as JE

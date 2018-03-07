@@ -68,7 +68,7 @@ bh (strJS "footer") [("className", strJS "footer")] $ do
 ```
 
 ## Event handling
-React re-uses SyntheticEvent from a pool, which means it may no longer be valid if we lazily parse it. However, we still want lazy parsing so we don't parse unnecessary fields.
+React re-uses Notice from a pool, which means it may no longer be valid if we lazily parse it. However, we still want lazy parsing so we don't parse unnecessary fields.
 
 Additionally, we don't want to block during the event handling.The reason this is a problem is because Javascript is single threaded, but Haskell is lazy.
 Therefore GHCJS threads are a strange mixture of synchronous and asynchronous threads, where a synchronous thread might be converted to an asynchronous thread if a "black hole" is encountered.
@@ -83,7 +83,7 @@ eventHandlerM :: (Monad m, NFData a) => (evt -> m a) -> (a -> m b) -> (evt -> m 
 ```
 
 This safe interface requires two input functions:
-1. a function to reduce SyntheticEvent to a NFData. The mkEventCallback will ensure that the NFData is forced which will ensure all the required fields from Synthetic event has been parsed. This function must not block.
+1. a function to reduce Notice to a NFData. The mkEventCallback will ensure that the NFData is forced which will ensure all the required fields from Synthetic event has been parsed. This function must not block.
 2. a second function that uses the NFData. This function is allowed to block.
 
  mkEventHandler results in a function that you can safely pass into 'GHC.Foreign.Callback.syncCallback1' with 'GHCJS.Foreign.Callback.ContinueAsync'.

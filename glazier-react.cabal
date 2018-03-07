@@ -21,7 +21,12 @@ library
   exposed-modules:     Glazier.React
                        Glazier.React.Component
                        Glazier.React.Element
-                       Glazier.React.Event
+                       Glazier.React.Event.HashChange
+                       Glazier.React.Event.Keyboard
+                       Glazier.React.Event.Mouse
+                       Glazier.React.Event.Synthetic
+                       Glazier.React.Handle
+                       Glazier.React.Handle.Internal
                        Glazier.React.Markup
                        Glazier.React.Reactor
                        Glazier.React.Reactor.Run
