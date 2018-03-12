@@ -19,6 +19,8 @@ import qualified Glazier.React.Markup as Z
 import qualified JavaScript.Extras as JE
 import qualified JavaScript.Object as JO
 
+-- | Fixme: Remove!
+
 -- | x is the type of execution commands
 -- This contains the base allowed effects within MonadReactor.
 -- All other extra effects must be the type of @x@.

@@ -20,6 +20,7 @@ library
                        jsbits/registry.js
   exposed-modules:     Glazier.React
                        Glazier.React.Component
+                       Glazier.React.Component.Internal
                        Glazier.React.Element
                        Glazier.React.Event.HashChange
                        Glazier.React.Event.Keyboard
@@ -28,30 +29,23 @@ library
                        Glazier.React.Handle
                        Glazier.React.Handle.Internal
                        Glazier.React.Markup
-                       Glazier.React.Reactor
-                       Glazier.React.Reactor.Run
                        Glazier.React.ReactDOM
   build-depends:       base >= 4.7 && < 5
                      , containers >= 0.5
                      , deepseq >= 1.4
-                     , disposable >= 0.3.0.0
                      , dlist >= 0.8
                      , javascript-extras >= 0.4.0.0
                      , lens >= 4
                      , mmorph >= 1
                      , mtl >= 2
-                     , profunctors >= 5
-                     , semigroupoids >= 5
-                     , text >= 1.2
                      , transformers >= 0.4
-                     , unordered-containers >= 0.2.7
   default-language:    Haskell2010
   default-extensions:  ApplicativeDo
   ghc-options:         -Wall
   if impl(ghcjs)
     build-depends: ghcjs-base
   if !impl(ghcjs)
-    build-depends: ghcjs-base-stub >= 0.1.0.4 && < 1
+    build-depends: ghcjs-base-stub >= 0.1.0.4
 
 source-repository head
   type:     git

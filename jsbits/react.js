@@ -32,7 +32,8 @@ function hgr$component() {
         class Shim extends ReactPureComponent {
 
             componentDidUpdate(prevProps, prevState) {
-                // ignore prevProps, prevState and forward to a custom callback that
+                // ignore prevProps, prevState and forward to a custom callback
+                // with the current this.state
                 if (this.props['updated'])
                     this.props['updated'](this.state);
             }
