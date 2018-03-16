@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -20,9 +21,9 @@ module Glazier.React.Markup
     , toElement
     , txt
     , leaf
-    , lf
+    -- , lf
     , branch
-    , bh
+    -- , bh
     , modifyMarkup
     , overSurfaceProperties
     , modifySurfaceProperties
@@ -33,11 +34,11 @@ import Control.Lens
 import qualified Control.Monad.Fail as Fail
 import Control.Monad.Fix
 import Control.Monad.Morph
-import Control.Monad.Reader
 import Control.Monad.State.Strict
 import qualified Data.DList as DL
 import qualified Data.Map.Strict as M
 import Data.Semigroup
+import qualified GHC.Generics as G
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
 import qualified Glazier.React.Element as Z
@@ -93,6 +94,7 @@ newtype ReactMlT m a = ReactMlT
                , MonadFix
                , MonadIO
                , MFunctor
+               , G.Generic
                )
 
 type ReactMl = ReactMlT Identity
@@ -140,21 +142,20 @@ txt n = ReactMlT . StateT $ \xs -> pure ((), xs `DL.snoc` TextMarkup n)
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
 -- Listeners are more important than properties so they will be rendered
 -- after properties so they do not get overridden.
-leaf
-    :: Monad m
+leaf :: Monad m
     => (DL.DList Listener)
     -> JE.JSRep
     -> (DL.DList JE.Property)
     -> ReactMlT m ()
 leaf ls n props = ReactMlT . StateT $ \xs -> pure ((), xs `DL.snoc` LeafMarkup (LeafParam ls n props))
 
--- | Convenient version of 'leaf' without listeners
-lf
-    :: Monad m
-    => JE.JSRep
-    -> (DL.DList JE.Property)
-    -> ReactMlT m ()
-lf = leaf []
+-- -- | Convenient version of 'leaf' without listeners
+-- lf
+--     :: Monad m
+--     => JE.JSRep
+--     -> (DL.DList JE.Property)
+--     -> ReactMlT m ()
+-- lf = leaf []
 
 -- | For the contentful elements: eg 'div_'
 -- Duplicate listeners with the same key will be combined, but it is a silent error
@@ -163,8 +164,7 @@ lf = leaf []
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
 -- Listeners are more important than properties so they will be rendered
 -- after properties so they do not get overridden.
-branch
-    :: Monad m
+branch :: Monad m
     => (DL.DList Listener)
     -> JE.JSRep
     -> (DL.DList JE.Property)
@@ -174,14 +174,14 @@ branch ls n props (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
     (a, childs') <- childs mempty
     pure (a, xs `DL.snoc` BranchMarkup (BranchParam ls n props (DL.toList childs')))
 
--- | Convenient version of 'branch' without listeners
-bh
-    :: Monad m
-    => JE.JSRep
-    -> (DL.DList JE.Property)
-    -> ReactMlT m a
-    -> ReactMlT m a
-bh = branch []
+-- -- | Convenient version of 'branch' without listeners
+-- bh
+--     :: Monad m
+--     => JE.JSRep
+--     -> (DL.DList JE.Property)
+--     -> ReactMlT m a
+--     -> ReactMlT m a
+-- bh = branch []
 
 -- | dedups a list of (key, Callback1) by merging callbacks for the same key together.
 dedupListeners :: [Listener] -> [JE.Property]
