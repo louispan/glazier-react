@@ -3,9 +3,9 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Glazier.React.Component.Internal
-    ( ReactComponent(..) -- constructor exported
-    , reactComponent
-    , ReactComponentRef(..) -- constructor exported
+    ( ShimComponent(..) -- constructor exported
+    , shimComponent
+    , ComponentRef(..) -- constructor exported
     ) where
 
 import Control.DeepSeq
@@ -15,30 +15,41 @@ import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import qualified JavaScript.Extras as JE
 
--- | Returns a reference to the javascript class definition
+-- | Returns a reference to the javascript *class* definition
 -- of the shim wrapper around ReactPureComponent
-newtype ReactComponent = ReactComponent JE.JSRep
+newtype ShimComponent = ShimComponent JE.JSRep
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
 -- | There is ever only one shim class, so it is purely available
-reactComponent :: ReactComponent
-reactComponent = ReactComponent js_reactComponent
+shimComponent :: ShimComponent
+shimComponent = ShimComponent js_shimComponent
 
 -- | This is used store the react "ref" to a javascript instance
--- of the ReactComponent, so that react "this.setState" can be called.
-newtype ReactComponentRef = ReactComponentRef JE.JSRep
+-- of a react Component, so that react "this.setState" can be called.
+newtype ComponentRef = ComponentRef JE.JSRep
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
+
+instance JE.FromJS ComponentRef where
+    fromJS a | js_isComponent a = Just $ ComponentRef $ JE.JSRep a
+    fromJS _ = Nothing
 
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
-  "$r = hgr$component();"
-  js_reactComponent
+  "$r = hgr$shimComponent();"
+  js_shimComponent
       :: JE.JSRep
+
+foreign import javascript unsafe
+    "$1 && $1['prototype'] && !!($1['prototype']['isReactComponent'])"
+    js_isComponent :: J.JSVal -> Bool
 
 #else
 
-js_reactComponent :: JE.JSRep
-js_reactComponent = JE.JSRep J.nullRef
+js_shimComponent :: JE.JSRep
+js_shimComponent = JE.JSRep J.nullRef
+
+js_isComponent :: J.JSVal -> Bool
+js_isComponent _ = False
 
 #endif

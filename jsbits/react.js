@@ -22,9 +22,9 @@ function hgr$ReactDOM() {
     return hgr$ReactDOM_;
 }
 
-var hgr$component_ = null;
-function hgr$component() {
-    if (!hgr$component_) {
+var hgr$shimComponent_ = null;
+function hgr$shimComponent() {
+    if (!hgr$shimComponent_) {
         // Inheriting from Component means every call to this.setState will result in a render
         // Inheriting from PureComponet means a shallow comparison will be made
         // Protect "PureComponent" from closure compiler because it's not in the official externs
@@ -33,9 +33,8 @@ function hgr$component() {
 
             componentDidUpdate(prevProps, prevState) {
                 // ignore prevProps, prevState and forward to a custom callback
-                // with the current this.state
                 if (this.props['updated'])
-                    this.props['updated'](this.state);
+                    this.props['updated']();
             }
 
             render() {
@@ -44,9 +43,9 @@ function hgr$component() {
                 return null;
             }
         }
-        hgr$component_ = Shim;
+        hgr$shimComponent_ = Shim;
     }
-    return hgr$component_;
+    return hgr$shimComponent_;
 }
 
 // Convert a list of ReactElements into a single ReactElement
