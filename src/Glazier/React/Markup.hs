@@ -18,9 +18,9 @@ module Glazier.React.Markup
     , toElement
     , txt
     , leaf
-    -- , lf
+    , lf
     , branch
-    -- , bh
+    , bh
     , modifyMarkup
     , overSurfaceProperties
     , modifySurfaceProperties
@@ -138,13 +138,13 @@ leaf :: MonadState (DL.DList ReactMarkup) m
     -> m ()
 leaf ls n props = modify' (`DL.snoc` LeafMarkup (LeafParam ls n props))
 
--- -- | Convenient version of 'leaf' without listeners
--- lf
---     :: Monad m
---     => JE.JSRep
---     -> (DL.DList JE.Property)
---     -> ReactMlT m ()
--- lf = leaf []
+-- | Convenient version of 'leaf' without listeners
+lf
+    :: MonadState (DL.DList ReactMarkup) m
+    => JE.JSRep
+    -> (DL.DList JE.Property)
+    -> m ()
+lf = leaf []
 
 -- | For the contentful elements: eg 'div_'
 -- Duplicate listeners with the same key will be combined, but it is a silent error
@@ -171,14 +171,14 @@ branch ls n props childs = do
     modify' (`DL.snoc` BranchMarkup (BranchParam ls n props (DL.toList childs')))
     pure a
 
--- -- | Convenient version of 'branch' without listeners
--- bh
---     :: Monad m
---     => JE.JSRep
---     -> (DL.DList JE.Property)
---     -> ReactMlT m a
---     -> ReactMlT m a
--- bh = branch []
+-- | Convenient version of 'branch' without listeners
+bh
+    :: MonadState (DL.DList ReactMarkup) m
+    => JE.JSRep
+    -> (DL.DList JE.Property)
+    -> m a
+    -> m a
+bh = branch []
 
 -- | dedups a list of (key, Callback1) by merging callbacks for the same key together.
 dedupListeners :: [Listener] -> [JE.Property]
