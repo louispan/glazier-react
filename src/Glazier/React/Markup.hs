@@ -139,6 +139,7 @@ leaf :: MonadState (DL.DList ReactMarkup) m
 leaf ls n props = modify' (`DL.snoc` LeafMarkup (LeafParam ls n props))
 
 -- | Convenient version of 'leaf' without listeners
+-- Memenoic: short for 'leaf'
 lf
     :: MonadState (DL.DList ReactMarkup) m
     => JE.JSRep
@@ -172,6 +173,7 @@ branch ls n props childs = do
     pure a
 
 -- | Convenient version of 'branch' without listeners
+-- Memenoic: short for 'branch'
 bh
     :: MonadState (DL.DList ReactMarkup) m
     => JE.JSRep
