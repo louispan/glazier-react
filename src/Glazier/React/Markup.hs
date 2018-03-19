@@ -1,7 +1,6 @@
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -14,8 +13,6 @@ module Glazier.React.Markup
     , BranchParam(..)
     , LeafParam(..)
     , fromMarkup
-    , ReactMlT(..)
-    , ReactMl
     , fromElement
     , toElements
     , toElement
@@ -29,16 +26,10 @@ module Glazier.React.Markup
     , modifySurfaceProperties
     ) where
 
-import Control.Applicative
-import Control.Lens
-import qualified Control.Monad.Fail as Fail
-import Control.Monad.Fix
-import Control.Monad.Morph
 import Control.Monad.State.Strict
 import qualified Data.DList as DL
 import qualified Data.Map.Strict as M
 import Data.Semigroup
-import qualified GHC.Generics as G
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
 import qualified Glazier.React.Element as Z
@@ -78,52 +69,50 @@ fromMarkup (TextMarkup str) = pure $ Z.textElement str
 
 fromMarkup (ElementMarkup e) = pure e
 
--- | Monadic generator of ReactMarkup.
--- It is a CPS-style WriterT (ie a StateT) to build up a function to
--- build up a computations to generate a '[ReactMarkup]'.
--- You can use 'runStateT' with an initial state of 'mempty'.
-newtype ReactMlT m a = ReactMlT
-    { runReactMlT :: StateT (DL.DList ReactMarkup) m a
-    } deriving ( MonadState (DL.DList ReactMarkup)
-               , Monad
-               , Applicative
-               , Functor
-               , Fail.MonadFail
-               , Alternative
-               , MonadPlus
-               , MonadFix
-               , MonadIO
-               , MFunctor
-               , G.Generic
-               )
+-- -- | Monadic generator of ReactMarkup.
+-- -- It is a CPS-style WriterT (ie a StateT) to build up a function to
+-- -- build up a computations to generate a '[ReactMarkup]'.
+-- -- You can use 'runStateT' with an initial state of 'mempty'.
+-- newtype ReactMlT m a = ReactMlT
+--     { runReactMlT :: StateT (DL.DList ReactMarkup) m a
+--     } deriving ( MonadState (DL.DList ReactMarkup)
+--                , Monad
+--                , Applicative
+--                , Functor
+--                , Fail.MonadFail
+--                , Alternative
+--                , MonadPlus
+--                , MonadFix
+--                , MonadIO
+--                , MFunctor
+--                , G.Generic
+--                )
 
-type ReactMl = ReactMlT Identity
+-- type ReactMl = ReactMlT Identity
 
-instance MonadTrans ReactMlT where
-    lift = ReactMlT . lift
+-- instance MonadTrans ReactMlT where
+--     lift = ReactMlT . lift
 
-instance (Semigroup a, Monad m) => Semigroup (ReactMlT m a) where
-    (<>) = liftA2 (<>)
+-- instance (Semigroup a, Monad m) => Semigroup (ReactMlT m a) where
+--     (<>) = liftA2 (<>)
 
-instance (Monoid a, Monad m) => Monoid (ReactMlT m a) where
-    mempty = pure mempty
-    mappend = liftA2 mappend
+-- instance (Monoid a, Monad m) => Monoid (ReactMlT m a) where
+--     mempty = pure mempty
+--     mappend = liftA2 mappend
 
 -------------------------------------------------
 
 -- | To use an exisitng ReactElement
-fromElement :: Applicative m => Z.ReactElement -> ReactMlT m ()
-fromElement e = ReactMlT . StateT $ \xs -> pure ((), xs `DL.snoc` ElementMarkup e)
+fromElement :: MonadState (DL.DList ReactMarkup) m => Z.ReactElement -> m ()
+fromElement e = modify' (`DL.snoc` ElementMarkup e)
 
 -- | Convert the ReactMlt to [Z.ReactElement]
-toElements :: MonadIO io => ReactMlT io () -> io [Z.ReactElement]
-toElements m = do
-    xs <- execStateT (runReactMlT m) mempty
-    liftIO $ sequenceA $ fromMarkup <$> DL.toList xs
+toElements :: DL.DList ReactMarkup -> IO [Z.ReactElement]
+toElements xs = sequenceA $ fromMarkup <$> DL.toList xs
 
--- | Fully render the ReactMlt into a Z.ReactElement
-toElement :: MonadIO io => ReactMlT io () -> io Z.ReactElement
-toElement m = toElements m >>= (liftIO . Z.mkCombinedElements)
+-- | Fully render the ReactMlt into a single Z.ReactElement
+toElement :: DL.DList ReactMarkup -> IO Z.ReactElement
+toElement xs = toElements xs >>= Z.mkCombinedElements
 
 -- -- | toElements reading an s from the environment
 -- toElements' :: MonadIO io => (s -> ReactMlT io ()) -> s -> io [Z.ReactElement]
@@ -132,8 +121,8 @@ toElement m = toElements m >>= (liftIO . Z.mkCombinedElements)
 -------------------------------------------------
 
 -- | For text content
-txt :: Applicative m => J.JSString -> ReactMlT m ()
-txt n = ReactMlT . StateT $ \xs -> pure ((), xs `DL.snoc` TextMarkup n)
+txt :: MonadState (DL.DList ReactMarkup) m => J.JSString -> m ()
+txt n = modify' (`DL.snoc` TextMarkup n)
 
 -- | For the contentless elements: eg 'br_'
 -- Duplicate listeners with the same key will be combined, but it is a silent error
@@ -142,12 +131,12 @@ txt n = ReactMlT . StateT $ \xs -> pure ((), xs `DL.snoc` TextMarkup n)
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
 -- Listeners are more important than properties so they will be rendered
 -- after properties so they do not get overridden.
-leaf :: Monad m
+leaf :: MonadState (DL.DList ReactMarkup) m
     => (DL.DList Listener)
     -> JE.JSRep
     -> (DL.DList JE.Property)
-    -> ReactMlT m ()
-leaf ls n props = ReactMlT . StateT $ \xs -> pure ((), xs `DL.snoc` LeafMarkup (LeafParam ls n props))
+    -> m ()
+leaf ls n props = modify' (`DL.snoc` LeafMarkup (LeafParam ls n props))
 
 -- -- | Convenient version of 'leaf' without listeners
 -- lf
@@ -164,15 +153,23 @@ leaf ls n props = ReactMlT . StateT $ \xs -> pure ((), xs `DL.snoc` LeafMarkup (
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
 -- Listeners are more important than properties so they will be rendered
 -- after properties so they do not get overridden.
-branch :: Monad m
+branch :: MonadState (DL.DList ReactMarkup) m
     => (DL.DList Listener)
     -> JE.JSRep
     -> (DL.DList JE.Property)
-    -> ReactMlT m a
-    -> ReactMlT m a
-branch ls n props (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
-    (a, childs') <- childs mempty
-    pure (a, xs `DL.snoc` BranchMarkup (BranchParam ls n props (DL.toList childs')))
+    -> m a
+    -> m a
+branch ls n props childs = do
+    -- save state
+    s <- get
+    -- run children with mempty
+    put mempty
+    a <- childs
+    childs' <- get
+    -- restore state
+    put s
+    modify' (`DL.snoc` BranchMarkup (BranchParam ls n props (DL.toList childs')))
+    pure a
 
 -- -- | Convenient version of 'branch' without listeners
 -- bh
@@ -188,12 +185,20 @@ dedupListeners :: [Listener] -> [JE.Property]
 dedupListeners = M.toList . M.fromListWith js_combineCallback1 . fmap (fmap JE.toJSR)
 
 -- Given a mapping function, apply it to children of the markup
-modifyMarkup :: Monad m
+modifyMarkup :: MonadState (DL.DList ReactMarkup) m
     => (DL.DList ReactMarkup -> DL.DList ReactMarkup)
-    -> ReactMlT m a -> ReactMlT m a
-modifyMarkup f (ReactMlT (StateT childs)) = ReactMlT . StateT $ \xs -> do
-    (a, childs') <- childs mempty
-    pure (a, xs `DL.append` f childs')
+    -> m a -> m a
+modifyMarkup f childs = do
+    -- save state
+    s <- get
+    -- run children with mempty
+    put mempty
+    a <- childs
+    childs' <- get
+    -- restore state
+    put s
+    modify' (`DL.append` f childs')
+    pure a
 
 -- Given a mapping function, apply it to all child BranchMarkup or LeafMarkup (if possible)
 -- Does not recurse into decendants.
@@ -207,9 +212,9 @@ overSurfaceProperties f childs = DL.fromList $ case DL.toList childs of
         BranchMarkup (BranchParam ls j (f ps) as) : bs
     bs -> bs
 
-modifySurfaceProperties :: Monad m
+modifySurfaceProperties :: MonadState (DL.DList ReactMarkup) m
     => (DL.DList JE.Property -> DL.DList JE.Property)
-    -> ReactMlT m a -> ReactMlT m a
+    -> m a -> m a
 modifySurfaceProperties f = modifyMarkup (overSurfaceProperties f)
 
 #ifdef __GHCJS__
