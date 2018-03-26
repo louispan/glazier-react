@@ -131,18 +131,18 @@ txt n = modify' (`DL.snoc` TextMarkup n)
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
 -- Listeners are more important than properties so they will be rendered
 -- after properties so they do not get overridden.
-leaf :: MonadState (DL.DList ReactMarkup) m
+leaf :: (JE.ToJS n, MonadState (DL.DList ReactMarkup) m)
     => (DL.DList Listener)
-    -> JE.JSRep
+    -> n
     -> (DL.DList JE.Property)
     -> m ()
-leaf ls n props = modify' (`DL.snoc` LeafMarkup (LeafParam ls n props))
+leaf ls n props = modify' (`DL.snoc` LeafMarkup (LeafParam ls (JE.toJSR n) props))
 
 -- | Convenient version of 'leaf' without listeners
 -- Memenoic: short for 'leaf'
 lf
-    :: MonadState (DL.DList ReactMarkup) m
-    => JE.JSRep
+    :: (JE.ToJS n, MonadState (DL.DList ReactMarkup) m)
+    => n
     -> (DL.DList JE.Property)
     -> m ()
 lf = leaf []
@@ -154,9 +154,9 @@ lf = leaf []
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
 -- Listeners are more important than properties so they will be rendered
 -- after properties so they do not get overridden.
-branch :: MonadState (DL.DList ReactMarkup) m
+branch :: (JE.ToJS n, MonadState (DL.DList ReactMarkup) m)
     => (DL.DList Listener)
-    -> JE.JSRep
+    -> n
     -> (DL.DList JE.Property)
     -> m a
     -> m a
@@ -169,14 +169,14 @@ branch ls n props childs = do
     childs' <- get
     -- restore state
     put s
-    modify' (`DL.snoc` BranchMarkup (BranchParam ls n props (DL.toList childs')))
+    modify' (`DL.snoc` BranchMarkup (BranchParam ls (JE.toJSR n) props (DL.toList childs')))
     pure a
 
 -- | Convenient version of 'branch' without listeners
 -- Memenoic: short for 'branch'
 bh
-    :: MonadState (DL.DList ReactMarkup) m
-    => JE.JSRep
+    :: (JE.ToJS n, MonadState (DL.DList ReactMarkup) m)
+    => n
     -> (DL.DList JE.Property)
     -> m a
     -> m a
