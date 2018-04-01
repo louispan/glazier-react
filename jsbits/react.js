@@ -25,10 +25,13 @@ function hgr$ReactDOM() {
 var hgr$shimComponent_ = null;
 function hgr$shimComponent() {
     if (!hgr$shimComponent_) {
-        // Inheriting from Component means every call to this.setState will result in a render
-        // Inheriting from PureComponet means a shallow comparison will be made
-        // Protect "PureComponent" from closure compiler because it's not in the official externs
+        // The state in the Shim contains
+        //   frame :: A GHCJS.Foreign.Export of the haskell state to render.
+        // Inheriting from Component means every call to this.setState will result in a render.
+        // Inheriting from PureComponet means a shallow comparison will be made.
+        // Protect "PureComponent" from closure compiler because it's not in the official externs.
         var ReactPureComponent = hgr$React()["PureComponent"];
+
         class Shim extends ReactPureComponent {
 
             componentDidUpdate(prevProps, prevState) {
@@ -37,9 +40,34 @@ function hgr$shimComponent() {
                     this.props['updated']();
             }
 
+            // update the exported frame making sure any previous exports are released.
+            setFrame(frm) {
+                this.setState(function(prevState, props) {
+                    // cleanup previously exported frame
+                    if (prevState['frame']) {
+                        var x = prevState['frame'];
+                        this.state['frame'] = null;
+                        h$releaseExport(prevState['frame']);
+                    }
+                    return {
+                        frame: frm
+                    };
+                });
+            }
+
+            componentWillUnmount() {
+                // release any render exports
+                if (this.state['frame']) {
+                    var x = this.state['frame'];
+                    this.state['frame'] = null;
+                    h$releaseExport(x);
+                }
+            }
+
             render() {
+                // NB. this.state['frame'] could be null
                 if (this.props['render'])
-                    return this.props['render']();
+                    return this.props['render'](this.state['frame']);
                 return null;
             }
         }

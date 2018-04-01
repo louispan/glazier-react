@@ -41,7 +41,7 @@ foreign import javascript unsafe
       :: JE.JSRep
 
 foreign import javascript unsafe
-    "$1 && $1['prototype'] && !!($1['prototype']['isReactComponent'])"
+    "$1 && $1['prototype'] && !(!($1['prototype']['isReactComponent']))"
     js_isComponent :: J.JSVal -> Bool
 
 #else
