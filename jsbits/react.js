@@ -36,6 +36,13 @@ function hgr$shimComponent() {
 
             componentDidUpdate(prevProps, prevState) {
                 // ignore prevProps, prevState and forward to a custom callback
+                // NB. Tis is not called on initial render.
+                if (this.props['updated'])
+                    this.props['updated']();
+            }
+
+            componentDidMount() {
+                // Also forward to updated so it gets a callback on initial render.
                 if (this.props['updated'])
                     this.props['updated']();
             }

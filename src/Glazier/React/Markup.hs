@@ -88,8 +88,6 @@ txt n = modify' (`DL.snoc` TextMarkup n)
 -- if the same key is used across listeners and props.
 -- "If an attribute/prop is duplicated the last one defined wins."
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
--- Listeners are more important than properties so they will be rendered
--- after properties so they do not get overridden.
 leaf :: (JE.ToJS n, MonadState (DL.DList ReactMarkup) m)
     => n
     -> (DL.DList JE.Property)
@@ -118,8 +116,6 @@ withMarkup f childs = do
 -- if the same key is used across listeners and props.
 -- "If an attribute/prop is duplicated the last one defined wins."
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
--- Listeners are more important than properties so they will be rendered
--- after properties so they do not get overridden.
 branch :: (JE.ToJS n, MonadState (DL.DList ReactMarkup) m)
     => n
     -> (DL.DList JE.Property)
