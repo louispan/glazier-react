@@ -3,8 +3,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 
--- | This module based on React/Flux/PropertiesAndEvents.hs.
-module Glazier.React.Handle.Internal
+module Glazier.React.Notice.Internal
   ( Notice(..)  -- constructor is exported
   , preventDefault
   , isDefaultPrevented
@@ -12,14 +11,9 @@ module Glazier.React.Handle.Internal
   , isPropagationStopped
   , unsafeGetProperty
   , unsafeGetModifierState
-  , NativeEvent(..)
-  , EventTarget(..)
   )
 where
 
-
-import Control.DeepSeq
-import Data.String
 import qualified GHC.Generics as G
 import qualified GHCJS.Foreign as J
 import qualified GHCJS.Marshal.Pure as J
@@ -67,26 +61,6 @@ unsafeGetProperty v = J.pFromJSVal . js_unsafeGetProperty v
 unsafeGetModifierState :: J.JSVal -> J.JSString -> Bool
 unsafeGetModifierState obj k = J.fromJSBool $ js_unsafeGetModifierState obj k
 
--- | The native event
--- https://developer.mozilla.org/en-US/docs/Web/API/Event
-newtype NativeEvent =
-    NativeEvent JE.JSRep -- not J.JSVal so the show instance is more useful
-    deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
-
-instance JE.FromJS NativeEvent where
-    fromJS a | js_isNativeEvent a = Just $ NativeEvent $ JE.JSRep a
-    fromJS _ = Nothing
-
--- | The object that dispatched the event.
--- https://developer.mozilla.org/en-US/docs/Web/API/Event/target
-newtype EventTarget =
-    EventTarget JE.JSRep -- not J.JSVal so the show instance is more useful
-    deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
-
-instance JE.FromJS EventTarget where
-    fromJS a | js_isEventTarget a = Just $ EventTarget $ JE.JSRep a
-    fromJS _ = Nothing
-
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
@@ -118,14 +92,6 @@ foreign import javascript unsafe
     "$1['getModifierState']($2)"
     js_unsafeGetModifierState :: J.JSVal -> J.JSString -> J.JSVal
 
-foreign import javascript unsafe
-    "$1 instanceof Event"
-    js_isNativeEvent :: J.JSVal -> Bool
-
-foreign import javascript unsafe
-    "$1 instanceof EventTarget"
-    js_isEventTarget :: J.JSVal -> Bool
-
 #else
 
 js_isNotice :: J.JSVal -> Bool
@@ -150,11 +116,5 @@ js_unsafeGetProperty _ _ = J.nullRef
 -- | unsafe to enable lazy parsing. See handleEvent
 js_unsafeGetModifierState :: J.JSVal -> J.JSString -> J.JSVal
 js_unsafeGetModifierState _ _ = J.nullRef
-
-js_isNativeEvent :: J.JSVal -> Bool
-js_isNativeEvent _ = False
-
-js_isEventTarget :: J.JSVal -> Bool
-js_isEventTarget _ = False
 
 #endif

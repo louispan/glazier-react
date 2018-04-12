@@ -27,7 +27,7 @@ import Data.Proxy
 import Data.Tagged
 import qualified GHCJS.Foreign.Callback as J
 import Glazier.React.Component
-import Glazier.React.Handle
+import Glazier.React.HandleEvent
 import Glazier.React.Markup
 import Glazier.React.MkId.Internal
 import Glazier.React.Reactor

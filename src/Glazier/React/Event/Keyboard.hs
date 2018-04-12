@@ -11,7 +11,7 @@ where
 import Control.DeepSeq
 import qualified GHC.Generics as G
 import qualified GHCJS.Types as J
-import Glazier.React.Handle.Internal
+import Glazier.React.Notice.Internal
 import qualified JavaScript.Extras as JE
 import Prelude hiding (repeat)
 

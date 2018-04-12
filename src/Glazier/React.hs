@@ -3,10 +3,13 @@
 module Glazier.React
     ( module Glazier.React.Component
     , module Glazier.React.Element
+    , module Glazier.React.EventTarget
     , module Glazier.React.Gadget
-    , module Glazier.React.Handle
+    , module Glazier.React.HandleEvent
     , module Glazier.React.Markup
     , module Glazier.React.MkId
+    , module Glazier.React.NativeEvent
+    , module Glazier.React.Notice
     , module Glazier.React.ReactDOM
     , module Glazier.React.Reactor
     , module Glazier.React.Reactor.Exec
@@ -36,10 +39,13 @@ import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Maybe.Extras
 import Glazier.React.Component
 import Glazier.React.Element
+import Glazier.React.EventTarget
 import Glazier.React.Gadget
-import Glazier.React.Handle
+import Glazier.React.HandleEvent
 import Glazier.React.Markup
 import Glazier.React.MkId
+import Glazier.React.NativeEvent
+import Glazier.React.Notice
 import Glazier.React.ReactDOM
 import Glazier.React.Reactor
 import Glazier.React.Reactor.Exec

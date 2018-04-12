@@ -26,12 +26,17 @@ library
                        Glazier.React.Event.Keyboard
                        Glazier.React.Event.Mouse
                        Glazier.React.Event.Synthetic
-                       Glazier.React.Handle
-                       Glazier.React.Handle.Internal
+                       Glazier.React.EventTarget
+                       Glazier.React.EventTarget.Internal
+                       Glazier.React.HandleEvent
                        Glazier.React.Gadget
                        Glazier.React.Markup
                        Glazier.React.MkId
                        Glazier.React.MkId.Internal
+                       Glazier.React.NativeEvent
+                       Glazier.React.NativeEvent.Internal
+                       Glazier.React.Notice
+                       Glazier.React.Notice.Internal
                        Glazier.React.ReactDOM
                        Glazier.React.Reactor
                        Glazier.React.Reactor.Exec

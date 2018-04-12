@@ -34,7 +34,7 @@ import qualified GHC.Generics as G
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
 import Glazier.React.Component
-import Glazier.React.Handle
+import Glazier.React.EventTarget
 import Glazier.React.MkId
 import qualified JavaScript.Extras as JE
 

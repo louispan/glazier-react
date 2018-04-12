@@ -1,20 +1,7 @@
 -- | This module based on React/Flux/PropertiesAndEvents.hs.
-module Glazier.React.Handle
-    ( handleEvent
-    , handleEventM
-    , Notice  -- constructor is not exported
-    , preventDefault
-    , isDefaultPrevented
-    , stopPropagation
-    , isPropagationStopped
-    , NativeEvent  -- constructor is not exported
-    , EventTarget  -- constructor is not exported
-    )
-    where
+module Glazier.React.HandleEvent where
 
 import Control.DeepSeq
-import Glazier.React.Handle.Internal
-
 
 -- | Using the NFData idea from React/Flux/PropertiesAndEvents.hs
 -- React re-uses Notice from a pool, which means it may no longer be valid if we lazily
