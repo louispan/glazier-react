@@ -28,16 +28,31 @@ library
                        Glazier.React.Event.Synthetic
                        Glazier.React.Handle
                        Glazier.React.Handle.Internal
+                       Glazier.React.Gadget
                        Glazier.React.Markup
+                       Glazier.React.MkId
+                       Glazier.React.MkId.Internal
                        Glazier.React.ReactDOM
+                       Glazier.React.Reactor
+                       Glazier.React.Reactor.Exec
+                       Glazier.React.Scene
+                       Glazier.React.Trigger
+                       Glazier.React.Widget
+                       Glazier.React.Window
   build-depends:       base >= 4.7 && < 5
+                     , alternators >= 0.2
                      , containers >= 0.5
+                     , data-diverse >= 3.0
+                     , data-diverse-lens >= 3.0
                      , deepseq >= 1.4
                      , dlist >= 0.8
+                     , disposable >= 0.3.0.0
                      , javascript-extras >= 0.4.0.0
                      , lens >= 4
+                     , lens-misc >= 0.0.1
                      , mmorph >= 1
                      , mtl >= 2
+                     , tagged >= 0.8.5
                      , transformers >= 0.4
   default-language:    Haskell2010
   default-extensions:  ApplicativeDo
