@@ -15,9 +15,9 @@ import qualified Control.Disposable as CD
 import Control.Lens
 import Control.Monad.Reader
 import Control.Monad.State.Strict
+import Control.Monad.Trans.ARWS.Strict
+import Control.Monad.Trans.AState.Strict
 import Control.Monad.Trans.Maybe
-import Control.Monad.Trans.RWSs.Strict
-import Control.Monad.Trans.States.Strict
 import Data.Diverse.Lens
 import qualified Data.DList as DL
 import Data.Foldable
@@ -52,7 +52,7 @@ initReactor ::
     )
     => (c -> m ())
     -> s
-    -> States (Scenario c s) ()
+    -> AState (Scenario c s) ()
     -> m (CD.Disposable, IO s)
 initReactor exec s ini = do
     frmRef <- liftIO $ newIORef (Scene newPlan s)
@@ -64,14 +64,14 @@ initReactor exec s ini = do
     pure (CD.dispose plnVar, readMVar mdlVar)
 
 -- | Upate the world 'TVar' with the given action, and return the commands produced.
-tickState :: Subject s -> States (Scenario c s) () -> IO (DL.DList c)
+tickState :: Subject s -> AState (Scenario c s) () -> IO (DL.DList c)
 tickState (Subject scnRef plnVar mdlVar) tick = do
     mdl <- takeMVar mdlVar
     -- execShimCallbacks may 'takeMVar' only the plan,
     -- also plnVar may be shared with other 'Arena's
     -- so use plnVar inside mdVar block to release the plnVar as quickly as possible.
     pln <- takeMVar plnVar
-    let (Scenario cs (Scene pln' mdl')) = execStates tick (Scenario mempty (Scene pln mdl))
+    let (Scenario cs (Scene pln' mdl')) = execAState tick (Scenario mempty (Scene pln mdl))
         (rndr, pln'') = runState rerender pln'
 
     -- Update the back buffer
@@ -199,7 +199,7 @@ execMkShimCallbacks (MkShimCallbacks (Subject scnRef plnVar _) rndr) = do
     -- For efficiency, render uses the state exported into ShimComponent
     let doRender = do
             scn <- readIORef scnRef
-            let (mrkup, _) = execRWSs rndr scn mempty
+            let (mrkup, _) = execARWS rndr scn mempty
             JE.toJS <$> toElement mrkup
         doRef j = do
             pln <- takeMVar plnVar

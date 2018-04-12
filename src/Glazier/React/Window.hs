@@ -9,7 +9,7 @@
 module Glazier.React.Window where
 
 import Control.Lens
-import Control.Monad.Trans.RWSs.Strict
+import Control.Monad.Trans.ARWS.Strict
 import qualified Data.DList as DL
 import qualified Data.Map.Strict as M
 import Data.Semigroup
@@ -22,7 +22,7 @@ import Glazier.React.Scene
 import qualified JavaScript.Array as JA
 import qualified JavaScript.Extras as JE
 
-type WindowT s m = RWSsT (Scene s) () (DL.DList ReactMarkup) m
+type WindowT s m = ARWST (Scene s) () (DL.DList ReactMarkup) m
 type Window s = WindowT s Identity
 
 -- type SceneDisplay x s r = Display (Scene x s) r

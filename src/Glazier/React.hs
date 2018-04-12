@@ -19,21 +19,21 @@ module Glazier.React
     , module Control.Monad.Trans.Maybe.Extras
     , module Control.Monad.Reader.Class
     , module Control.Monad.State.Class
-    , module Control.Monad.Trans.Conts
-    , module Control.Monad.Trans.Readers
-    , module Control.Monad.Trans.RWSs.Strict
-    , module Control.Monad.Trans.States.Strict
+    , module Control.Monad.Trans.ACont
+    , module Control.Monad.Trans.AReader
+    , module Control.Monad.Trans.ARWS.Strict
+    , module Control.Monad.Trans.AState.Strict
     ) where
 
 import Control.Monad.Reader.Class
 import Control.Monad.State.Class
 import Control.Monad.Trans
-import Control.Monad.Trans.Conts
+import Control.Monad.Trans.ACont
+import Control.Monad.Trans.AReader
+import Control.Monad.Trans.ARWS.Strict
+import Control.Monad.Trans.AState.Strict
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Maybe.Extras
-import Control.Monad.Trans.Readers
-import Control.Monad.Trans.RWSs.Strict
-import Control.Monad.Trans.States.Strict
 import Glazier.React.Component
 import Glazier.React.Element
 import Glazier.React.Gadget

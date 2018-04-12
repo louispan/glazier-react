@@ -15,7 +15,7 @@ import Control.DeepSeq
 import qualified Control.Disposable as CD
 import Control.Lens
 import Control.Monad.State
-import Control.Monad.Trans.States.Strict
+import Control.Monad.Trans.AState.Strict
 import Data.Diverse.Lens
 import Glazier.React.Scene
 import Glazier.React.Window
@@ -89,7 +89,7 @@ dirty = _scene._plan._currentFrameNum %= JE.safeModularIncrement
 data TickState c where
     TickState ::
         Subject s
-        -> (States (Scenario c s) ())
+        -> (AState (Scenario c s) ())
         -> TickState c
 
 instance Show (TickState c) where

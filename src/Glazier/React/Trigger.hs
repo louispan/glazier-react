@@ -22,8 +22,8 @@ module Glazier.React.Trigger
 import Control.DeepSeq
 import Control.Lens
 import Control.Monad.Cont
-import Control.Monad.Trans.Conts
-import Control.Monad.Trans.States.Strict
+import Control.Monad.Trans.ACont
+import Control.Monad.Trans.AState.Strict
 import Data.Diverse.Lens
 import Data.Maybe
 import Data.Tagged
@@ -52,11 +52,11 @@ mkTriggerAction1 ::
     -> GizmoId
     -> J.JSString
     -> (JE.JSRep -> IO (Maybe a))
-    -> (a -> States (Scenario c p) b)
+    -> (a -> AState (Scenario c p) b)
     -> Gadget r c p b
 mkTriggerAction1 l gid n goStrict goLazy = do
     sbj <- viewSubject
-    lift $ contsT $ \fire -> do
+    lift $ acontT $ \fire -> do
         -- Add extra command producting state actions at the end
         let goLazy' a = cmd' $ TickState sbj (goLazy a >>= fire)
         post . cmd' $ MkAction1 goStrict goLazy' $ \act ->
@@ -71,11 +71,11 @@ mkUpdatedAction ::
     , AsFacet (MkAction c) c
     )
     => Lens' (Tagged "Once" (IO ()), Tagged "Every" (IO ())) (IO ())
-    -> States (Scenario c p) b
+    -> AState (Scenario c p) b
     -> Gadget r c p b
 mkUpdatedAction l go = do
     sbj <- viewSubject
-    lift $ contsT $ \fire -> do
+    lift $ acontT $ \fire -> do
         -- Add extra command producting state actions at the end
         let go' = cmd' $ TickState sbj (go >>= fire)
         post . cmd' $ MkAction go' $ \act ->
@@ -88,7 +88,7 @@ triggerOnUpdated_ ::
     , AsFacet (MkAction c) c
     )
     => Lens' (Tagged "Once" (IO ()), Tagged "Every" (IO ())) (IO ())
-    -> States (Scenario c p) b
+    -> AState (Scenario c p) b
     -> Gadget r c p b
 triggerOnUpdated_ l go = mkUpdatedAction l go
 
@@ -102,7 +102,7 @@ triggerOnUpdated ::
     , AsFacet (TickState c) c
     , AsFacet (MkAction c) c
     )
-    => States (Scenario c p) b
+    => AState (Scenario c p) b
     -> Gadget r c p b
 triggerOnUpdated = triggerOnUpdated_ (_2._Wrapped' @(Tagged "Every" _))
 
@@ -111,7 +111,7 @@ triggerOnceOnUpdated ::
     , AsFacet (TickState c) c
     , AsFacet (MkAction c) c
     )
-    => States (Scenario c p) b
+    => AState (Scenario c p) b
     -> Gadget r c p b
 triggerOnceOnUpdated = triggerOnUpdated_ (_1._Wrapped' @(Tagged "Once" _))
 
@@ -123,7 +123,7 @@ trigger ::
     )
     => GizmoId
     -> J.JSString
-    -> States (Scenario c p) b
+    -> AState (Scenario c p) b
     -> Gadget r c p b
 trigger = trigger_ (_2._Wrapped' @(Tagged "Every" _))
 
@@ -134,7 +134,7 @@ triggerOnce ::
     )
     => GizmoId
     -> J.JSString
-    -> States (Scenario c p) b
+    -> AState (Scenario c p) b
     -> Gadget r c p b
 triggerOnce = trigger_ (_1._Wrapped' @(Tagged "Once" _))
 
@@ -148,7 +148,7 @@ trigger1 ::
     => GizmoId
     -> J.JSString
     -> (Notice -> IO a)
-    -> (a -> States (Scenario c p) b)
+    -> (a -> AState (Scenario c p) b)
     -> Gadget r c p b
 trigger1 = trigger1_ (_2._Wrapped' @(Tagged "Every" _))
 
@@ -161,7 +161,7 @@ triggerOnce1 ::
     => GizmoId
     -> J.JSString
     -> (Notice -> IO a)
-    -> (a -> States (Scenario c p) b)
+    -> (a -> AState (Scenario c p) b)
     -> Gadget r c p b
 triggerOnce1 = trigger1_ (_1._Wrapped' @(Tagged "Once" _))
 
@@ -175,7 +175,7 @@ trigger1_ ::
     -> GizmoId
     -> J.JSString
     -> (Notice -> IO a)
-    -> (a -> States (Scenario c p) b)
+    -> (a -> AState (Scenario c p) b)
     -> Gadget r c p b
 trigger1_ l gid n goStrict goLazy = mkTriggerAction1 l gid n goStrict' goLazy
   where
@@ -191,7 +191,7 @@ trigger_ ::
     => Lens' (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Every" (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
     -> GizmoId
     -> J.JSString
-    -> States (Scenario c p) b
+    -> AState (Scenario c p) b
     -> Gadget r c p b
 trigger_ l gid n go = mkTriggerAction1 l gid n (const $ pure (Just ())) (const $ go)
 
