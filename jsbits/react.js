@@ -47,34 +47,9 @@ function hgr$shimComponent() {
                     this.props['updated']();
             }
 
-            // update the exported frame making sure any previous exports are released.
-            setFrame(frm) {
-                this.setState(function(prevState, props) {
-                    // cleanup previously exported frame
-                    if (prevState['frame']) {
-                        var x = prevState['frame'];
-                        this.state['frame'] = null;
-                        h$releaseExport(prevState['frame']);
-                    }
-                    return {
-                        frame: frm
-                    };
-                });
-            }
-
-            componentWillUnmount() {
-                // release any render exports
-                if (this.state['frame']) {
-                    var x = this.state['frame'];
-                    this.state['frame'] = null;
-                    h$releaseExport(x);
-                }
-            }
-
             render() {
-                // NB. this.state['frame'] could be null
                 if (this.props['render'])
-                    return this.props['render'](this.state['frame']);
+                    return this.props['render']();
                 return null;
             }
         }
