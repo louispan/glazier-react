@@ -15,14 +15,12 @@ module Glazier.React.Gadget where
 import Control.Lens
 import Control.Monad.Delegate
 import Control.Monad.Reader
-import Control.Monad.State.Strict
 import Control.Monad.Trans.AReader
 import Control.Monad.Trans.AState.Strict
 import Glazier.React.Scene
 
-type MonadGadget r c p n m =
-    ( MonadDelegate (n ()) m
-    , MonadState (Scenario c p) n
+type MonadGadget r c p m =
+    ( MonadDelegate (AState (Scenario c p) ()) m
     , MonadReader r m
     )
 
