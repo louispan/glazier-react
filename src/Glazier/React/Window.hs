@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedLists #-}
@@ -9,6 +10,8 @@
 module Glazier.React.Window where
 
 import Control.Lens
+import Control.Monad.Reader
+import Control.Monad.State.Strict
 import Control.Monad.Trans.ARWS.Strict
 import qualified Data.DList as DL
 import qualified Data.Map.Strict as M
@@ -21,6 +24,11 @@ import Glazier.React.MkId
 import Glazier.React.Scene
 import qualified JavaScript.Array as JA
 import qualified JavaScript.Extras as JE
+
+type MonadWindow s m =
+    ( MonadState (DL.DList ReactMarkup) m
+    , MonadReader (Scene s) m
+    )
 
 type WindowT s m = ARWST (Scene s) () (DL.DList ReactMarkup) m
 type Window s = WindowT s Identity
