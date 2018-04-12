@@ -82,23 +82,23 @@ mkUpdatedAction l go = do
                 let addListener = _scene._plan._doOnUpdated.l %= (*> act)
                 in cmd' $ TickState sbj addListener
 
-mkUpdatedAction2 ::
-    ( HasItem (Subject p) r
-    , AsFacet (TickState c) c
-    , AsFacet (MkAction c) c
-    , MonadGadget r c p m
-    )
-    => Lens' (Tagged "Once" (IO ()), Tagged "Every" (IO ())) (IO ())
-    -> AState (Scenario c p) b
-    -> m b
-mkUpdatedAction2 l go = do
-    sbj <- viewSubject
-    delegate $ \fire -> do
-        -- Add extra command producting state actions at the end
-        let go' = cmd' $ TickState sbj (go >>= fire)
-        post . cmd' $ MkAction go' $ \act ->
-                let addListener = _scene._plan._doOnUpdated.l %= (*> act)
-                in cmd' $ TickState sbj addListener
+-- mkUpdatedAction2 ::
+--     ( HasItem (Subject p) r
+--     , AsFacet (TickState c) c
+--     , AsFacet (MkAction c) c
+--     , MonadGadget r c p m
+--     )
+--     => Lens' (Tagged "Once" (IO ()), Tagged "Every" (IO ())) (IO ())
+--     -> AState (Scenario c p) b
+--     -> m b
+-- mkUpdatedAction2 l go = do
+--     sbj <- viewSubject
+--     delegate $ \fire -> do
+--         -- Add extra command producting state actions at the end
+--         let go' = cmd' $ TickState sbj (go >>= fire)
+--         post . cmd' $ MkAction go' $ \act ->
+--                 let addListener = _scene._plan._doOnUpdated.l %= (*> act)
+--                 in cmd' $ TickState sbj addListener
 
 triggerOnUpdated_ ::
     ( HasItem (Subject p) r
