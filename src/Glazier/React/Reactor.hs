@@ -96,11 +96,7 @@ instance Show (TickState c) where
     showsPrec _ _ = showString "TickState"
 
 -- | Convert a command to an IO action
-data MkAction c where
-    MkAction ::
-        c
-        -> (IO () -> c)
-        -> MkAction c
+data MkAction c = MkAction c (IO () -> c)
 
 instance Show c => Show (MkAction c) where
     showsPrec d (MkAction c _) = showParen (d >= 11) $
@@ -108,7 +104,7 @@ instance Show c => Show (MkAction c) where
 
 -- | Convert a callback to a @JE.JSRep -> IO ()@
 data MkAction1 c where
-    MkAction1 :: (NFData a)
+    MkAction1 :: NFData a
         => (JE.JSRep -> IO (Maybe a))
         -> (a -> c)
         -> ((JE.JSRep -> IO ()) -> c)

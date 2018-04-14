@@ -24,7 +24,6 @@ import qualified Control.Disposable as CD
 import Control.Lens
 import Control.Lens.Misc
 import Control.Monad.RWS
-import Data.Diverse.Lens
 import qualified Data.DList as DL
 import Data.IORef
 import qualified Data.Map.Strict as M
@@ -221,30 +220,22 @@ data Subject p = Subject
     , modelVar :: MVar p
     }
 
-viewSubject ::
-    ( HasItem (Subject p) r
-    , MonadReader r m
-    )
-    => m (Subject p)
-viewSubject = view item
+data Entity p s = Entity (Subject p) (Traversal' p s)
 
-viewSelf ::
-    ( HasItem (ReifiedTraversal' p s) r
-    , MonadReader r m
-    )
-    => m (ReifiedTraversal' p s)
-viewSelf = view item
+_subject :: Lens' (Entity p s) (Subject p)
+_subject = lens (\(Entity p _) -> p) (\(Entity _ s) p -> Entity p s)
+
+_self :: Lens (Entity p s) (Entity p s') (ReifiedTraversal' p s) (ReifiedTraversal' p s')
+_self = lens (\(Entity _ s) -> Traversal s) (\(Entity p _) (Traversal t) -> Entity p t)
 
 magnifySelf ::
-    ( HasItem (ReifiedTraversal' p s) r
-    , Magnify m n (Replaced (ReifiedTraversal' p s) (ReifiedTraversal' p a) r) r
-    , Contravariant (Magnified m b)
+    ( Magnify m n (Entity p a) (Entity p b)
+    , Contravariant (Magnified m r)
     )
-    => proxy p -> Traversal' s a -> m b -> n b
-magnifySelf p l = magnify (to $ item %~ go p l)
+    => Traversal' b a -> m r -> n r
+magnifySelf l = magnify (to go)
   where
-    go :: forall p s a proxy. proxy p -> Traversal' s a -> ReifiedTraversal' p s -> ReifiedTraversal' p a
-    go _ l' (Traversal s) = Traversal (s.l')
+    go (Entity sbj slf) = Entity sbj (slf.l)
 
 magnifyModel ::
     ( Magnify m n (Scene a) (Scene b)
@@ -252,3 +243,48 @@ magnifyModel ::
     )
     => LensLike' (Magnified m r) b a -> m r -> n r
 magnifyModel l = magnify (editSceneModel l)
+
+-- viewSubject ::
+--     ( MonadReader (Entity p s) m
+--     )
+--     => m (Subject p)
+-- viewSubject = view _subject
+
+-- viewSelf ::
+--     ( MonadReader (Entity p s) m
+--     )
+--     => m (ReifiedTraversal' p s)
+-- viewSelf = view _self
+
+-- viewSelf ::
+--     ( HasItem (ReifiedTraversal' p s) r
+--     , MonadReader r m
+--     )
+--     => m (ReifiedTraversal' p s)
+-- viewSelf = view item
+
+-- magnifySelf :: forall p s a r m n b proxy.
+--     ( HasItem (ReifiedTraversal' p s) r
+--     , HasItem (ReifiedTraversal' p a) (Replaced (ReifiedTraversal' p s) (ReifiedTraversal' p a) r)
+--     , Magnify m n (Replaced (ReifiedTraversal' p s) (ReifiedTraversal' p a) r) r
+--     , Contravariant (Magnified m b)
+--     )
+--     => proxy p -> Traversal' s a -> m b -> n b
+-- magnifySelf p l = magnify (to $ item %~ go p l)
+--   where
+--     go :: forall p s a proxy. proxy p -> Traversal' s a -> ReifiedTraversal' p s -> ReifiedTraversal' p a
+--     go _ l' (Traversal s) = Traversal (s.l')
+
+-- magnifySelf :: forall p s a rs ra m n b proxy.
+--     ( UniqueMember (ReifiedTraversal' p s) rs
+--     , UniqueMember (ReifiedTraversal' p a) ra
+--     , ra ~ Replace (ReifiedTraversal' p s) (ReifiedTraversal' p a) rs
+--     , Magnify m n (Many ra) (Many rs)
+--     , Contravariant (Magnified m b)
+--     )
+--     => proxy p -> Traversal' s a -> m b -> n b
+-- magnifySelf p l = magnify (to $ item %~ go p l)
+--   where
+--     go :: forall p s a proxy. proxy p -> Traversal' s a -> ReifiedTraversal' p s -> ReifiedTraversal' p a
+--     go _ l' (Traversal s) = Traversal (s.l')
+

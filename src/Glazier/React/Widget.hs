@@ -18,8 +18,7 @@
 module Glazier.React.Widget where
 
 import Control.Lens
-import Data.Diverse.Lens
-import Data.Proxy
+import Control.Lens.Misc
 import Data.Semigroup
 import qualified GHC.Generics as G
 import Glazier.React.Gadget
@@ -38,16 +37,16 @@ import Glazier.React.Window
 -- (Arena p s)
 -- (Scenario c p)
 
-data Widget r c p s a = Widget
+data Widget c p s a = Widget
     { window :: WindowT s IO () -- so it can read IORef
-    , gadget :: Gadget r c p a
+    , gadget :: Gadget c p s a
     } deriving (G.Generic, Functor)
 
-makeLenses ''Widget
+makeLenses_ ''Widget
 
 mapWidget2 ::
-    (Gadget r1 c1 p1 a1 -> Gadget r2 c2 p2 a2 -> Gadget r3 c3 p3 a3)
-    -> Widget r1 c1 p1 s a1 -> Widget r2 c2 p2 s a2 -> Widget r3 c3 p3 s a3
+    (Gadget c1 p1 s a1 -> Gadget c2 p2 s a2 -> Gadget c3 p3 s a3)
+    -> Widget c1 p1 s a1 -> Widget c2 p2 s a2 -> Widget c3 p3 s a3
 mapWidget2 f (Widget dis1 ini1) (Widget dis2 ini2) =
     Widget
     (dis1 <> dis2)
@@ -55,31 +54,25 @@ mapWidget2 f (Widget dis1 ini1) (Widget dis2 ini2) =
 
 ------------------------------------------
 
-instance Applicative (Widget r c p s) where
+instance Applicative (Widget c p s) where
     pure a = Widget mempty (pure a)
     (<*>) = mapWidget2 (<*>)
 
 -- merge ContT together by pre-firing the left ContT's output.
 -- That is, the resultant ContT will fire the output twice.
-instance (Semigroup a) => Semigroup (Widget r c p s a) where
+instance (Semigroup a) => Semigroup (Widget c p s a) where
     (<>) = mapWidget2 (<>)
 
-instance (Monoid a) => Monoid (Widget r c p s a) where
+instance (Monoid a) => Monoid (Widget c p s a) where
     mempty = Widget mempty mempty
     mappend = mapWidget2 mappend
 
-dummy :: Widget r c p s ()
+dummy :: Widget c p s ()
 dummy = mempty
 
-enlargeModel ::
-    ( HasItem (ReifiedTraversal' p s') r'
-    , r ~ Replaced (ReifiedTraversal' p s') (ReifiedTraversal' p s) r'
-    )
-    => Traversal' s' s -> Widget r c p s a -> Widget r' c p s' a
-enlargeModel l w@(Widget disp ini) = Widget (magnifyModel l disp) (magnifySelf (parentProxy w) l ini)
-  where
-    parentProxy :: Widget r c p s a -> Proxy p
-    parentProxy _ = Proxy
+enlargeModel :: Traversal' s' s -> Widget c p s a -> Widget c p s' a
+enlargeModel l (Widget win gad) = Widget (magnifyModel l win) (magnifySelf l gad)
+
 
 -- enlargePlan :: Traversal' (TVar Plan) (TVar Plan) -> Widget c p s a -> Widget c p s a
 -- enlargePlan l (Widget disp ini) = Widget disp (magnifyObjPlan l ini)
