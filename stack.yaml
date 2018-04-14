@@ -41,10 +41,6 @@ packages:
   extra-dep: true
 - location: '/Users/louis/repo/js/javascript-extras'
   extra-dep: true
-- location: '/Users/louis/repo/hs/data-diverse'
-  extra-dep: true
-- location: '/Users/louis/repo/hs/data-diverse-lens'
-  extra-dep: true
 - location: '/Users/louis/repo/hs/lens-misc'
   extra-dep: true
 - location: '/Users/louis/repo/hs/alternators'
@@ -53,6 +49,8 @@ packages:
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
 extra-deps:
+- data-diverse-3.0.0.0
+- data-diverse-lens-3.0.0.1
 - ghcjs-base-stub-0.1.0.4
 - generic-lens-0.5.1.0
 - newtype-generics-0.5.2.1

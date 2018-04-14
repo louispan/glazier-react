@@ -47,8 +47,8 @@ library
   build-depends:       base >= 4.7 && < 5
                      , alternators >= 0.2
                      , containers >= 0.5
-                     , data-diverse >= 3.0
-                     , data-diverse-lens >= 3.0
+                     , data-diverse >= 3
+                     , data-diverse-lens >= 3.0.0.1
                      , deepseq >= 1.4
                      , dlist >= 0.8
                      , disposable >= 0.3.0.0

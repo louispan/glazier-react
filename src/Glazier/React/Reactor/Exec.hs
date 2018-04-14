@@ -7,7 +7,18 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module Glazier.React.Reactor.Exec where
+module Glazier.React.Reactor.Exec
+    ( maybeExec
+    , initReactor
+    , execReactor
+    , execCommands
+    , execRerender
+    , execTickState
+    , execMkAction
+    , execMkAction1
+    , execMkShimCallbacks
+    , execDisposable
+    ) where
 
 import Control.Applicative
 import Control.Concurrent
@@ -59,20 +70,20 @@ initReactor exec s ini = do
     plnVar <- liftIO $ newMVar newPlan
     mdlVar <- liftIO $ newMVar s
     -- run through the app initialization, and execute any produced commands
-    cs <- liftIO $ tickState (Subject frmRef plnVar mdlVar) ini
+    cs <- liftIO $ _tickState (Subject frmRef plnVar mdlVar) ini
     exec (cmd' $ DL.toList cs)
     pure (CD.dispose plnVar, readMVar mdlVar)
 
 -- | Upate the world 'TVar' with the given action, and return the commands produced.
-tickState :: Subject s -> AState (Scenario c s) () -> IO (DL.DList c)
-tickState (Subject scnRef plnVar mdlVar) tick = do
+_tickState :: Subject s -> AState (Scenario c s) () -> IO (DL.DList c)
+_tickState (Subject scnRef plnVar mdlVar) tick = do
     mdl <- takeMVar mdlVar
     -- execShimCallbacks may 'takeMVar' only the plan,
     -- also plnVar may be shared with other 'Arena's
     -- so use plnVar inside mdVar block to release the plnVar as quickly as possible.
     pln <- takeMVar plnVar
     let (Scenario cs (Scene pln' mdl')) = execAState tick (Scenario mempty (Scene pln mdl))
-        (rndr, pln'') = runState rerender pln'
+        (rndr, pln'') = runState _rerender pln'
 
     -- Update the back buffer
     writeIORef scnRef (Scene pln'' mdl')
@@ -82,8 +93,8 @@ tickState (Subject scnRef plnVar mdlVar) tick = do
     rndr
     pure cs
 
-rerender :: MonadState Plan m => m (IO ())
-rerender = do
+_rerender :: MonadState Plan m => m (IO ())
+_rerender = do
     c <- use (_currentFrameNum)
     p <- use (_previousFrameNum)
     comp <- use (_componentRef)
@@ -145,7 +156,7 @@ execRerender (Rerender (Subject scnRef plnVar mdlVar)) = liftIO $ do
     -- So as long as we take and put in the correct order, we won't block.
     mdl <- readMVar mdlVar
     pln <- readMVar plnVar
-    let (rndr, pln') = runState rerender pln
+    let (rndr, pln') = runState _rerender pln
     writeIORef scnRef (Scene pln' mdl)
     putMVar plnVar pln'
     putMVar mdlVar mdl
@@ -160,7 +171,7 @@ execTickState ::
     -> TickState c
     -> m ()
 execTickState exec (TickState sbj tick) = do
-    cs <- liftIO $ tickState sbj tick
+    cs <- liftIO $ _tickState sbj tick
     exec (cmd' $ DL.toList cs)
 
 execMkAction1 ::
