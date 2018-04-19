@@ -244,6 +244,15 @@ magnifyModel ::
     => LensLike' (Magnified m r) b a -> m r -> n r
 magnifyModel l = magnify (editSceneModel l)
 
+----------------------------------------------------------------------------------
+
+-- Marks the current widget as dirty, and rerender is required
+-- A 'rerender' will called at the very end of a 'Glazier.React.Framework.Trigger.trigger'
+-- This means calling 'dirty' on other widgets from a different widget's 'Glazier.React.Framework.Trigger.trigger'
+-- will not result in a rerender for the other widget.
+dirty :: (MonadState (Scenario c s) m) => m ()
+dirty = _scene._plan._currentFrameNum %= JE.safeModularIncrement
+
 -- viewSubject ::
 --     ( MonadReader (Entity p s) m
 --     )

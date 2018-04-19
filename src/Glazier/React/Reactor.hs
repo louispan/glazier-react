@@ -14,7 +14,6 @@ module Glazier.React.Reactor where
 import Control.DeepSeq
 import qualified Control.Disposable as CD
 import Control.Lens
-import Control.Monad.State
 import Control.Monad.Trans.AState.Strict
 import Data.Diverse.Lens
 import Glazier.React.Scene
@@ -49,79 +48,40 @@ cmd' = cmd
 
 -----------------------------------------------------------------
 
-type ReactorCmds c =
+type CoreCmds c =
     '[ [c]
-    , Rerender
-    , TickState c
-    , MkAction1 c
-    , MkAction c
-    , MkShimCallbacks
+    , ReactorCmd c
     , CD.Disposable
     ]
 
-type AsReactor c =
+type AsCore c =
     ( AsFacet [c] c
-    , AsFacet Rerender c
-    , AsFacet (TickState c) c
-    , AsFacet (MkAction1 c) c
-    , AsFacet (MkAction c) c
-    , AsFacet MkShimCallbacks c
+    , AsFacet (ReactorCmd c) c
     , AsFacet CD.Disposable c
     )
 
--- | Rerender a ShimComponent using the given state.
-data Rerender where
-    Rerender ::
-        Subject s
-        -> Rerender
-
-instance Show Rerender where
-    showsPrec _ _ = showString "Rerender"
-
--- Marks the current widget as dirty, and rerender is required
--- A 'rerender' will called at the very end of a 'Glazier.React.Framework.Trigger.trigger'
--- This means calling 'dirty' on other widgets from a different widget's 'Glazier.React.Framework.Trigger.trigger'
--- will not result in a rerender for the other widget.
-dirty :: (MonadState (Scenario c s) m) => m ()
-dirty = _scene._plan._currentFrameNum %= JE.safeModularIncrement
-
--- The executor of this command will automatically check 'rerender' at the end of this state tick
-data TickState c where
-    TickState ::
-        Subject s
-        -> (AState (Scenario c s) ())
-        -> TickState c
-
-instance Show (TickState c) where
-    showsPrec _ _ = showString "TickState"
-
--- | Convert a command to an IO action
-data MkAction c = MkAction c (IO () -> c)
-
-instance Show c => Show (MkAction c) where
-    showsPrec d (MkAction c _) = showParen (d >= 11) $
-        showString "MkAction " . shows c
-
--- | Convert a callback to a @JE.JSRep -> IO ()@
-data MkAction1 c where
+data ReactorCmd c where
+    -- | Rerender a ShimComponent using the given state.
+    Rerender :: Subject s -> ReactorCmd c
+    -- The executor of this command will automatically check 'rerender' at the end of this state tick
+    TickState :: Subject s -> (AState (Scenario c s) ()) -> ReactorCmd c
+    MkAction :: c -> (IO () -> c) -> ReactorCmd c
+    -- | Convert a callback to a @JE.JSRep -> IO ()@
     MkAction1 :: NFData a
         => (JE.JSRep -> IO (Maybe a))
         -> (a -> c)
         -> ((JE.JSRep -> IO ()) -> c)
-        -> MkAction1 c
+        -> ReactorCmd c
+    -- | Make the 'ShimCallbacks' for this 'Plan' using the given
+    -- 'Window' rendering function.
+    -- The original window should be dropped and the 'Widget' reduced to just a
+    -- 'Gadget' to emphasis the fact that the 'Window' was used up.
+    MkShimCallbacks :: Subject s -> (Window s ()) -> ReactorCmd c
 
-instance Show (MkAction1 c) where
-    showsPrec _ _ = showString "MkAction1"
-
--- | Make the 'ShimCallbacks' for this 'Plan' using the given
--- 'Window' rendering function.
--- The original window should be dropped and the 'Widget' reduced to just a
--- 'Gadget' to emphasis the fact that the 'Window' was used up.
-data MkShimCallbacks where
-    MkShimCallbacks ::
-        Subject s
-        -> (Window s ())
-        -> MkShimCallbacks
-
-instance Show MkShimCallbacks where
-    showsPrec _ _ = showString "MkShimCallbacks"
+instance Show c => Show (ReactorCmd c) where
+    showsPrec _ (Rerender _) = showString "Rerender"
+    showsPrec _ (TickState _ _) = showString "TickState"
+    showsPrec d (MkAction c _) = showParen (d >= 11) $
+        showString "MkAction " . shows c
+    showsPrec _ (MkAction1 _ _ _) = showString "MkAction1"
+    showsPrec _ (MkShimCallbacks _ _) = showString "MkShimCallbacks"

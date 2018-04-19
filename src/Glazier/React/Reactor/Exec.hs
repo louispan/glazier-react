@@ -9,19 +9,16 @@
 
 module Glazier.React.Reactor.Exec
     ( maybeExec
-    , initReactor
-    , execReactor
+    , initialize
+    , maybeExecCore
+    , execReactorCmd
     , execCommands
-    , execRerender
-    , execTickState
-    , execMkAction
-    , execMkAction1
-    , execMkShimCallbacks
     , execDisposable
     ) where
 
 import Control.Applicative
 import Control.Concurrent
+import Control.DeepSeq
 import qualified Control.Disposable as CD
 import Control.Lens
 import Control.Monad.Reader
@@ -43,11 +40,9 @@ import Glazier.React.Markup
 import Glazier.React.MkId.Internal
 import Glazier.React.Reactor
 import Glazier.React.Scene
+import Glazier.React.Window
 import qualified JavaScript.Array as JA
 import qualified JavaScript.Extras as JE
-
-maybeExec :: (Monad m, AsFacet a c) => (a -> m b) -> c -> MaybeT m b
-maybeExec k y = maybe empty pure (preview facet y) >>= (lift <$> k)
 
 -- maybeExec' :: (Monad m, AsFacet (c' c) c) => (c' c -> m b) -> c -> MaybeT m b
 -- maybeExec' = maybeExec
@@ -57,7 +52,7 @@ maybeExec k y = maybe empty pure (preview facet y) >>= (lift <$> k)
 -- return the 'CD.Disposable' to dispose the handlers created,
 -- as well as an action to read the current state.
 -- It is the responsiblity of the caller run the 'CD.Disposable' when the app finishes.
-initReactor ::
+initialize ::
     ( MonadIO m
     , AsFacet [c] c
     )
@@ -65,7 +60,7 @@ initReactor ::
     -> s
     -> AState (Scenario c s) ()
     -> m (CD.Disposable, IO s)
-initReactor exec s ini = do
+initialize exec s ini = do
     frmRef <- liftIO $ newIORef (Scene newPlan s)
     plnVar <- liftIO $ newMVar newPlan
     mdlVar <- liftIO $ newMVar s
@@ -110,20 +105,31 @@ _rerender = do
 -- instance (AsFacet a (Wack Wock)) => AsFacet a Wock where
 --     facet = iso unWock Wock . facet
 
+maybeExec :: (Applicative m, AsFacet a c) => (a -> m b) -> c -> MaybeT m b
+maybeExec k y = MaybeT . sequenceA $ k <$> preview facet y
+
 -- | Create a executor for all the core commands required by the framework
-execReactor ::
+maybeExecCore ::
     ( MonadIO m
-    , AsReactor c
+    , AsCore c
     )
     => (m () -> IO ()) -> (c -> m ()) -> c -> MaybeT m ()
-execReactor runExec exec c =
+maybeExecCore runExec exec c =
     maybeExec (execCommands runExec exec) c
-    <|> maybeExec execRerender c
-    <|> maybeExec (execTickState exec) c
-    <|> maybeExec (execMkAction1 runExec exec) c
-    <|> maybeExec (execMkAction runExec exec) c
-    <|> maybeExec execMkShimCallbacks c
+    <|> maybeExec (execReactorCmd runExec exec) c
     <|> maybeExec execDisposable c
+
+execReactorCmd ::
+    ( MonadIO m
+    , AsFacet [c] c
+    )
+    => (m () -> IO ()) -> (c -> m ()) -> ReactorCmd c -> m ()
+execReactorCmd runExec exec c = case c of
+    Rerender sbj -> execRerender sbj
+    TickState sbj tick -> execTickState exec sbj tick
+    MkAction c' k -> execMkAction runExec exec c' k
+    MkAction1 goStrict goLazy k -> execMkAction1 runExec exec goStrict goLazy k
+    MkShimCallbacks sbj rndr -> execMkShimCallbacks sbj rndr
 
 -- -- | An example of using the "tieing" 'execReactor' with itself. Lazy haskell is awesome.
 -- -- NB. This tied executor *only* runs the Reactor effects.
@@ -150,8 +156,8 @@ execCommands runExec exec = traverse_ (liftIO . runExec . exec)
 execRerender ::
     ( MonadIO m
     )
-    => Rerender -> m ()
-execRerender (Rerender (Subject scnRef plnVar mdlVar)) = liftIO $ do
+    => Subject s -> m ()
+execRerender (Subject scnRef plnVar mdlVar) = liftIO $ do
     -- | 'tickState' and 'execRerender' are the only place where we 'takeMVar' the plan or model
     -- So as long as we take and put in the correct order, we won't block.
     mdl <- readMVar mdlVar
@@ -168,18 +174,22 @@ execTickState ::
     , AsFacet [c] c
     )
     => (c -> m ())
-    -> TickState c
+    -> Subject s
+    -> (AState (Scenario c s) ())
     -> m ()
-execTickState exec (TickState sbj tick) = do
+execTickState exec sbj tick = do
     cs <- liftIO $ _tickState sbj tick
     exec (cmd' $ DL.toList cs)
 
 execMkAction1 ::
-    (m () -> IO ())
+    NFData a
+    => (m () -> IO ())
     -> (c -> m ())
-    -> MkAction1 c
+    -> (JE.JSRep -> IO (Maybe a))
+    -> (a -> c)
+    -> ((JE.JSRep -> IO ()) -> c)
     -> m ()
-execMkAction1 runExec exec (MkAction1 goStrict goLazy k) = do
+execMkAction1 runExec exec goStrict goLazy k = do
     -- create the IO action to run given the runExec and exec
     let f = handleEventM goStrict goLazy'
         goLazy' ma = case ma of
@@ -193,20 +203,23 @@ execMkAction1 runExec exec (MkAction1 goStrict goLazy k) = do
 execMkAction ::
     (m () -> IO ())
     -> (c -> m ())
-    -> MkAction c
+    -> c
+    -> (IO () -> c)
     -> m ()
-execMkAction runExec exec (MkAction c k) = do
+execMkAction runExec exec c k = do
     -- create the IO action to run given the runExec and exec
     let f = runExec $ exec c
     -- Apply to result to the continuation, and execute any produced commands
     exec $ k f
 
+
 -- | Making multiple MkShimListeners for the same plan is a silent error and will be ignored.
 execMkShimCallbacks ::
     MonadIO m
-    => MkShimCallbacks
+    => Subject s
+    -> Window s ()
     -> m ()
-execMkShimCallbacks (MkShimCallbacks (Subject scnRef plnVar _) rndr) = do
+execMkShimCallbacks (Subject scnRef plnVar _) rndr = do
     -- For efficiency, render uses the state exported into ShimComponent
     let doRender = do
             scn <- readIORef scnRef
