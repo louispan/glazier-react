@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
@@ -8,8 +9,9 @@
 {-# LANGUAGE ViewPatterns #-}
 
 module Glazier.React.Reactor.Exec
-    ( maybeExec
-    , initialize
+    ( displaySubject
+    , mkSubject
+    , maybeExec
     , maybeExecCore
     , execReactorCmd
     , execCommands
@@ -34,56 +36,168 @@ import Data.Maybe
 import Data.Proxy
 import Data.Tagged
 import qualified GHCJS.Foreign.Callback as J
+import qualified GHCJS.Foreign.Callback.Internal as J
+import qualified GHCJS.Types as J
 import Glazier.React.Component
+import Glazier.React.Gadget
 import Glazier.React.HandleEvent
 import Glazier.React.Markup
 import Glazier.React.MkId.Internal
 import Glazier.React.Reactor
 import Glazier.React.Scene
-import Glazier.React.Window
+import Glazier.React.Widget
 import qualified JavaScript.Array as JA
 import qualified JavaScript.Extras as JE
 
 -- maybeExec' :: (Monad m, AsFacet (c' c) c) => (c' c -> m b) -> c -> MaybeT m b
 -- maybeExec' = maybeExec
 
--- | Given an initializing state action, and an executor (eg. 'reactorExecutor'),
--- initialize and exec the resulting commands generated, then
--- return the 'CD.Disposable' to dispose the handlers created,
--- as well as an action to read the current state.
--- It is the responsiblity of the caller run the 'CD.Disposable' when the app finishes.
-initialize ::
+displaySubject :: (MonadIO m, MonadState (DL.DList ReactMarkup) m) => Subject s -> m ()
+displaySubject (Subject scnRef _) = do
+    scn <- liftIO $ readIORef scnRef
+    let ShimCallbacks renderCb updatedCb refCb _ = scn ^. _plan._shimCallbacks
+    -- These are the callbacks on the 'ShimComponent'
+    -- See jsbits/react.js
+    leaf shimComponent
+        [ ("render", JE.toJSR renderCb)
+        , ("updated", JE.toJSR updatedCb)
+        , ("ref", JE.toJSR refCb)
+        ]
+
+-- | Make an initialized 'Subject' for a given model using the given
+-- 'Window' rendering function.
+-- The original window should be dropped and the 'Widget' reduced to just a
+-- 'Gadget' to emphasis the fact that the 'Window' was used up.
+-- 'displaySubject' should be used to render the subject.
+mkSubject ::
     ( MonadIO m
     , AsFacet [c] c
     )
     => (c -> m ())
+    -> Widget c s s ()
     -> s
-    -> AState (Scenario c s) ()
-    -> m (CD.Disposable, IO s)
-initialize exec s ini = do
-    frmRef <- liftIO $ newIORef (Scene newPlan s)
-    plnVar <- liftIO $ newMVar newPlan
-    mdlVar <- liftIO $ newMVar s
-    -- run through the app initialization, and execute any produced commands
-    cs <- liftIO $ _tickState (Subject frmRef plnVar mdlVar) ini
+    -> m (Subject s)
+mkSubject exec (Widget win gad) s = do
+    scnRef <- liftIO $ newIORef (Scene newPlan s)
+    scnVar <- liftIO $ newEmptyMVar
+    -- For efficiency, render uses the state exported into ShimComponent
+    let doRender = do
+            scn <- readIORef scnRef
+            (mrkup, _) <- execARWST win scn mempty
+            JE.toJS <$> toElement mrkup
+        doRef j = do
+            Scene pln mdl <- takeMVar scnVar
+            putMVar scnVar $ Scene (pln & _componentRef .~ JE.fromJS j) mdl
+        doUpdated = join $ do
+            Scene pln mdl <- takeMVar scnVar
+            let ((`proxy` (Proxy @"Once")) -> x, (`proxy` (Proxy @"Every")) -> y) = doOnUpdated pln
+            putMVar scnVar $ Scene (pln & _doOnUpdated._1 .~ (Tagged @"Once" mempty)) mdl
+            pure (x *> y)
+        doListen ctx j = void $ runMaybeT $ do
+            (gid, n) <- MaybeT $ pure $ do
+                ctx' <- JE.fromJS ctx
+                case JA.toList ctx' of
+                        [gid', n'] -> do
+                            gid'' <- GizmoId <$> JE.fromJS gid'
+                            n'' <- JE.fromJS n'
+                            Just (gid'', n'')
+                        _ -> Nothing
+            lift $ do
+                mhdl <- do
+                        Scene pln mdl <- takeMVar scnVar
+                        let (mhdl, gs') = at gid go (pln ^. _gizmos)
+                            go mg = case mg of
+                                    Nothing -> (Nothing, Nothing)
+                                    Just g -> let (ret, l) = at n go' (g ^. _listeners)
+                                              in (ret, Just (g & _listeners .~ l))
+                            go' ml = case ml of
+                                    Nothing -> (Nothing, Nothing)
+                                    Just ((`proxy` (Proxy @"Once")) -> x, y) ->
+                                        ( Just (x *> (y `proxy` (Proxy @"Every")))
+                                        , Just (Tagged @"Once" mempty, y))
+                        putMVar scnVar $ Scene (pln & _gizmos .~ gs') mdl
+                        pure mhdl
+                case mhdl of
+                    Nothing -> pure ()
+                    Just hdl -> hdl (JE.JSRep j)
+
+    renderCb <- liftIO $ J.syncCallback' doRender
+    refCb <- liftIO $ J.syncCallback1 J.ContinueAsync doRef
+    updatedCb <- liftIO $ J.syncCallback J.ContinueAsync doUpdated
+    listenCb <- liftIO $ J.syncCallback2 J.ContinueAsync doListen
+    let pln = newPlan & _shimCallbacks .~ (ShimCallbacks renderCb updatedCb refCb listenCb)
+        scn = Scene pln s
+        -- Tick state
+        sbj = Subject scnRef scnVar
+        tick = runGadgetT gad (Entity sbj id) (const $ pure ())
+        Scenario cs scn' = execAState tick (Scenario mempty scn)
+    liftIO $ atomicWriteIORef scnRef scn'
+    liftIO $ putMVar scnVar scn'
+    -- execute additional commands
     exec (cmd' $ DL.toList cs)
-    pure (CD.dispose plnVar, readMVar mdlVar)
+    -- return the initialized subject
+    pure sbj
+  where
+    newPlan :: Plan
+    newPlan = Plan
+        Nothing
+        (ShimCallbacks (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef))
+        0
+        0
+        (Tagged mempty, Tagged mempty)
+        mempty
+        mempty
+
+-- -- | Given an initializing state action, and an executor (eg. 'reactorExecutor'),
+-- -- initialize and exec the resulting commands generated, then
+-- -- return the 'CD.Disposable' to dispose the handlers created,
+-- -- as well as an action to read the current state.
+-- -- It is the responsiblity of the caller run the 'CD.Disposable' when the app finishes.
+-- initialize' ::
+--     ( MonadIO m
+--     , AsFacet [c] c
+--     , CD.Dispose (Scene s)
+--     )
+--     => (c -> m ())
+--     -> s
+--     -> AState (Scenario c s) ()
+--     -> m (CD.Disposable, IO s)
+-- initialize' exec s ini = do
+--     scnRef <- liftIO $ newIORef (Scene newPlan s)
+--     scnVar <- liftIO $ newMVar (Scene newPlan s)
+--     -- run through the app initialization, and execute any produced commands
+--     cs <- liftIO $ _tickState (Subject scnRef scnVar) ini
+--     exec (cmd' $ DL.toList cs)
+--     pure (CD.dispose scnVar, view _model <$> readMVar scnVar)
+
+-- initialize ::
+--     ( MonadIO m
+--     , AsFacet [c] c
+--     , CD.Dispose (Scene s)
+--     )
+--     => (c -> m ())
+--     -> Widget c p s a
+--     -> s
+--     -> m (CD.Disposable, IO s)
+-- initialize exec s ini = do
+--     scnRef <- liftIO $ newIORef (Scene newPlan s)
+--     scnVar <- liftIO $ newMVar (Scene newPlan s)
+--     -- run through the app initialization, and execute any produced commands
+--     cs <- liftIO $ _tickState (Subject scnRef scnVar) ini
+--     exec (cmd' $ DL.toList cs)
+--     pure (CD.dispose scnVar, view _model <$> readMVar scnVar)
 
 -- | Upate the world 'TVar' with the given action, and return the commands produced.
 _tickState :: Subject s -> AState (Scenario c s) () -> IO (DL.DList c)
-_tickState (Subject scnRef plnVar mdlVar) tick = do
-    mdl <- takeMVar mdlVar
-    -- execShimCallbacks may 'takeMVar' only the plan,
-    -- also plnVar may be shared with other 'Arena's
-    -- so use plnVar inside mdVar block to release the plnVar as quickly as possible.
-    pln <- takeMVar plnVar
-    let (Scenario cs (Scene pln' mdl')) = execAState tick (Scenario mempty (Scene pln mdl))
+_tickState (Subject scnRef scnVar) tick = do
+    scn <- takeMVar scnVar
+    let (Scenario cs (Scene pln' mdl')) = execAState tick (Scenario mempty scn)
         (rndr, pln'') = runState _rerender pln'
+        scn' = Scene pln'' mdl'
 
     -- Update the back buffer
-    writeIORef scnRef (Scene pln'' mdl')
-    putMVar plnVar pln''
-    putMVar mdlVar mdl'
+    atomicWriteIORef scnRef scn'
+    putMVar scnVar scn'
     -- rerender if necessary
     rndr
     pure cs
@@ -129,7 +243,8 @@ execReactorCmd runExec exec c = case c of
     TickState sbj tick -> execTickState exec sbj tick
     MkAction c' k -> execMkAction runExec exec c' k
     MkAction1 goStrict goLazy k -> execMkAction1 runExec exec goStrict goLazy k
-    MkShimCallbacks sbj rndr -> execMkShimCallbacks sbj rndr
+    -- MkShimCallbacks sbj rndr -> execMkShimCallbacks sbj rndr
+    MkSubject wid s k -> execMkSubject exec wid s k
 
 -- -- | An example of using the "tieing" 'execReactor' with itself. Lazy haskell is awesome.
 -- -- NB. This tied executor *only* runs the Reactor effects.
@@ -157,15 +272,14 @@ execRerender ::
     ( MonadIO m
     )
     => Subject s -> m ()
-execRerender (Subject scnRef plnVar mdlVar) = liftIO $ do
+execRerender (Subject scnRef scnVar) = liftIO $ do
     -- | 'tickState' and 'execRerender' are the only place where we 'takeMVar' the plan or model
     -- So as long as we take and put in the correct order, we won't block.
-    mdl <- readMVar mdlVar
-    pln <- readMVar plnVar
+    Scene pln mdl <- readMVar scnVar
     let (rndr, pln') = runState _rerender pln
-    writeIORef scnRef (Scene pln' mdl)
-    putMVar plnVar pln'
-    putMVar mdlVar mdl
+        scn = Scene pln' mdl
+    atomicWriteIORef scnRef scn
+    putMVar scnVar scn
     rndr
 
 -- | No need to run in a separate thread because it should never block for a significant amount of time.
@@ -212,67 +326,18 @@ execMkAction runExec exec c k = do
     -- Apply to result to the continuation, and execute any produced commands
     exec $ k f
 
-
--- | Making multiple MkShimListeners for the same plan is a silent error and will be ignored.
-execMkShimCallbacks ::
-    MonadIO m
-    => Subject s
-    -> Window s ()
+execMkSubject ::
+    ( MonadIO m
+    , AsFacet [c] c
+    )
+    => (c -> m ())
+    -> Widget c s s ()
+    -> s
+    -> (Subject s -> c)
     -> m ()
-execMkShimCallbacks (Subject scnRef plnVar _) rndr = do
-    -- For efficiency, render uses the state exported into ShimComponent
-    let doRender = do
-            scn <- readIORef scnRef
-            let (mrkup, _) = execARWS rndr scn mempty
-            JE.toJS <$> toElement mrkup
-        doRef j = do
-            pln <- takeMVar plnVar
-            putMVar plnVar (pln & _componentRef .~ JE.fromJS j)
-        doUpdated = join $ do
-            pln <- takeMVar plnVar
-            let ((`proxy` (Proxy @"Once")) -> x, (`proxy` (Proxy @"Every")) -> y) = doOnUpdated pln
-            putMVar plnVar $ pln & _doOnUpdated._1 .~ (Tagged @"Once" mempty)
-            pure (x *> y)
-        doListen ctx j = void $ runMaybeT $ do
-            (gid, n) <- MaybeT $ pure $ do
-                ctx' <- JE.fromJS ctx
-                case JA.toList ctx' of
-                        [gid', n'] -> do
-                            gid'' <- GizmoId <$> JE.fromJS gid'
-                            n'' <- JE.fromJS n'
-                            Just (gid'', n'')
-                        _ -> Nothing
-            lift $ do
-                mhdl <- do
-                        pln <- takeMVar plnVar
-                        let (mhdl, gs') = at gid go (pln ^. _gizmos)
-                            go mg = case mg of
-                                    Nothing -> (Nothing, Nothing)
-                                    Just g -> let (ret, l) = at n go' (g ^. _listeners)
-                                              in (ret, Just (g & _listeners .~ l))
-                            go' ml = case ml of
-                                    Nothing -> (Nothing, Nothing)
-                                    Just ((`proxy` (Proxy @"Once")) -> x, y) ->
-                                        ( Just (x *> (y `proxy` (Proxy @"Every")))
-                                        , Just (Tagged @"Once" mempty, y))
-                        putMVar plnVar (pln & _gizmos .~ gs')
-                        pure mhdl
-                case mhdl of
-                    Nothing -> pure ()
-                    Just hdl -> hdl (JE.JSRep j)
-
-    renderCb <- liftIO $ J.syncCallback' doRender
-    refCb <- liftIO $ J.syncCallback1 J.ContinueAsync doRef
-    updatedCb <- liftIO $ J.syncCallback J.ContinueAsync doUpdated
-    listenCb <- liftIO $ J.syncCallback2 J.ContinueAsync doListen
-    liftIO $ do
-        pln <- takeMVar plnVar
-        let ls = pln ^. _shimCallbacks
-        case ls of
-            -- shim listeners already created
-            Just _ -> putMVar plnVar pln
-            Nothing -> putMVar plnVar $ pln & _shimCallbacks .~
-                (Just $ ShimCallbacks renderCb updatedCb refCb listenCb)
+execMkSubject exec wid s k = do
+    sbj <- mkSubject exec wid s
+    exec $ k sbj
 
 execDisposable ::
     MonadIO m

@@ -81,7 +81,7 @@ data Plan = Plan
     -- a react "ref" to the javascript instance of ReactComponent
     -- so that react "componentRef.setState()" can be called.
     { componentRef :: Maybe ComponentRef
-    , shimCallbacks :: Maybe ShimCallbacks
+    , shimCallbacks :: ShimCallbacks
     -- This is the previous "react state"
     , previousFrameNum :: Int
     -- This the current "react state".
@@ -98,21 +98,20 @@ data Plan = Plan
     -- interactivity data for child DOM elements
     , gizmos :: M.Map GizmoId Gizmo
     -- interactivity data for child react components
-    , plans :: M.Map PlanId (MVar Plan)
+    -- , plans :: M.Map PlanId (MVar Plan)
     } deriving (G.Generic)
 
 makeLenses_ ''Plan
 
 instance CD.Dispose Plan where
-    dispose pln = fromMaybe mempty (CD.dispose <$> (shimCallbacks pln))
+    dispose pln = (CD.dispose (shimCallbacks pln))
         <> (disposeOnUpdated pln)
-        <> (foldMap CD.dispose (plans pln))
+        -- <> (foldMap CD.dispose (plans pln))
 
 instance Show Plan where
     showsPrec d pln = showParen
         (d >= 11)
         ( showString "Plan {" . showString "componentRef ? " . shows (isJust $ componentRef pln)
-        . showString ", " . showString "shimCallbacks ? " . shows (isJust $ shimCallbacks pln)
         . showString ", " . showString "previousFrameNum = " . shows (previousFrameNum pln)
         . showString ", " . showString "currentFrameNum = " . shows (currentFrameNum pln)
         . showString ", " . showString "gizmoIds = " . showList (M.keys $ gizmos pln)
@@ -120,16 +119,16 @@ instance Show Plan where
         . showString "}"
         )
 
-newPlan :: Plan
-newPlan = Plan
-    Nothing
-    Nothing
-    0
-    0
-    (Tagged mempty, Tagged mempty)
-    mempty
-    mempty
-    mempty
+-- newPlan :: Plan
+-- newPlan = Plan
+--     Nothing
+--     Nothing
+--     0
+--     0
+--     (Tagged mempty, Tagged mempty)
+--     mempty
+--     mempty
+--     -- mempty
 
 ----------------------------------------------------------------------------------
 
@@ -147,6 +146,16 @@ _model = lens model (\s a -> s { model = a})
 _plan :: Lens' (Scene s) Plan
 _plan = lens plan (\s a -> s { plan = a})
 
+-- | If the model is a higher kinded type that contains a subject
+-- then also dispose the subject in the model
+instance CD.Dispose (s Subject) => CD.Dispose (Scene (s Subject)) where
+    dispose (Scene pln mdl) = CD.dispose pln <> CD.dispose mdl
+
+instance CD.Dispose (Scene (s Identity)) where
+    dispose (Scene pln _) = CD.dispose pln
+
+instance CD.Dispose (Scene s) where
+    dispose (Scene pln _) = CD.dispose pln
 ----------------------------------------------------------------------------------
 
 -- | A 'Scene' contains interactivity data for all widgets as well as the model data.
@@ -215,10 +224,16 @@ post c = _posted %= (`DL.snoc` c)
 -- which will help prevent old updates overriding new updates.
 -- NB. Different 'Arena' may have different modelVar, but share the same planVar.
 data Subject p = Subject
+    -- | so we can have non-blocking reads
     { sceneRef :: IORef (Scene p)
-    , planVar :: MVar Plan
-    , modelVar :: MVar p
+    -- | canonical data
+    , sceneVar :: MVar (Scene p)
     }
+
+-- | If the model is a higher kinded type that also contains a subject
+-- then also dispose the subject in the model
+instance CD.Dispose (Scene p) => CD.Dispose (Subject p) where
+    dispose (Subject _ v) = CD.dispose v
 
 data Entity p s = Entity (Subject p) (Traversal' p s)
 

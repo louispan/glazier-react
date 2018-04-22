@@ -16,7 +16,6 @@ import qualified Data.Map.Strict as M
 import Data.Semigroup
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
-import Glazier.React.Component
 import Glazier.React.Markup
 import Glazier.React.MkId
 import Glazier.React.Scene
@@ -31,13 +30,10 @@ type Window s = WindowT s Identity
 
 getListeners :: Monad m => GizmoId -> WindowT s m [JE.Property]
 getListeners gid = do
-    cb <- preview (_plan._shimCallbacks._Just._onListen)
-    case cb of
-        Nothing -> pure mempty
-        Just cb' -> do
-            ks <- view (_plan._gizmos.ix gid._listeners.to M.keys)
-            let go k = (k, bindListenerContext (context k) cb')
-            pure (go <$> ks)
+    cb <- view (_plan._shimCallbacks._onListen)
+    ks <- view (_plan._gizmos.ix gid._listeners.to M.keys)
+    let go k = (k, bindListenerContext (context k) cb)
+    pure (go <$> ks)
   where
     context k = JE.toJSR $ JA.fromList [JE.toJS gid, JE.toJS k]
 
@@ -64,50 +60,17 @@ bh' gid n props childs = do
     ls <- getListeners gid
     branch n (props <> DL.fromList ls) childs
 
--- | Use this to create a display for a top level 'Gadget'
--- Eg. the result of a 'Widget' that has the Window rendering function
--- inserted into 'Glazier.React.Framework.Core.Widget.MkShimListeners'.
-shimWindow :: Monad m => WindowT s m ()
-shimWindow = do
-    ls <- view (_plan._shimCallbacks)
-    case ls of
-        Nothing -> pure ()
-        Just (ShimCallbacks renderCb updatedCb refCb _) ->
-            -- These are the callbacks on the 'ShimComponent'
-            -- See jsbits/react.js
-            leaf shimComponent
-                [ ("render", JE.toJSR renderCb)
-                , ("updated", JE.toJSR updatedCb)
-                , ("ref", JE.toJSR refCb)
-                ]
-
 
 bindListenerContext :: JE.JSRep -> J.Callback (J.JSVal -> J.JSVal -> IO ()) -> JE.JSRep
 bindListenerContext = js_bindListenerContext
 
 #ifdef __GHCJS__
 
--- -- | Combine functions into a single function
--- -- Given two 'Callback (JSVal -> IO ())'
--- -- return a function that calls both callbacks
--- foreign import javascript unsafe
---     "$r = function(j) { $1(j); $2(j); };"
---     js_combineFunction1 ::
---         JE.JSRep
---         -> JE.JSRep
---         -> JE.JSRep
-
 foreign import javascript unsafe
     "$r = function(j) { $2($1, j) };"
     js_bindListenerContext :: JE.JSRep -> J.Callback (J.JSVal -> J.JSVal -> IO ()) -> JE.JSRep
 
 #else
-
--- js_combineFunction1 ::
---     JE.JSRep
---     -> JE.JSRep
---     -> JE.JSRep
--- js_combineFunction1 = const
 
 js_bindListenerContext :: JE.JSRep -> J.Callback (J.JSVal -> J.JSVal -> IO ()) -> JE.JSRep
 js_bindListenerContext _ _ = JE.JSRep J.nullRef

@@ -66,6 +66,13 @@ gadgetT ::
     -> GadgetT c p s m a
 gadgetT f = areaderT (\r -> acontT (f r))
 
+-- gadget ::
+--     (Entity p s
+--         -> (a -> AState (Scenario c p) ())
+--         -> AState (Scenario c p) ())
+--     -> Gadget c p s a
+-- gadget = gadgetT
+
 -- viewSelf :: forall s r c p.
 --     ( HasItem (ReifiedTraversal' p s) r
 --     )
@@ -118,4 +125,9 @@ runGadgetT ::
     -> AStateT (Scenario c p) m ()
 runGadgetT x l = runAContT (runAReaderT x l)
 
-
+-- runGadget ::
+--     Gadget c p s a
+--     -> Entity p s
+--     -> (a -> AState (Scenario c p) ())
+--     -> AState (Scenario c p) ()
+-- runGadget = runGadgetT

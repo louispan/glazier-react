@@ -17,7 +17,7 @@ import Control.Lens
 import Control.Monad.Trans.AState.Strict
 import Data.Diverse.Lens
 import Glazier.React.Scene
-import Glazier.React.Window
+import Glazier.React.Widget
 import qualified JavaScript.Extras as JE
 
 -- | convert a request type to a command type.
@@ -72,11 +72,11 @@ data ReactorCmd c where
         -> (a -> c)
         -> ((JE.JSRep -> IO ()) -> c)
         -> ReactorCmd c
-    -- | Make the 'ShimCallbacks' for this 'Plan' using the given
+    -- | Make an initialized 'Subject' for a given model using the given
     -- 'Window' rendering function.
     -- The original window should be dropped and the 'Widget' reduced to just a
     -- 'Gadget' to emphasis the fact that the 'Window' was used up.
-    MkShimCallbacks :: Subject s -> (Window s ()) -> ReactorCmd c
+    MkSubject :: Widget c s s () -> s -> (Subject s -> c) -> ReactorCmd c
 
 instance Show c => Show (ReactorCmd c) where
     showsPrec _ (Rerender _) = showString "Rerender"
@@ -84,4 +84,5 @@ instance Show c => Show (ReactorCmd c) where
     showsPrec d (MkAction c _) = showParen (d >= 11) $
         showString "MkAction " . shows c
     showsPrec _ (MkAction1 _ _ _) = showString "MkAction1"
-    showsPrec _ (MkShimCallbacks _ _) = showString "MkShimCallbacks"
+    showsPrec _ (MkSubject _ _ _) = showString "MkSubject"
+
