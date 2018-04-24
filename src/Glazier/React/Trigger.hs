@@ -44,7 +44,7 @@ import qualified JavaScript.Extras as JE
 -- to use 'withRef' instead.
 mkTriggerAction1 ::
     ( NFData a
-    , AsCore c
+    , AsReactor c
     )
     => Lens' (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Every" (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
     -> GizmoId
@@ -64,7 +64,7 @@ mkTriggerAction1 l gid n goStrict goLazy = do
                 in cmd' $ TickState sbj updateGizmo
 
 mkUpdatedAction ::
-    AsCore c
+    AsReactor c
     => Lens' (Tagged "Once" (IO ()), Tagged "Every" (IO ())) (IO ())
     -> AState (Scenario c p) b
     -> Gadget c p s b
@@ -78,7 +78,7 @@ mkUpdatedAction l go = do
                 in cmd' $ TickState sbj addListener
 
 triggerOnUpdated_ ::
-    AsCore c
+    AsReactor c
     => Lens' (Tagged "Once" (IO ()), Tagged "Every" (IO ())) (IO ())
     -> AState (Scenario c p) b
     -> Gadget c p s b
@@ -90,20 +90,20 @@ triggerOnUpdated_ l go = mkUpdatedAction l go
 -- These callbacks are called after the ref callback by React
 -- See https://reactjs.org/docs/refs-and-the-dom.html.
 triggerOnUpdated ::
-    AsCore c
+    AsReactor c
     => AState (Scenario c p) b
     -> Gadget c p s b
 triggerOnUpdated = triggerOnUpdated_ (_2._Wrapped' @(Tagged "Every" _))
 
 triggerOnceOnUpdated ::
-    AsCore c
+    AsReactor c
     => AState (Scenario c p) b
     -> Gadget c p s b
 triggerOnceOnUpdated = triggerOnUpdated_ (_1._Wrapped' @(Tagged "Once" _))
 
 -- | A 'trigger1' where all event info is dropped and the given value is fired.
 trigger ::
-    AsCore c
+    AsReactor c
     => GizmoId
     -> J.JSString
     -> AState (Scenario c p) b
@@ -111,7 +111,7 @@ trigger ::
 trigger = trigger_ (_2._Wrapped' @(Tagged "Every" _))
 
 triggerOnce ::
-    AsCore c
+    AsReactor c
     => GizmoId
     -> J.JSString
     -> AState (Scenario c p) b
@@ -121,7 +121,7 @@ triggerOnce = trigger_ (_1._Wrapped' @(Tagged "Once" _))
 -- | Create callback for 'Notice' and add it to this gizmos's dlist of listeners.
 trigger1 ::
     ( NFData a
-    , AsCore c
+    , AsReactor c
     )
     => GizmoId
     -> J.JSString
@@ -132,7 +132,7 @@ trigger1 = trigger1_ (_2._Wrapped' @(Tagged "Every" _))
 
 triggerOnce1 ::
     ( NFData a
-    , AsCore c
+    , AsReactor c
     )
     => GizmoId
     -> J.JSString
@@ -143,7 +143,7 @@ triggerOnce1 = trigger1_ (_1._Wrapped' @(Tagged "Once" _))
 
 trigger1_ ::
     ( NFData a
-    , AsCore c
+    , AsReactor c
     )
     => Lens' (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Every" (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
     -> GizmoId
@@ -158,7 +158,7 @@ trigger1_ l gid n goStrict goLazy = mkTriggerAction1 l gid n goStrict' goLazy
         Just e' -> Just <$> goStrict e'
 
 trigger_ ::
-    AsCore c
+    AsReactor c
     => Lens' (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Every" (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
     -> GizmoId
     -> J.JSString
@@ -169,7 +169,7 @@ trigger_ l gid n go = mkTriggerAction1 l gid n (const $ pure (Just ())) (const $
 -- | This adds a ReactJS "ref" callback assign the ref into an EventTarget for the
 -- gizmo in the plan
 withRef ::
-    AsCore c
+    AsReactor c
     => GizmoId
     -> Gadget c p s ()
 withRef gid = mkTriggerAction1 (_2._Wrapped' @(Tagged "Every" _)) gid "ref" (pure . Just) hdlRef

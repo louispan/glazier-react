@@ -23,7 +23,10 @@ import Control.Concurrent
 import qualified Control.Disposable as CD
 import Control.Lens
 import Control.Lens.Misc
+import Control.Monad.Cont
 import Control.Monad.RWS
+import Control.Monad.State.Strict
+import Data.Diverse.Lens
 import qualified Data.DList as DL
 import Data.IORef
 import qualified Data.Map.Strict as M
@@ -201,7 +204,29 @@ editScenarioModel l safa s = (\s' -> s & _scene._model .~ s' ) <$> l afa' (s ^. 
 
 ----------------------------------------------------------------------------------
 
--- -- | 'post' . 'cmd'
+-- | convert a request type to a command type.
+-- This is used for commands that doesn't have a continuation.
+-- Ie. commands that doesn't "returns" a value from running an effect.
+-- Use 'cmd'' for commands that require a continuation ("returns" a value).
+cmd :: (AsFacet c' c) => c' -> c
+cmd = review facet
+
+-- | A variation of 'cmd' for commands with a type variable @c@,
+-- which is usually commands that are containers of command,
+-- or commands that require a continuation
+-- Eg. commands that "returns" a value from running an effect.
+-- 'cmd'' is usually used with with the 'Cont' monad to help
+-- create the continuation.
+--
+-- @
+-- post $ (`runCont` id) $ do
+--     a <- cont $ cmd . GetSomething
+--     pure . cmd $ DoSomething (f a)
+-- @
+cmd' :: (AsFacet (c' c) c) => c' c -> c
+cmd' = review facet
+
+-- -- | 'post' . 'cmd
 -- postCmd :: (AsFacet c' c, MonadState (Scenario c s) m) => c' -> m ()
 -- postCmd = post . cmd
 
@@ -209,14 +234,23 @@ editScenarioModel l safa s = (\s' -> s & _scene._model .~ s' ) <$> l afa' (s ^. 
 -- -- which should be commands that require a continuation.
 -- -- Ie. commands that "return" a value from running an effect.
 -- postCmd' :: (AsFacet (c' c) c, MonadState (Scenario c s) m) => c' c -> m ()
--- postCmd' = post . cmd'
+-- postCmd' = post . cmd
 
--- Add a command to the list of commands for this state tick.
+-- | Add the commands from input State monad
+postState :: (MonadState (Scenario c s) m) => State (DL.DList c) () ->  m ()
+postState s = _posted %= (<> execState s mempty)
+
+-- | Add a command to the list of commands for this state tick.
 post :: (MonadState (Scenario c s) m) => c -> m ()
 post c = _posted %= (`DL.snoc` c)
 
--- retrieve :: AsFacet (c' c) c => ((a -> c) -> c' c) -> Cont c a
--- retrieve k = cont $ cmd' . k
+-- | A variation of 'post' to be used only within a @postState . evalContT $ do@ block
+post' :: (MonadState (DL.DList c) m) => c -> m ()
+post' c = id %= (`DL.snoc` c)
+
+-- | This allows using the do notation to compose the continuation required by commands that "returns" a value.
+retrieve :: AsFacet [c] c => ((a -> c) -> c) -> ContT () (State (DL.DList c)) a
+retrieve m = ContT $ \k -> post' $ m (cmd' @[] . DL.toList . (`execState` mempty) . k)
 
 ----------------------------------------------------------------------------------
 

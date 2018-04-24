@@ -12,7 +12,7 @@ module Glazier.React.Reactor.Exec
     ( displaySubject
     , mkSubject
     , maybeExec
-    , maybeExecCore
+    , maybeExecReactor
     , execReactorCmd
     , execCommands
     , execDisposable
@@ -63,6 +63,18 @@ displaySubject (Subject scnRef _) = do
         , ("updated", JE.toJSR updatedCb)
         , ("ref", JE.toJSR refCb)
         ]
+
+-- displaySubject' :: WindowT (Subject s) IO ()
+-- displaySubject' (Subject scnRef _) = do
+--     scn <- liftIO $ readIORef scnRef
+--     let ShimCallbacks renderCb updatedCb refCb _ = scn ^. _plan._shimCallbacks
+--     -- These are the callbacks on the 'ShimComponent'
+--     -- See jsbits/react.js
+--     leaf shimComponent
+--         [ ("render", JE.toJSR renderCb)
+--         , ("updated", JE.toJSR updatedCb)
+--         , ("ref", JE.toJSR refCb)
+--         ]
 
 -- | Make an initialized 'Subject' for a given model using the given
 -- 'Window' rendering function.
@@ -223,13 +235,13 @@ maybeExec :: (Applicative m, AsFacet a c) => (a -> m b) -> c -> MaybeT m b
 maybeExec k y = MaybeT . sequenceA $ k <$> preview facet y
 
 -- | Create a executor for all the core commands required by the framework
-maybeExecCore ::
+maybeExecReactor ::
     ( MonadIO m
-    , AsCore c
+    , AsReactor c
     )
     => (m () -> IO ()) -> (c -> m ()) -> c -> MaybeT m ()
-maybeExecCore runExec exec c =
-    maybeExec (execCommands runExec exec) c
+maybeExecReactor runExec exec c =
+    maybeExec (traverse_ @[] exec) c
     <|> maybeExec (execReactorCmd runExec exec) c
     <|> maybeExec execDisposable c
 
@@ -264,8 +276,8 @@ execReactorCmd runExec exec c = case c of
 -- efficient to execuute "quick" commands single threaded.
 -- We'll let the individual executors of the commands decide if
 -- "slow" commands should be forked in a thread.
-execCommands :: MonadIO m => (m () -> IO ()) -> (c -> m ()) -> [c] -> m ()
-execCommands runExec exec = traverse_ (liftIO . runExec . exec)
+execCommands :: Applicative m => (c -> m ()) -> [c] -> m ()
+execCommands exec = traverse_ exec
 -- execCommands runExec exec = traverse_ (liftIO . void . forkIO . runExec . exec)
 
 execRerender ::

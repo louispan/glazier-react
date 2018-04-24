@@ -13,48 +13,25 @@ module Glazier.React.Reactor where
 
 import Control.DeepSeq
 import qualified Control.Disposable as CD
-import Control.Lens
 import Control.Monad.Trans.AState.Strict
 import Data.Diverse.Lens
 import Glazier.React.Scene
 import Glazier.React.Widget
 import qualified JavaScript.Extras as JE
 
--- | convert a request type to a command type.
--- This is used for commands that doesn't have a continuation.
--- Ie. commands that doesn't "returns" a value from running an effect.
--- Use 'cmd'' for commands that require a continuation ("returns" a value).
-cmd :: (AsFacet c' c) => c' -> c
-cmd = review facet
-
--- | A variation of 'cmd' for commands with a type variable @c@,
--- which is usually commands that are containers of command,
--- or commands that require a continuation
--- Eg. commands that "returns" a value from running an effect.
--- 'cmd'' is usually used with with the 'Cont' monad to help
--- create the continuation.
---
--- @
--- post $ (`runCont` id) $ do
---     a <- cont $ cmd' . GetSomething
---     pure . cmd $ DoSomething (f a)
--- @
-cmd' :: (AsFacet (c' c) c) => c' c -> c
-cmd' = cmd
-
 -- -- | Convenience function to avoid @TypeApplications@ when using OverloadedLists
 -- cmds :: AsFacet [c] c => [c] -> c
--- cmds = cmd' @[]
+-- cmds = cmd @[]
 
 -----------------------------------------------------------------
 
-type CoreCmds c =
+type ReactorCmds c =
     '[ [c]
     , ReactorCmd c
     , CD.Disposable
     ]
 
-type AsCore c =
+type AsReactor c =
     ( AsFacet [c] c
     , AsFacet (ReactorCmd c) c
     , AsFacet CD.Disposable c
