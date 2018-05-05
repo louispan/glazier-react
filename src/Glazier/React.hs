@@ -1,7 +1,9 @@
 -- | NB. Glazier.React.Event.* are not exported due to duplicate record fields
 -- It is up to the user to import the Event modules as required.
 module Glazier.React
-    ( module Glazier.React.Component
+    ( module Glazier.Command
+    , module Glazier.Command.Exec
+    , module Glazier.React.Component
     , module Glazier.React.Element
     , module Glazier.React.EventTarget
     , module Glazier.React.Gadget
@@ -39,6 +41,8 @@ import Control.Monad.Trans.ARWS.Strict
 import Control.Monad.Trans.AState.Strict
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Maybe.Extras
+import Glazier.Command
+import Glazier.Command.Exec
 import Glazier.React.Component
 import Glazier.React.Element
 import Glazier.React.EventTarget

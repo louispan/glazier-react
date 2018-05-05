@@ -23,6 +23,8 @@ import Control.Concurrent
 import Control.DeepSeq
 import qualified Control.Disposable as CD
 import Control.Lens
+import Control.Monad.IO.Class
+import Control.Monad.IO.Unlift
 import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Control.Monad.Trans.ARWS.Strict
@@ -39,6 +41,7 @@ import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Foreign.Callback.Internal as J
 import qualified GHCJS.Types as J
 import Glazier.Command
+import Glazier.Command.Exec
 import Glazier.React.Component
 import Glazier.React.Gadget
 import Glazier.React.HandleEvent
@@ -227,35 +230,27 @@ _rerender = do
             pure (js_setShimComponentFrameNum j c)
         _ -> pure (pure ())
 
--- type Wack w = Which '[Rerender, (), DL.DList w]
--- newtype Wock = Wock { unWock :: Wack Wock}
--- instance (AsFacet a (Wack Wock)) => AsFacet a Wock where
---     facet = iso unWock Wock . facet
-
-maybeExec :: (Applicative m, AsFacet a c) => (a -> m b) -> c -> MaybeT m b
-maybeExec k y = MaybeT . sequenceA $ k <$> preview facet y
-
 -- | Create a executor for all the core commands required by the framework
 maybeExecReactor ::
-    ( MonadIO m
+    ( MonadUnliftIO m
     , AsReactor c
     )
-    => (m () -> IO ()) -> (c -> m ()) -> c -> MaybeT m ()
-maybeExecReactor runExec exec c =
+    => (c -> m ()) -> c -> MaybeT m ()
+maybeExecReactor exec c =
     maybeExec (traverse_ @[] exec) c
-    <|> maybeExec (execReactorCmd runExec exec) c
+    <|> maybeExec (execReactorCmd exec) c
     <|> maybeExec execDisposable c
 
 execReactorCmd ::
-    ( MonadIO m
+    ( MonadUnliftIO m
     , AsFacet [c] c
     )
-    => (m () -> IO ()) -> (c -> m ()) -> ReactorCmd c -> m ()
-execReactorCmd runExec exec c = case c of
+    => (c -> m ()) -> ReactorCmd c -> m ()
+execReactorCmd exec c = case c of
     Rerender sbj -> execRerender sbj
     TickState sbj tick -> execTickState exec sbj tick
-    MkAction c' k -> execMkAction runExec exec c' k
-    MkAction1 goStrict goLazy k -> execMkAction1 runExec exec goStrict goLazy k
+    MkAction c' k -> execMkAction exec c' k
+    MkAction1 goStrict goLazy k -> execMkAction1 exec goStrict goLazy k
     -- MkShimCallbacks sbj rndr -> execMkShimCallbacks sbj rndr
     MkSubject wid s k -> execMkSubject exec wid s k
 
@@ -309,33 +304,32 @@ execTickState exec sbj tick = do
     exec (stamp' $ DL.toList cs)
 
 execMkAction1 ::
-    NFData a
-    => (m () -> IO ())
-    -> (c -> m ())
+    (NFData a, MonadUnliftIO m)
+    => (c -> m ())
     -> (JE.JSRep -> IO (Maybe a))
     -> (a -> c)
     -> ((JE.JSRep -> IO ()) -> c)
     -> m ()
-execMkAction1 runExec exec goStrict goLazy k = do
-    -- create the IO action to run given the runExec and exec
+execMkAction1 exec goStrict goLazy k = do
+    UnliftIO u <- askUnliftIO
     let f = handleEventM goStrict goLazy'
         goLazy' ma = case ma of
             -- trigger didn't produce anything useful
             Nothing -> pure mempty
             -- get and run the command given the trigger
-            Just a -> runExec . exec $ goLazy a
+            Just a -> u . exec $ goLazy a
     -- Apply to result to the continuation, and execute any produced commands
     exec $ k f
 
 execMkAction ::
-    (m () -> IO ())
-    -> (c -> m ())
+    (MonadUnliftIO m)
+    => (c -> m ())
     -> c
     -> (IO () -> c)
     -> m ()
-execMkAction runExec exec c k = do
-    -- create the IO action to run given the runExec and exec
-    let f = runExec $ exec c
+execMkAction  exec c k = do
+    UnliftIO u <- askUnliftIO
+    let f = u $ exec c
     -- Apply to result to the continuation, and execute any produced commands
     exec $ k f
 
