@@ -38,6 +38,7 @@ import Data.Tagged
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Foreign.Callback.Internal as J
 import qualified GHCJS.Types as J
+import Glazier.Command
 import Glazier.React.Component
 import Glazier.React.Gadget
 import Glazier.React.HandleEvent
@@ -146,7 +147,7 @@ mkSubject exec (Widget win gad) s = do
     liftIO $ atomicWriteIORef scnRef scn'
     liftIO $ putMVar scnVar scn'
     -- execute additional commands
-    exec (cmd' $ DL.toList cs)
+    exec (stamp' $ DL.toList cs)
     -- return the initialized subject
     pure sbj
   where
@@ -271,14 +272,14 @@ execReactorCmd runExec exec c = case c of
 
 -----------------------------------------------------------------
 
--- execte a list of commands in serial.
--- This is because Javascript is single threaded anyway, so it is more
+-- execute a list of commands in serial, not in parallel because
+-- Some commands may have effect dependencies.
+-- Javascript is single threaded anyway, so it is more
 -- efficient to execuute "quick" commands single threaded.
 -- We'll let the individual executors of the commands decide if
 -- "slow" commands should be forked in a thread.
 execCommands :: Applicative m => (c -> m ()) -> [c] -> m ()
 execCommands exec = traverse_ exec
--- execCommands runExec exec = traverse_ (liftIO . void . forkIO . runExec . exec)
 
 execRerender ::
     ( MonadIO m
@@ -305,7 +306,7 @@ execTickState ::
     -> m ()
 execTickState exec sbj tick = do
     cs <- liftIO $ _tickState sbj tick
-    exec (cmd' $ DL.toList cs)
+    exec (stamp' $ DL.toList cs)
 
 execMkAction1 ::
     NFData a

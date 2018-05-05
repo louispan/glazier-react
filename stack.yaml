@@ -45,18 +45,21 @@ packages:
   extra-dep: true
 - location: '/Users/louis/repo/hs/alternators'
   extra-dep: true
-- location: '/Users/louis/repo/hs/data-diverse-lens'
+- location: '/Users/louis/repo/hs/glazier'
   extra-dep: true
 
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
 extra-deps:
-- data-diverse-3.0.0.0
-# - data-diverse-lens-3.0.0.1
+- data-diverse-3.1.0.0
+- data-diverse-lens-3.1.1.0
 - ghcjs-base-stub-0.1.0.4
 - generic-lens-0.5.1.0
 - newtype-generics-0.5.2.1
 - data-has-0.3.0.0
+- unliftio-0.2.7.0
+- unliftio-core-0.1.1.0
+- async-2.2.1
 
 # Override default flag values for local packages and extra-deps
 flags: {}

@@ -23,10 +23,7 @@ import Control.Concurrent
 import qualified Control.Disposable as CD
 import Control.Lens
 import Control.Lens.Misc
-import Control.Monad.Cont
 import Control.Monad.RWS
-import Control.Monad.State.Strict
-import Data.Diverse.Lens
 import qualified Data.DList as DL
 import Data.IORef
 import qualified Data.Map.Strict as M
@@ -35,6 +32,7 @@ import Data.Tagged
 import qualified GHC.Generics as G
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
+import Glazier.Command
 import Glazier.React.Component
 import Glazier.React.EventTarget
 import Glazier.React.MkId
@@ -162,15 +160,15 @@ instance CD.Dispose (Scene s) where
 ----------------------------------------------------------------------------------
 
 -- | A 'Scene' contains interactivity data for all widgets as well as the model data.
-data Scenario c s = Scenario
+data Scenario cmd s = Scenario
     -- commands could be in a writer monad, but then you can't get
     -- a MonadWriter with ContT, but you can have a MonadState with ContT.
-    { posted :: DL.DList c
+    { commands :: DL.DList cmd
     , scene :: Scene s
     } deriving (G.Generic)
 
-_posted :: Lens' (Scenario c s) (DL.DList c)
-_posted = lens posted (\s a -> s { posted = a})
+instance HasCommands (Scenario cmd s) cmd where
+    _commands = lens commands (\s a -> s { commands = a})
 
 _scene :: Lens (Scenario x s) (Scenario x s') (Scene s) (Scene s')
 _scene = lens scene (\s a -> s { scene = a})
@@ -180,77 +178,10 @@ editSceneModel l safa s = (\s' -> s & _model .~ s' ) <$> l afa' (s ^. _model)
   where
     afa' a = (view _model) <$> safa (s & _model .~ a)
 
-editScenarioModel :: (Functor f) => LensLike' f s a -> LensLike' f (Scenario c s) (Scenario c a)
+editScenarioModel :: (Functor f) => LensLike' f s a -> LensLike' f (Scenario cmd s) (Scenario cmd a)
 editScenarioModel l safa s = (\s' -> s & _scene._model .~ s' ) <$> l afa' (s ^. _scene._model)
   where
     afa' a = (view (_scene._model)) <$> safa (s & _scene._model .~ a)
-
-
-----------------------------------------------------------------------------------
-
--- type MonadWidget x s m = (MonadState (Scene x s) m, MonadWriter (DL.DList x) m)
-
--- -- type Initializer x s m = (Widget x s m, MonadCont m)
-
--- -- | Create a Plan and Gadget for this widget if it did not already exists
--- -- FIXME: naming
--- initialize :: MonadWidget x s m => m ()
--- initialize = do
---     (pid, gid) <- ask
---     -- first check if plan exists
---     _plans.at pid %= (Just . initGadget gid . fromMaybe newPlan)
---   where
---     initGadget gid = _gadgets.at gid %~ (Just . fromMaybe newGadget)
-
-----------------------------------------------------------------------------------
-
--- | convert a request type to a command type.
--- This is used for commands that doesn't have a continuation.
--- Ie. commands that doesn't "returns" a value from running an effect.
--- Use 'cmd'' for commands that require a continuation ("returns" a value).
-cmd :: (AsFacet c' c) => c' -> c
-cmd = review facet
-
--- | A variation of 'cmd' for commands with a type variable @c@,
--- which is usually commands that are containers of command,
--- or commands that require a continuation
--- Eg. commands that "returns" a value from running an effect.
--- 'cmd'' is usually used with with the 'Cont' monad to help
--- create the continuation.
---
--- @
--- post $ (`runCont` id) $ do
---     a <- cont $ cmd . GetSomething
---     pure . cmd $ DoSomething (f a)
--- @
-cmd' :: (AsFacet (c' c) c) => c' c -> c
-cmd' = review facet
-
--- -- | 'post' . 'cmd
--- postCmd :: (AsFacet c' c, MonadState (Scenario c s) m) => c' -> m ()
--- postCmd = post . cmd
-
--- -- | A variation of 'post1' for commands with a type variable @c@,
--- -- which should be commands that require a continuation.
--- -- Ie. commands that "return" a value from running an effect.
--- postCmd' :: (AsFacet (c' c) c, MonadState (Scenario c s) m) => c' c -> m ()
--- postCmd' = post . cmd
-
--- | Add the commands from input State monad
-postState :: (MonadState (Scenario c s) m) => State (DL.DList c) () ->  m ()
-postState s = _posted %= (<> execState s mempty)
-
--- | Add a command to the list of commands for this state tick.
-post :: (MonadState (Scenario c s) m) => c -> m ()
-post c = _posted %= (`DL.snoc` c)
-
--- | A variation of 'post' to be used only within a @postState . evalContT $ do@ block
-post' :: (MonadState (DL.DList c) m) => c -> m ()
-post' c = id %= (`DL.snoc` c)
-
--- | This allows using the do notation to compose the continuation required by commands that "returns" a value.
-retrieve :: AsFacet [c] c => ((a -> c) -> c) -> ContT () (State (DL.DList c)) a
-retrieve m = ContT $ \k -> post' $ m (cmd' @[] . DL.toList . (`execState` mempty) . k)
 
 ----------------------------------------------------------------------------------
 

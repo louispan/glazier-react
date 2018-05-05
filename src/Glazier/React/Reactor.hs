@@ -58,7 +58,7 @@ data ReactorCmd c where
 instance Show c => Show (ReactorCmd c) where
     showsPrec _ (Rerender _) = showString "Rerender"
     showsPrec _ (TickState _ _) = showString "TickState"
-    showsPrec d (MkAction c _) = showParen (d >= 11) $
+    showsPrec p (MkAction c _) = showParen (p >= 11) $
         showString "MkAction " . shows c
     showsPrec _ (MkAction1 _ _ _) = showString "MkAction1"
     showsPrec _ (MkSubject _ _ _) = showString "MkSubject"

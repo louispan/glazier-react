@@ -28,6 +28,7 @@ import Control.Monad.Trans.AState.Strict
 import Data.Maybe
 import Data.Tagged
 import qualified GHCJS.Types as J
+import Glazier.Command
 import Glazier.React.Gadget
 import Glazier.React.MkId
 import Glazier.React.Notice
@@ -56,12 +57,12 @@ mkTriggerAction1 l gid n goStrict goLazy = do
     sbj <- view _subject
     delegate $ \fire -> do
         -- Add extra command producting state actions at the end
-        let goLazy' a = cmd' $ TickState sbj (goLazy a >>= fire)
-        post . cmd' $ MkAction1 goStrict goLazy' $ \act ->
+        let goLazy' a = stamp' $ TickState sbj (goLazy a >>= fire)
+        post' $ MkAction1 goStrict goLazy' $ \act ->
                 let updateGizmo = _scene._plan._gizmos.at gid %= (Just . addListener . fromMaybe newGizmo)
                     addListener = _listeners.at n %~ (Just . addAction . fromMaybe (Tagged mempty, Tagged mempty))
                     addAction acts = acts & l %~ (*> act)
-                in cmd' $ TickState sbj updateGizmo
+                in stamp' $ TickState sbj updateGizmo
 
 mkUpdatedAction ::
     AsReactor c
@@ -72,10 +73,10 @@ mkUpdatedAction l go = do
     sbj <- view _subject
     delegate $ \fire -> do
         -- Add extra command producting state actions at the end
-        let go' = cmd' $ TickState sbj (go >>= fire)
-        post . cmd' $ MkAction go' $ \act ->
+        let go' = stamp' $ TickState sbj (go >>= fire)
+        post' $ MkAction go' $ \act ->
                 let addListener = _scene._plan._doOnUpdated.l %= (*> act)
-                in cmd' $ TickState sbj addListener
+                in stamp' $ TickState sbj addListener
 
 triggerOnUpdated_ ::
     AsReactor c
