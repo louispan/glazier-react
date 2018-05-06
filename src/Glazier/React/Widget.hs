@@ -37,9 +37,9 @@ import Glazier.React.Window
 -- (Arena p s)
 -- (Scenario c p)
 
-data Widget c p s a = Widget
+data Widget cmd p s a = Widget
     { window :: WindowT s IO () -- so it can read IORef
-    , gadget :: Gadget c p s a
+    , gadget :: Gadget cmd p s a
     } deriving (G.Generic, Functor)
 
 makeLenses_ ''Widget
@@ -54,23 +54,23 @@ mapWidget2 f (Widget dis1 ini1) (Widget dis2 ini2) =
 
 ------------------------------------------
 
-instance Applicative (Widget c p s) where
+instance Applicative (Widget cmd p s) where
     pure a = Widget mempty (pure a)
     (<*>) = mapWidget2 (<*>)
 
 -- merge ContT together by pre-firing the left ContT's output.
 -- That is, the resultant ContT will fire the output twice.
-instance (Semigroup a) => Semigroup (Widget c p s a) where
+instance (Semigroup a) => Semigroup (Widget cmd p s a) where
     (<>) = mapWidget2 (<>)
 
-instance (Monoid a) => Monoid (Widget c p s a) where
+instance (Monoid a) => Monoid (Widget cmd p s a) where
     mempty = Widget mempty mempty
     mappend = mapWidget2 mappend
 
-dummy :: Widget c p s ()
+dummy :: Widget cmd p s ()
 dummy = mempty
 
-enlargeModel :: Traversal' s' s -> Widget c p s a -> Widget c p s' a
+enlargeModel :: Traversal' s' s -> Widget cmd p s a -> Widget cmd p s' a
 enlargeModel l (Widget win gad) = Widget (magnifyModel l win) (magnifySelf l gad)
 
 

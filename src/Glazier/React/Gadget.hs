@@ -21,8 +21,8 @@ import Control.Monad.Trans.AReader
 import Control.Monad.Trans.AState.Strict
 import Glazier.React.Scene
 
-type GadgetT c p s m = AReaderT (Entity p s) (AContT () (AStateT (Scenario c p) m))
-type Gadget c p s = GadgetT c p s Identity
+type GadgetT cmd p s m = AReaderT (Entity p s) (AContT () (AStateT (Scenario cmd p) m))
+type Gadget cmd p s = GadgetT cmd p s Identity
 
 -- data Gadget2 r c p s a where
 --     Gadget2 ::
@@ -61,9 +61,9 @@ type Gadget c p s = GadgetT c p s Identity
 
 gadgetT ::
     (Entity p s
-        -> (a -> AStateT (Scenario c p) m ())
-        -> AStateT (Scenario c p) m ())
-    -> GadgetT c p s m a
+        -> (a -> AStateT (Scenario cmd p) m ())
+        -> AStateT (Scenario cmd p) m ())
+    -> GadgetT cmd p s m a
 gadgetT f = areaderT (\r -> acontT (f r))
 
 -- gadget ::
@@ -119,10 +119,10 @@ gadgetT f = areaderT (\r -> acontT (f r))
 -- runGadgetT x l = runMContT (runAReaderT x (Traversal l))
 
 runGadgetT ::
-    GadgetT c p s m a
+    GadgetT cmd p s m a
     -> Entity p s
-    -> (a -> AStateT (Scenario c p) m ())
-    -> AStateT (Scenario c p) m ()
+    -> (a -> AStateT (Scenario cmd p) m ())
+    -> AStateT (Scenario cmd p) m ()
 runGadgetT x l = runAContT (runAReaderT x l)
 
 -- runGadget ::

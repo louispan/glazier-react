@@ -87,10 +87,10 @@ displaySubject (Subject scnRef _) = do
 -- 'displaySubject' should be used to render the subject.
 mkSubject ::
     ( MonadIO m
-    , AsFacet [c] c
+    , AsFacet [cmd] cmd
     )
-    => (c -> m ())
-    -> Widget c s s ()
+    => (cmd -> m ())
+    -> Widget cmd s s ()
     -> s
     -> m (Subject s)
 mkSubject exec (Widget win gad) s = do
@@ -217,12 +217,12 @@ mkSubject exec (Widget win gad) s = do
 --     pure (CD.dispose scnVar, view _model <$> readMVar scnVar)
 
 -- | Upate the world 'TVar' with the given action, and return the commands produced.
-_tickState :: Subject s -> AState (Scenario c s) () -> IO (DL.DList c)
+_tickState :: Subject s -> State (Scenario cmd s) () -> IO (DL.DList cmd)
 _tickState (Subject scnRef scnVar) tick = do
     -- | 'tickState' is the only place where we 'takeMVar' the plan or model
     -- So as long as we take and put in the correct order, we won't block.
     scn <- takeMVar scnVar
-    let (Scenario cs scn') = execAState tick (Scenario mempty scn)
+    let (Scenario cs scn') = execState tick (Scenario mempty scn)
 
     -- Update the back buffer
     atomicWriteIORef scnRef scn'
@@ -237,9 +237,9 @@ _rerender scn = fromMaybe mempty $ rerenderShim <$> (scn ^. _plan._componentRef)
 -- | Create a executor for all the core commands required by the framework
 maybeExecReactor ::
     ( MonadUnliftIO m
-    , AsReactor c
+    , AsReactor cmd
     )
-    => (c -> m ()) -> c -> MaybeT m ()
+    => (cmd -> m ()) -> cmd -> MaybeT m ()
 maybeExecReactor exec c =
     maybeExec (traverse_ @[] exec) c
     <|> maybeExec (execReactorCmd exec) c
@@ -247,16 +247,17 @@ maybeExecReactor exec c =
 
 execReactorCmd ::
     ( MonadUnliftIO m
-    , AsFacet [c] c
+    , AsFacet [cmd] cmd
     )
-    => (c -> m ()) -> ReactorCmd c -> m ()
+    => (cmd -> m ()) -> ReactorCmd cmd -> m ()
 execReactorCmd exec c = case c of
+    -- MkShimCallbacks sbj rndr -> execMkShimCallbacks sbj rndr
     Rerender sbj -> execRerender sbj
-    TickState sbj tick -> execTickState exec sbj tick
+    MkSubject wid s k -> execMkSubject exec wid s k
     MkAction c' k -> execMkAction exec c' k
     MkAction1 goStrict goLazy k -> execMkAction1 exec goStrict goLazy k
-    -- MkShimCallbacks sbj rndr -> execMkShimCallbacks sbj rndr
-    MkSubject wid s k -> execMkSubject exec wid s k
+    ReadState sbj go -> execReadState exec sbj go
+    TickState sbj tick -> execTickState exec sbj tick
 
 -- -- | An example of using the "tieing" 'execReactor' with itself. Lazy haskell is awesome.
 -- -- NB. This tied executor *only* runs the Reactor effects.
@@ -277,7 +278,7 @@ execReactorCmd exec c = case c of
 -- efficient to execuute "quick" commands single threaded.
 -- We'll let the individual executors of the commands decide if
 -- "slow" commands should be forked in a thread.
-execCommands :: Applicative m => (c -> m ()) -> [c] -> m ()
+execCommands :: Applicative m => (cmd -> m ()) -> [cmd] -> m ()
 execCommands exec = traverse_ exec
 
 execRerender ::
@@ -289,24 +290,38 @@ execRerender (Subject scnRef _) = liftIO $ do
     _rerender scn
 
 -- | No need to run in a separate thread because it should never block for a significant amount of time.
+-- Automatically rerender the shim component.
 execTickState ::
     ( MonadIO m
-    , AsFacet [c] c
+    , AsFacet [cmd] cmd
     )
-    => (c -> m ())
+    => (cmd -> m ())
     -> Subject s
-    -> (AState (Scenario c s) ())
+    -> (State (Scenario cmd s) ())
     -> m ()
 execTickState exec sbj tick = do
     cs <- liftIO $ _tickState sbj tick
     exec (stamp' $ DL.toList cs)
 
+execReadState ::
+    ( MonadIO m
+    , AsFacet [cmd] cmd
+    )
+    => (cmd -> m ())
+    -> Subject s
+    -> ReaderT (Scene s) (State (DL.DList cmd)) ()
+    -> m ()
+execReadState exec  (Subject scnRef _) go = do
+    scn <- liftIO $ readIORef scnRef
+    let cs = (`execState` mempty) $ (`runReaderT` scn) go
+    exec (stamp' $ DL.toList cs)
+
 execMkAction1 ::
     (NFData a, MonadUnliftIO m)
-    => (c -> m ())
+    => (cmd -> m ())
     -> (JE.JSRep -> IO (Maybe a))
-    -> (a -> c)
-    -> ((JE.JSRep -> IO ()) -> c)
+    -> (a -> cmd)
+    -> ((JE.JSRep -> IO ()) -> cmd)
     -> m ()
 execMkAction1 exec goStrict goLazy k = do
     UnliftIO u <- askUnliftIO
@@ -321,9 +336,9 @@ execMkAction1 exec goStrict goLazy k = do
 
 execMkAction ::
     (MonadUnliftIO m)
-    => (c -> m ())
-    -> c
-    -> (IO () -> c)
+    => (cmd -> m ())
+    -> cmd
+    -> (IO () -> cmd)
     -> m ()
 execMkAction  exec c k = do
     UnliftIO u <- askUnliftIO
@@ -333,12 +348,12 @@ execMkAction  exec c k = do
 
 execMkSubject ::
     ( MonadIO m
-    , AsFacet [c] c
+    , AsFacet [cmd] cmd
     )
-    => (c -> m ())
-    -> Widget c s s ()
+    => (cmd -> m ())
+    -> Widget cmd s s ()
     -> s
-    -> (Subject s -> c)
+    -> (Subject s -> cmd)
     -> m ()
 execMkSubject exec wid s k = do
     sbj <- mkSubject exec wid s
