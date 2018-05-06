@@ -84,15 +84,15 @@ data Plan = Plan
     { componentRef :: Maybe ComponentRef
     , shimCallbacks :: ShimCallbacks
     -- This is the previous "react state"
-    , previousFrameNum :: Int
-    -- This the current "react state".
-    -- The glazier framework engine will use this to send a render request
-    -- if the current didn't match previous.
-    , currentFrameNum :: Int
-      -- Things to dispose when this widget is removed
-      -- cannot be hidden inside afterOnUpdated, as this also needs to be used
-      -- when finalizing
-    -- , disposeOnRemoved :: CD.Disposable
+    -- , previousFrameNum :: Int
+    -- -- This the current "react state".
+    -- -- The glazier framework engine will use this to send a render request
+    -- -- if the current didn't match previous.
+    -- , currentFrameNum :: Int
+    --   -- Things to dispose when this widget is removed
+    --   -- cannot be hidden inside afterOnUpdated, as this also needs to be used
+    --   -- when finalizing
+    -- -- , disposeOnRemoved :: CD.Disposable
     , doOnUpdated :: (Tagged "Once" (IO ()), Tagged "Every" (IO ()))
     --  Things to dispose on updated
     , disposeOnUpdated :: CD.Disposable
@@ -113,8 +113,8 @@ instance Show Plan where
     showsPrec d pln = showParen
         (d >= 11)
         ( showString "Plan {" . showString "componentRef ? " . shows (isJust $ componentRef pln)
-        . showString ", " . showString "previousFrameNum = " . shows (previousFrameNum pln)
-        . showString ", " . showString "currentFrameNum = " . shows (currentFrameNum pln)
+        -- . showString ", " . showString "previousFrameNum = " . shows (previousFrameNum pln)
+        -- . showString ", " . showString "currentFrameNum = " . shows (currentFrameNum pln)
         . showString ", " . showString "gizmoIds = " . showList (M.keys $ gizmos pln)
         . showString ", " . showString "planIds = " . showList (M.keys $ gizmos pln)
         . showString "}"
@@ -226,12 +226,12 @@ magnifyModel l = magnify (editSceneModel l)
 
 ----------------------------------------------------------------------------------
 
--- Marks the current widget as dirty, and rerender is required
--- A 'rerender' will called at the very end of a 'Glazier.React.Framework.Trigger.trigger'
--- This means calling 'dirty' on other widgets from a different widget's 'Glazier.React.Framework.Trigger.trigger'
--- will not result in a rerender for the other widget.
-dirty :: (MonadState (Scenario c s) m) => m ()
-dirty = _scene._plan._currentFrameNum %= JE.safeModularIncrement
+-- -- Marks the current widget as dirty, and rerender is required
+-- -- A 'rerender' will called at the very end of a 'Glazier.React.Framework.Trigger.trigger'
+-- -- This means calling 'dirty' on other widgets from a different widget's 'Glazier.React.Framework.Trigger.trigger'
+-- -- will not result in a rerender for the other widget.
+-- dirty :: (MonadState (Scenario c s) m) => m ()
+-- dirty = _scene._plan._currentFrameNum %= JE.safeModularIncrement
 
 -- viewSubject ::
 --     ( MonadReader (Entity p s) m

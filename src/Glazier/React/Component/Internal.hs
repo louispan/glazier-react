@@ -5,6 +5,7 @@
 module Glazier.React.Component.Internal
     ( ShimComponent(..) -- constructor exported
     , shimComponent
+    , rerenderShim
     , ComponentRef(..) -- constructor exported
     ) where
 
@@ -20,12 +21,16 @@ import qualified JavaScript.Extras as JE
 newtype ShimComponent = ShimComponent JE.JSRep
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
--- | There is ever only one shim class, so it is purely available
+-- | This returns the javascript class definition of ShimComponent.
+-- There is ever only one shim class, so it is purely available
 shimComponent :: ShimComponent
 shimComponent = ShimComponent js_shimComponent
 
--- | This is used store the react "ref" to a javascript instance
--- of a react Component, so that react "this.setState" can be called.
+-- | Rerenders an instance of a component created using ShimComponent.
+rerenderShim :: ComponentRef -> IO ()
+rerenderShim = js_rerenderShim
+
+-- | This is used store the react "ref" to a javascript instance of a react Component.
 newtype ComponentRef = ComponentRef JE.JSRep
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
@@ -44,6 +49,10 @@ foreign import javascript unsafe
     "$1 && $1['prototype'] && !(!($1['prototype']['isReactComponent']))"
     js_isComponent :: J.JSVal -> Bool
 
+foreign import javascript unsafe
+  "if ($1 && $1['rerender']) { $1['rerender']() };"
+  js_rerenderShim :: ComponentRef -> Int -> IO ()
+
 #else
 
 js_shimComponent :: JE.JSRep
@@ -51,5 +60,8 @@ js_shimComponent = JE.JSRep J.nullRef
 
 js_isComponent :: J.JSVal -> Bool
 js_isComponent _ = False
+
+js_rerenderShim :: ComponentRef -> IO ()
+js_rerenderShim _ = pure ()
 
 #endif

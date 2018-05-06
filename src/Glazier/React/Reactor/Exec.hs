@@ -96,20 +96,25 @@ mkSubject ::
 mkSubject exec (Widget win gad) s = do
     scnRef <- liftIO $ newIORef (Scene newPlan s)
     scnVar <- liftIO $ newEmptyMVar
-    -- For efficiency, render uses the state exported into ShimComponent
     let doRender = do
+            -- render using from scnRef (doesn't block)
             scn <- readIORef scnRef
-            (mrkup, _) <- execARWST win scn mempty
+            (mrkup, _) <- execARWST win scn mempty -- ignore unit writer output
             JE.toJS <$> toElement mrkup
         doRef j = do
+            -- update componentRef held in the Plan
             Scene pln mdl <- takeMVar scnVar
             putMVar scnVar $ Scene (pln & _componentRef .~ JE.fromJS j) mdl
         doUpdated = join $ do
+            -- Get the IO actions onUpdated and reset the "Once" actions
             Scene pln mdl <- takeMVar scnVar
             let ((`proxy` (Proxy @"Once")) -> x, (`proxy` (Proxy @"Every")) -> y) = doOnUpdated pln
             putMVar scnVar $ Scene (pln & _doOnUpdated._1 .~ (Tagged @"Once" mempty)) mdl
+            -- runs the "Once" actions before "Every".
             pure (x *> y)
         doListen ctx j = void $ runMaybeT $ do
+            -- ctx is [ GizmoId, event name (eg OnClick) ]
+            -- Javascript doesn't have tuples, only list
             (gid, n) <- MaybeT $ pure $ do
                 ctx' <- JE.fromJS ctx
                 case JA.toList ctx' of
@@ -117,22 +122,32 @@ mkSubject exec (Widget win gad) s = do
                             gid'' <- GizmoId <$> JE.fromJS gid'
                             n'' <- JE.fromJS n'
                             Just (gid'', n'')
+                        -- malformed ctx, ignore
                         _ -> Nothing
             lift $ do
                 mhdl <- do
                         Scene pln mdl <- takeMVar scnVar
+                        -- get the handler for the gizmo and event name.
+                        -- also get the updated gizmo as the "Once" handler may be reset.
+                        -- returns (Maybe handler, Maybe newGizmo)
+                        -- First, look for gizmo:
                         let (mhdl, gs') = at gid go (pln ^. _gizmos)
                             go mg = case mg of
                                     Nothing -> (Nothing, Nothing)
+                                    -- found gizmo, check listeners for event name
                                     Just g -> let (ret, l) = at n go' (g ^. _listeners)
                                               in (ret, Just (g & _listeners .~ l))
                             go' ml = case ml of
                                     Nothing -> (Nothing, Nothing)
+                                    -- Found listener with event name, reset "Once" actions
                                     Just ((`proxy` (Proxy @"Once")) -> x, y) ->
                                         ( Just (x *> (y `proxy` (Proxy @"Every")))
                                         , Just (Tagged @"Once" mempty, y))
+                        -- update the gizmo with resetted "Once" listeners
+                        -- and return the combined handler
                         putMVar scnVar $ Scene (pln & _gizmos .~ gs') mdl
                         pure mhdl
+                -- pass the javascript event arg into the combined handler
                 case mhdl of
                     Nothing -> pure ()
                     Just hdl -> hdl (JE.JSRep j)
@@ -143,8 +158,8 @@ mkSubject exec (Widget win gad) s = do
     listenCb <- liftIO $ J.syncCallback2 J.ContinueAsync doListen
     let pln = newPlan & _shimCallbacks .~ (ShimCallbacks renderCb updatedCb refCb listenCb)
         scn = Scene pln s
-        -- Tick state
         sbj = Subject scnRef scnVar
+        -- initalize the subject using the Gadget
         tick = runGadgetT gad (Entity sbj id) (const $ pure ())
         Scenario cs scn' = execAState tick (Scenario mempty scn)
     liftIO $ atomicWriteIORef scnRef scn'
@@ -158,8 +173,6 @@ mkSubject exec (Widget win gad) s = do
     newPlan = Plan
         Nothing
         (ShimCallbacks (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef))
-        0
-        0
         (Tagged mempty, Tagged mempty)
         mempty
         mempty
@@ -206,29 +219,20 @@ mkSubject exec (Widget win gad) s = do
 -- | Upate the world 'TVar' with the given action, and return the commands produced.
 _tickState :: Subject s -> AState (Scenario c s) () -> IO (DL.DList c)
 _tickState (Subject scnRef scnVar) tick = do
+    -- | 'tickState' is the only place where we 'takeMVar' the plan or model
+    -- So as long as we take and put in the correct order, we won't block.
     scn <- takeMVar scnVar
-    let (Scenario cs (Scene pln' mdl')) = execAState tick (Scenario mempty scn)
-        (rndr, pln'') = runState _rerender pln'
-        scn' = Scene pln'' mdl'
+    let (Scenario cs scn') = execAState tick (Scenario mempty scn)
 
     -- Update the back buffer
     atomicWriteIORef scnRef scn'
     putMVar scnVar scn'
     -- rerender if necessary
-    rndr
+    _rerender scn'
     pure cs
 
-_rerender :: MonadState Plan m => m (IO ())
-_rerender = do
-    c <- use (_currentFrameNum)
-    p <- use (_previousFrameNum)
-    comp <- use (_componentRef)
-    -- we are dirty
-    case (c /= p, comp) of
-        (True, Just j) -> do
-            _previousFrameNum .= c
-            pure (js_setShimComponentFrameNum j c)
-        _ -> pure (pure ())
+_rerender :: Scene s -> IO ()
+_rerender scn = fromMaybe mempty $ rerenderShim <$> (scn ^. _plan._componentRef)
 
 -- | Create a executor for all the core commands required by the framework
 maybeExecReactor ::
@@ -280,15 +284,9 @@ execRerender ::
     ( MonadIO m
     )
     => Subject s -> m ()
-execRerender (Subject scnRef scnVar) = liftIO $ do
-    -- | 'tickState' and 'execRerender' are the only place where we 'takeMVar' the plan or model
-    -- So as long as we take and put in the correct order, we won't block.
-    Scene pln mdl <- readMVar scnVar
-    let (rndr, pln') = runState _rerender pln
-        scn = Scene pln' mdl
-    atomicWriteIORef scnRef scn
-    putMVar scnVar scn
-    rndr
+execRerender (Subject scnRef _) = liftIO $ do
+    scn <- readIORef scnRef
+    _rerender scn
 
 -- | No need to run in a separate thread because it should never block for a significant amount of time.
 execTickState ::
@@ -351,16 +349,3 @@ execDisposable ::
     => CD.Disposable
     -> m ()
 execDisposable = liftIO . fromMaybe mempty . CD.runDisposable
-
-#ifdef __GHCJS__
-
-foreign import javascript unsafe
-  "if ($1 && $1.setState({frameNum: $2}); }"
-  js_setShimComponentFrameNum :: ComponentRef -> Int -> IO ()
-
-#else
-
-js_setShimComponentFrameNum :: ComponentRef -> Int -> IO ()
-js_setShimComponentFrameNum _ _ = pure ()
-
-#endif

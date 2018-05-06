@@ -34,6 +34,29 @@ function hgr$shimComponent() {
 
         class Shim extends ReactPureComponent {
 
+            constructor(props) {
+                super(props);
+                this.state = { frameNum: 0 };
+            }
+
+            rerender() {
+                this.setState(function(prevState, props) {
+                    var newFrameNum = this.safeIncrement(prevState.frameNum);
+                    return {
+                        frameNum: newFrameNum
+                    };
+                });
+            }
+
+            safeIncrement(i) {
+                if (i >= Number.MAX_SAFE_INTEGER) {
+                        return Number.MIN_SAFE_INTEGER
+                    }
+                    else {
+                        return i + 1;
+                }
+            }
+
             componentDidUpdate(prevProps, prevState) {
                 // ignore prevProps, prevState and forward to a custom callback
                 // NB. Tis is not called on initial render.

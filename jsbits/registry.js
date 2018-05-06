@@ -11,7 +11,7 @@ function hgr$registry() {
     const handlers = {};
 
     // a copy of Lodash's omit, to copy dictionary except for one key
-    function omit(obj, omitKey) {
+    this['omit'] = function(obj, omitKey) {
         return Object.keys(obj).reduce(function(result, key) {
             if(key !== omitKey) {
                 result[key] = obj[key];

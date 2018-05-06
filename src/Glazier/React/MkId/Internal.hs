@@ -18,7 +18,7 @@ import Data.String
 mkId :: MonadState Int m => J.JSString -> m J.JSString
 mkId n = do
     i <- get
-    let i' = JE.safeModularIncrement i
+    let i' = JE.safeIncrement i
     put i'
     pure . J.append n . J.cons ':' . J.pack $ show i'
 
