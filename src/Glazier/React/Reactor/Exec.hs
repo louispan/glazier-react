@@ -14,8 +14,8 @@ module Glazier.React.Reactor.Exec
     , maybeExec
     , maybeExecReactor
     , execReactorCmd
-    , execCommands
-    , execDisposable
+    -- , execCommands
+    -- , execDisposable
     ) where
 
 import Control.Applicative
@@ -227,8 +227,6 @@ _tickState (Subject scnRef scnVar) tick = do
     -- Update the back buffer
     atomicWriteIORef scnRef scn'
     putMVar scnVar scn'
-    -- rerender if necessary
-    _rerender scn'
     pure cs
 
 _rerender :: Scene s -> IO ()
@@ -241,9 +239,15 @@ maybeExecReactor ::
     )
     => (cmd -> m ()) -> cmd -> MaybeT m ()
 maybeExecReactor exec c =
+    -- execute a list of commands in serial, not in parallel because
+    -- Some commands may have effect dependencies.
+    -- Javascript is single threaded anyway, so it is more
+    -- efficient to execuute "quick" commands single threaded.
+    -- We'll let the individual executors of the commands decide if
+    -- "slow" commands should be forked in a thread.
     maybeExec (traverse_ @[] exec) c
     <|> maybeExec (execReactorCmd exec) c
-    <|> maybeExec execDisposable c
+    <|> maybeExec (liftIO . CD.runDisposable) c
 
 execReactorCmd ::
     ( MonadUnliftIO m
@@ -256,30 +260,10 @@ execReactorCmd exec c = case c of
     MkSubject wid s k -> execMkSubject exec wid s k
     MkAction c' k -> execMkAction exec c' k
     MkAction1 goStrict goLazy k -> execMkAction1 exec goStrict goLazy k
-    ReadState sbj go -> execReadState exec sbj go
+    -- ReadState sbj go -> execReadState exec sbj go
     TickState sbj tick -> execTickState exec sbj tick
 
--- -- | An example of using the "tieing" 'execReactor' with itself. Lazy haskell is awesome.
--- -- NB. This tied executor *only* runs the Reactor effects.
--- -- You would probably want to "tie" at least 'execReactor', 'execJavascript', 'execHtmlElement'
--- reactorExecutor ::
---     ( MonadIO m
---     , AsReactor c
---     )
---     => (m () -> IO ()) -> c -> m ()
--- reactorExecutor runExec = fmap (fromMaybe mempty) . runMaybeT .
---     execReactor runExec (reactorExecutor runExec)
-
 -----------------------------------------------------------------
-
--- execute a list of commands in serial, not in parallel because
--- Some commands may have effect dependencies.
--- Javascript is single threaded anyway, so it is more
--- efficient to execuute "quick" commands single threaded.
--- We'll let the individual executors of the commands decide if
--- "slow" commands should be forked in a thread.
-execCommands :: Applicative m => (cmd -> m ()) -> [cmd] -> m ()
-execCommands exec = traverse_ exec
 
 execRerender ::
     ( MonadIO m
@@ -303,18 +287,18 @@ execTickState exec sbj tick = do
     cs <- liftIO $ _tickState sbj tick
     exec (stamp' $ DL.toList cs)
 
-execReadState ::
-    ( MonadIO m
-    , AsFacet [cmd] cmd
-    )
-    => (cmd -> m ())
-    -> Subject s
-    -> ReaderT (Scene s) (State (DL.DList cmd)) ()
-    -> m ()
-execReadState exec  (Subject scnRef _) go = do
-    scn <- liftIO $ readIORef scnRef
-    let cs = (`execState` mempty) $ (`runReaderT` scn) go
-    exec (stamp' $ DL.toList cs)
+-- execReadState ::
+--     ( MonadIO m
+--     , AsFacet [cmd] cmd
+--     )
+--     => (cmd -> m ())
+--     -> Subject s
+--     -> ReaderT (Scene s) (State (DL.DList cmd)) ()
+--     -> m ()
+-- execReadState exec  (Subject scnRef _) go = do
+--     scn <- liftIO $ readIORef scnRef
+--     let cs = (`execState` mempty) $ (`runReaderT` scn) go
+--     exec (stamp' $ DL.toList cs)
 
 execMkAction1 ::
     (NFData a, MonadUnliftIO m)
@@ -358,9 +342,3 @@ execMkSubject ::
 execMkSubject exec wid s k = do
     sbj <- mkSubject exec wid s
     exec $ k sbj
-
-execDisposable ::
-    MonadIO m
-    => CD.Disposable
-    -> m ()
-execDisposable = liftIO . fromMaybe mempty . CD.runDisposable

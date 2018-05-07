@@ -24,11 +24,9 @@ module Glazier.React.Trigger
 import Control.DeepSeq
 import Control.Lens
 import Control.Monad.Delegate
-import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Control.Monad.Trans.AState.Strict
 import Data.Coerce
-import qualified Data.DList as DL
 import Data.Maybe
 import Data.Tagged
 import qualified GHCJS.Types as J
@@ -47,6 +45,7 @@ import qualified JavaScript.Extras as JE
 -- generate a 'Notice'.
 -- Only the "ref" callback generate 'EventTarget' or 'ComponentRef' in which case you would want
 -- to use 'withRef' instead.
+-- NB. A 'Rerender' command is automatically added to the end of the callback.
 mkTriggerAction1 ::
     ( NFData a
     , AsReactor cmd
@@ -61,35 +60,42 @@ mkTriggerAction1 l gid n goStrict goLazy = do
     sbj <- view _subject
     delegate $ \fire -> do
         -- Add extra command producting state actions at the end
-        let goLazy' a = stamp' $ TickState sbj (goLazy a >>= coerce fire)
+        let goLazy' a = stamp' @[]
+                [ stamp' $ TickState sbj (goLazy a >>= coerce fire)
+                , stamp' $ Rerender sbj
+                ]
         post' $ MkAction1 goStrict goLazy' $ \act ->
+                -- save the created action handler in the gizmo
                 let updateGizmo = _scene._plan._gizmos.at gid %= (Just . addListener . fromMaybe newGizmo)
                     addListener = _listeners.at n %~ (Just . addAction . fromMaybe (Tagged mempty, Tagged mempty))
                     addAction acts = acts & l %~ (*> act)
                 in stamp' $ TickState sbj updateGizmo
 
+-- NB. Unlike TriggerAction1, a 'Rerender' command is NOT added to the end of the callback.
 mkUpdatedAction ::
     AsReactor cmd
     => Lens' (Tagged "Once" (IO ()), Tagged "Every" (IO ())) (IO ())
-    -> ReaderT (Scene s) (State (DL.DList cmd)) ()
-    -> Gadget cmd p s ()
+    -> State (Scenario cmd p) b
+    -> Gadget cmd p s b
 mkUpdatedAction l go = do
     sbj <- view _subject
-    Traversal slf <- view _self
-    let go' = stamp' $ ReadState sbj (magnifyModel slf go)
-    post' $ MkAction go' $ \act ->
-            let addListener = _scene._plan._doOnUpdated.l %= (*> act)
-            in stamp' $ TickState sbj addListener
+    delegate $ \fire -> do
+        -- Add extra command producting state actions at the end
+        let go' = stamp' $ TickState sbj (go >>= coerce fire)
+        post' $ MkAction go' $ \act ->
+                let addListener = _scene._plan._doOnUpdated.l %= (*> act)
+                in stamp' $ TickState sbj addListener
 
 triggerOnUpdated_ ::
     AsReactor cmd
     => Lens' (Tagged "Once" (IO ()), Tagged "Every" (IO ())) (IO ())
-    -> ReaderT (Scene s) (State (DL.DList cmd)) ()
-    -> Gadget cmd p s ()
+    -> State (Scenario cmd p) b
+    -> Gadget cmd p s b
 triggerOnUpdated_ l go = mkUpdatedAction l go
 
--- | Register commands to call after every render.
--- Do not post 'TickState' otherwise you will go into infinite render loops.
+-- | Register commands and TickState to call after every render.
+-- Unlike 'trigger' a 'Rerender' a 'Rerender' command is NOT added to the end of the callback.
+-- Do not 'post'' 'Rerender' otherwise it will go into infinite render loops.
 --
 -- NB. This is trigged by react 'componentDidUpdate' and 'componentDidMount'
 -- so it is also called for the initial render.
@@ -98,14 +104,15 @@ triggerOnUpdated_ l go = mkUpdatedAction l go
 -- See https://reactjs.org/docs/refs-and-the-dom.html.
 triggerOnUpdated ::
     AsReactor cmd
-    => ReaderT (Scene s) (State (DL.DList cmd)) ()
-    -> Gadget cmd p s ()
+    => State (Scenario cmd p) b
+    -> Gadget cmd p s b
 triggerOnUpdated = triggerOnUpdated_ (_2._Wrapped' @(Tagged "Every" _))
 
+-- | Variation of 'triggerOnUpdated' but only get called on the next render.
 triggerOnceOnUpdated ::
     AsReactor cmd
-    => ReaderT (Scene s) (State (DL.DList cmd)) ()
-    -> Gadget cmd p s ()
+    => State (Scenario cmd p) b
+    -> Gadget cmd p s b
 triggerOnceOnUpdated = triggerOnUpdated_ (_1._Wrapped' @(Tagged "Once" _))
 
 -- | A 'trigger1' where all event info is dropped and the given value is fired.

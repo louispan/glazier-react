@@ -139,7 +139,7 @@ data Scene s = Scene
     -- a MonadWriter with ContT, but you can have a MonadState with ContT.
     { plan :: Plan
     , model :: s
-    } deriving (G.Generic, Show)
+    } deriving (G.Generic, Show, Functor)
 
 _model :: Lens (Scene s) (Scene s') s s'
 _model = lens model (\s a -> s { model = a})
@@ -147,16 +147,9 @@ _model = lens model (\s a -> s { model = a})
 _plan :: Lens' (Scene s) Plan
 _plan = lens plan (\s a -> s { plan = a})
 
--- | If the model is a higher kinded type that contains a subject
--- then also dispose the subject in the model
-instance CD.Dispose (s Subject) => CD.Dispose (Scene (s Subject)) where
+instance CD.Dispose s => CD.Dispose (Scene s) where
     dispose (Scene pln mdl) = CD.dispose pln <> CD.dispose mdl
 
-instance CD.Dispose (Scene (s Identity)) where
-    dispose (Scene pln _) = CD.dispose pln
-
-instance CD.Dispose (Scene s) where
-    dispose (Scene pln _) = CD.dispose pln
 ----------------------------------------------------------------------------------
 
 -- | A 'Scene' contains interactivity data for all widgets as well as the model data.
@@ -165,7 +158,7 @@ data Scenario cmd s = Scenario
     -- a MonadWriter with ContT, but you can have a MonadState with ContT.
     { commands :: DL.DList cmd
     , scene :: Scene s
-    } deriving (G.Generic)
+    } deriving (G.Generic, Functor)
 
 instance HasCommands (Scenario cmd s) cmd where
     _commands = lens commands (\s a -> s { commands = a})
@@ -195,8 +188,6 @@ data Subject p = Subject
     , sceneVar :: MVar (Scene p)
     }
 
--- | If the model is a higher kinded type that also contains a subject
--- then also dispose the subject in the model
 instance CD.Dispose (Scene p) => CD.Dispose (Subject p) where
     dispose (Subject _ v) = CD.dispose v
 

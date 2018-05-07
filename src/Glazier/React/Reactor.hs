@@ -13,10 +13,8 @@ module Glazier.React.Reactor where
 
 import Control.DeepSeq
 import qualified Control.Disposable as CD
-import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Data.Diverse.Lens
-import qualified Data.DList as DL
 import Glazier.React.Scene
 import Glazier.React.Widget
 import qualified JavaScript.Extras as JE
@@ -54,15 +52,13 @@ data ReactorCmd cmd where
         -> (a -> cmd)
         -> ((JE.JSRep -> IO ()) -> cmd)
         -> ReactorCmd cmd
-    ReadState :: Subject s -> ReaderT (Scene s) (State (DL.DList cmd)) () -> ReactorCmd cmd
-    -- The executor of this command will automatically also 'Rerender'
-    -- at the end of 'TickState'
+    -- ReadState :: Subject s -> ReaderT (Scene s) (State (DL.DList cmd)) () -> ReactorCmd cmd
     TickState :: Subject s -> State (Scenario cmd s) () -> ReactorCmd cmd
 
 instance Show cmd => Show (ReactorCmd cmd) where
     showsPrec _ (Rerender _) = showString "Rerender"
     showsPrec _ (TickState _ _) = showString "TickState"
-    showsPrec _ (ReadState _ _) = showString "ReadState"
+    -- showsPrec _ (ReadState _ _) = showString "ReadState"
     showsPrec p (MkAction c _) = showParen (p >= 11) $
         showString "MkAction " . shows c
     showsPrec _ (MkAction1 _ _ _) = showString "MkAction1"
