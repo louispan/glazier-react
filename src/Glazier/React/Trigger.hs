@@ -11,7 +11,7 @@
 
 {-# LANGUAGE MultiParamTypeClasses #-}
 
--- alwaysReviseOn
+-- alwaysTickStateOn
 -- reviseOnceOn
 -- alwaysOn
 -- studyOn
@@ -78,7 +78,7 @@ mkAction1_ l sbj gid n goStrict goLazy = post' $
         let updateGizmo = _scene._plan._gizmos.at gid %= (Just . addListener . fromMaybe newGizmo)
             addListener = _listeners.at n %~ (Just . addAction . fromMaybe (Tagged mempty, Tagged mempty))
             addAction acts = acts & l %~ (*> act)
-        in stamp' $ Revise sbj updateGizmo
+        in stamp' $ TickState sbj updateGizmo
 
 addTriggerHandler ::
     ( AsReactor cmd
@@ -89,10 +89,10 @@ addTriggerHandler ::
 addTriggerHandler l go = do
     sbj <- view _subject
     Traversal slf <- view _self
-    let go' = stamp' $ Study sbj (magnifyModel slf go)
+    let go' = stamp' $ ReadState sbj (magnifyModel slf go)
     post' $ MkAction go' $ \act ->
             let addListener = _scene._plan._doOnRendered.l %= (*> act)
-            in stamp' $ Revise sbj addListener
+            in stamp' $ TickState sbj addListener
 
 addTickHandler1 ::
     ( NFData a
@@ -108,7 +108,7 @@ addTickHandler1 l gid n goStrict goLazy = do
     sbj <- view _subject
     delegate $ \fire ->
         let goLazy' a = stamp' @[]
-                [ stamp' $ Revise sbj (goLazy a >>= coerce fire)
+                [ stamp' $ TickState sbj (goLazy a >>= coerce fire)
                 , stamp' $ Rerender sbj
                 ]
         in mkAction1_ l sbj gid n goStrict goLazy'
@@ -126,15 +126,15 @@ addTriggerHandler1 ::
 addTriggerHandler1 l gid n goStrict goLazy = do
     sbj <- view _subject
     Traversal slf <- view _self
-    let goLazy' = stamp' . Study sbj . magnifyModel slf . goLazy
+    let goLazy' = stamp' . ReadState sbj . magnifyModel slf . goLazy
     mkAction1_ l sbj gid n goStrict goLazy'
 
 handleNotice :: (Notice -> MaybeT IO a) -> (JE.JSRep -> MaybeT IO a)
 handleNotice k j = MaybeT (pure $ JE.fromJSR j) >>= k
 
 -- | Create stateful callback for a 'Notice' and add it to this gizmos's dlist of listeners.
--- The state function will be converted to a 'Revise' followed by a 'Rerender' command.
-alwaysReviseOn ::
+-- The state function will be converted to a 'TickState' followed by a 'Rerender' command.
+alwaysTickStateOn ::
     ( NFData a
     , AsReactor cmd
     )
@@ -143,10 +143,10 @@ alwaysReviseOn ::
     -> (Notice -> MaybeT IO a)
     -> (a -> State (Scenario cmd p) b)
     -> Gadget cmd p s b
-alwaysReviseOn gid n goStrict =
+alwaysTickStateOn gid n goStrict =
     addTickHandler1 (_2._Tagged' @"Always") gid n (handleNotice goStrict)
 
--- | Variation of 'alwaysReviseOn' that is called back only once.
+-- | Variation of 'alwaysTickStateOn' that is called back only once.
 reviseOnceOn ::
     ( NFData a
     , AsReactor cmd
@@ -160,9 +160,9 @@ reviseOnceOn gid n goStrict =
     addTickHandler1 (_1._Tagged @"Once") gid n (handleNotice goStrict)
 
 -- | Create a callback for a 'Notice' and add it to this gizmos's dlist of listeners.
--- Unlike 'alwaysTickOn', this does not result in 'Revise' or 'Rerender'
--- but results in a 'Study' command.
-alwaysStudyOn ::
+-- Unlike 'alwaysTickOn', this does not result in 'TickState' or 'Rerender'
+-- but results in a 'ReadState' command.
+alwaysReadStateOn ::
     ( NFData a
     , AsReactor cmd
     )
@@ -171,10 +171,10 @@ alwaysStudyOn ::
     -> (Notice -> MaybeT IO a)
     -> (a -> ReaderT (Scene s) (State (DL.DList cmd)) ())
     -> Gadget cmd p s ()
-alwaysStudyOn gid n goStrict =
+alwaysReadStateOn gid n goStrict =
     addTriggerHandler1 (_2._Tagged' @"Always") gid n (handleNotice goStrict)
 
--- | Variation of 'alwaysStudyOn' that is called back only once.
+-- | Variation of 'alwaysReadStateOn' that is called back only once.
 studyOnceOn ::
     ( NFData a
     , AsReactor cmd
@@ -188,7 +188,7 @@ studyOnceOn gid n goStrict =
     addTriggerHandler1 (_1._Tagged' @"Once") gid n (handleNotice goStrict)
 
 -- | Register commands to call after every render.
--- Do not 'post'' 'Revise' or 'Rerender' otherwise it will go into infinite render loops.
+-- Do not 'post'' 'TickState' or 'Rerender' otherwise it will go into infinite render loops.
 --
 -- NB. This is trigged by react 'componentDidUpdate' and 'componentDidMount'
 -- so it is also called for the initial render.
