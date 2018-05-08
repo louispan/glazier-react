@@ -56,13 +56,13 @@ data ReactorCmd cmd where
         -> (a -> cmd)
         -> ((JE.JSRep -> IO ()) -> cmd)
         -> ReactorCmd cmd
-    ReadState :: Subject s -> ReaderT (Scene s) (State (DL.DList cmd)) () -> ReactorCmd cmd
-    TickState :: Subject s -> State (Scenario cmd s) () -> ReactorCmd cmd
+    ReadScene :: Subject s -> ReaderT (Scene s) (State (DL.DList cmd)) () -> ReactorCmd cmd
+    TickScene :: Subject s -> State (Scenario cmd s) () -> ReactorCmd cmd
 
 instance Show cmd => Show (ReactorCmd cmd) where
     showsPrec _ (Rerender _) = showString "Rerender"
-    showsPrec _ (TickState _ _) = showString "TickState"
-    showsPrec _ (ReadState _ _) = showString "ReadState"
+    showsPrec _ (TickScene _ _) = showString "TickScene"
+    showsPrec _ (ReadScene _ _) = showString "ReadScene"
     showsPrec p (MkAction c _) = showParen (p >= 11) $
         showString "MkAction " . shows c
     showsPrec _ (MkAction1 _ _ _) = showString "MkAction1"

@@ -270,8 +270,8 @@ execReactorCmd exec c = case c of
     MkSubject wid s k -> execMkSubject exec wid s k
     MkAction c' k -> execMkAction exec c' k
     MkAction1 goStrict goLazy k -> execMkAction1 exec goStrict goLazy k
-    ReadState sbj go -> execReadState exec sbj go
-    TickState sbj tick -> execTickState exec sbj tick
+    ReadScene sbj go -> execReadScene exec sbj go
+    TickScene sbj tick -> execTickScene exec sbj tick
 
 -----------------------------------------------------------------
 
@@ -284,7 +284,7 @@ execRerender (Subject scnRef _ _) = liftIO $ do
     _rerender scn
 
 -- | No need to run in a separate thread because it should never block for a significant amount of time.
-execTickState ::
+execTickScene ::
     ( MonadIO m
     , AsFacet [cmd] cmd
     )
@@ -292,11 +292,11 @@ execTickState ::
     -> Subject s
     -> (State (Scenario cmd s) ())
     -> m ()
-execTickState exec sbj tick = do
+execTickScene exec sbj tick = do
     cs <- liftIO $ _tickState sbj tick
     exec (stamp' $ DL.toList cs)
 
-execReadState ::
+execReadScene ::
     ( MonadIO m
     , AsFacet [cmd] cmd
     )
@@ -304,7 +304,7 @@ execReadState ::
     -> Subject s
     -> ReaderT (Scene s) (State (DL.DList cmd)) ()
     -> m ()
-execReadState exec  (Subject scnRef _ _) go = do
+execReadScene exec  (Subject scnRef _ _) go = do
     scn <- liftIO $ readIORef scnRef
     let cs = (`execState` mempty) $ (`runReaderT` scn) go
     exec (stamp' $ DL.toList cs)

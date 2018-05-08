@@ -1,34 +1,19 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TypeFamilies #-}
 
-{-# LANGUAGE MultiParamTypeClasses #-}
-
--- alwaysTickStateOn
--- reviseOnceOn
--- alwaysOn
--- studyOn
-
--- alwaysOnRendered
--- onceOnRendered
-
-
-module Glazier.React.Trigger where
-    -- ( trigger
-    -- , triggerOnce
-    -- , trigger1
-    -- , triggerOnce1
-    -- , triggerOnUpdated
-    -- , triggerOnceOnUpdated
-    -- , withRef
-    -- ) where
+module Glazier.React.Trigger
+    ( alwaysTick
+    , tickOnce
+    , alwaysOn
+    , onceOn
+    , alwaysOnRendered
+    , onceOnRendered
+    , trackRef
+    ) where
 
 import Control.DeepSeq
 import Control.Lens
@@ -54,12 +39,22 @@ import qualified JavaScript.Extras as JE
 
 ------------------------------------------------------
 
+postReadAction ::
+    ( AsReactor cmd
+    )
+    => Lens' (Tagged "Once" (IO ()), Tagged "Always" (IO ())) (IO ())
+    -> ReaderT (Scene s) (State (DL.DList cmd)) ()
+    -> Gadget cmd p s ()
+postReadAction l go = do
+    sbj <- view _subject
+    Traversal slf <- view _self
+    let go' = stamp' $ ReadScene sbj (magnifyModel slf go)
+    post' $ MkAction go' $ \act ->
+            let addListener = _scene._plan._doOnRendered.l %= (*> act)
+            in stamp' $ TickScene sbj addListener
+
 -- | Create a callback and add it to this gizmo's dlist of listeners.
--- NB. You probably want to use 'trigger' instead since most React callbacks
--- generate a 'Notice'.
--- The "React ref" callback generate 'EventTarget' or 'ComponentRef' in which case you would want
--- to use 'withRef' instead.
-mkAction1_ ::
+postAction1 ::
     ( NFData a
     , AsReactor cmd
     , MonadState s m
@@ -72,29 +67,15 @@ mkAction1_ ::
     -> (JE.JSRep -> MaybeT IO a)
     -> (a -> cmd)
     -> m ()
-mkAction1_ l sbj gid n goStrict goLazy = post' $
+postAction1 l sbj gid n goStrict goLazy = post' $
     MkAction1 goStrict goLazy $ \act ->
         -- save the created action handler in the gizmo
         let updateGizmo = _scene._plan._gizmos.at gid %= (Just . addListener . fromMaybe newGizmo)
             addListener = _listeners.at n %~ (Just . addAction . fromMaybe (Tagged mempty, Tagged mempty))
             addAction acts = acts & l %~ (*> act)
-        in stamp' $ TickState sbj updateGizmo
+        in stamp' $ TickScene sbj updateGizmo
 
-addTriggerHandler ::
-    ( AsReactor cmd
-    )
-    => Lens' (Tagged "Once" (IO ()), Tagged "Always" (IO ())) (IO ())
-    -> ReaderT (Scene s) (State (DL.DList cmd)) ()
-    -> Gadget cmd p s ()
-addTriggerHandler l go = do
-    sbj <- view _subject
-    Traversal slf <- view _self
-    let go' = stamp' $ ReadState sbj (magnifyModel slf go)
-    post' $ MkAction go' $ \act ->
-            let addListener = _scene._plan._doOnRendered.l %= (*> act)
-            in stamp' $ TickState sbj addListener
-
-addTickHandler1 ::
+postTickAction1 ::
     ( NFData a
     , AsReactor cmd
     )
@@ -104,16 +85,16 @@ addTickHandler1 ::
     -> (JE.JSRep -> MaybeT IO a)
     -> (a -> State (Scenario cmd p) b)
     -> Gadget cmd p s b
-addTickHandler1 l gid n goStrict goLazy = do
+postTickAction1 l gid n goStrict goLazy = do
     sbj <- view _subject
     delegate $ \fire ->
         let goLazy' a = stamp' @[]
-                [ stamp' $ TickState sbj (goLazy a >>= coerce fire)
+                [ stamp' $ TickScene sbj (goLazy a >>= coerce fire)
                 , stamp' $ Rerender sbj
                 ]
-        in mkAction1_ l sbj gid n goStrict goLazy'
+        in postAction1 l sbj gid n goStrict goLazy'
 
-addTriggerHandler1 ::
+postReadAction1 ::
     ( NFData a
     , AsReactor cmd
     )
@@ -123,18 +104,18 @@ addTriggerHandler1 ::
     -> (JE.JSRep -> MaybeT IO a)
     -> (a -> ReaderT (Scene s) (State (DL.DList cmd)) ())
     -> Gadget cmd p s ()
-addTriggerHandler1 l gid n goStrict goLazy = do
+postReadAction1 l gid n goStrict goLazy = do
     sbj <- view _subject
     Traversal slf <- view _self
-    let goLazy' = stamp' . ReadState sbj . magnifyModel slf . goLazy
-    mkAction1_ l sbj gid n goStrict goLazy'
+    let goLazy' = stamp' . ReadScene sbj . magnifyModel slf . goLazy
+    postAction1 l sbj gid n goStrict goLazy'
 
-handleNotice :: (Notice -> MaybeT IO a) -> (JE.JSRep -> MaybeT IO a)
-handleNotice k j = MaybeT (pure $ JE.fromJSR j) >>= k
+handlesNotice :: (Notice -> MaybeT IO a) -> (JE.JSRep -> MaybeT IO a)
+handlesNotice k j = MaybeT (pure $ JE.fromJSR j) >>= k
 
 -- | Create stateful callback for a 'Notice' and add it to this gizmos's dlist of listeners.
--- The state function will be converted to a 'TickState' followed by a 'Rerender' command.
-alwaysTickStateOn ::
+-- The state function will be converted to a 'TickScene' followed by a 'Rerender' command.
+alwaysTick ::
     ( NFData a
     , AsReactor cmd
     )
@@ -143,11 +124,11 @@ alwaysTickStateOn ::
     -> (Notice -> MaybeT IO a)
     -> (a -> State (Scenario cmd p) b)
     -> Gadget cmd p s b
-alwaysTickStateOn gid n goStrict =
-    addTickHandler1 (_2._Tagged' @"Always") gid n (handleNotice goStrict)
+alwaysTick gid n goStrict =
+    postTickAction1 (_2._Tagged' @"Always") gid n (handlesNotice goStrict)
 
--- | Variation of 'alwaysTickStateOn' that is called back only once.
-reviseOnceOn ::
+-- | Variation of 'alwaysTick' that is called back only once.
+tickOnce ::
     ( NFData a
     , AsReactor cmd
     )
@@ -156,13 +137,13 @@ reviseOnceOn ::
     -> (Notice -> MaybeT IO a)
     -> (a -> State (Scenario cmd p) b)
     -> Gadget cmd p s b
-reviseOnceOn gid n goStrict =
-    addTickHandler1 (_1._Tagged @"Once") gid n (handleNotice goStrict)
+tickOnce gid n goStrict =
+    postTickAction1 (_1._Tagged @"Once") gid n (handlesNotice goStrict)
 
 -- | Create a callback for a 'Notice' and add it to this gizmos's dlist of listeners.
--- Unlike 'alwaysTickOn', this does not result in 'TickState' or 'Rerender'
--- but results in a 'ReadState' command.
-alwaysReadStateOn ::
+-- Unlike 'alwaysTickOn', this does not result in 'TickScene' or 'Rerender'
+-- but results in a 'ReadScene' command.
+alwaysOn ::
     ( NFData a
     , AsReactor cmd
     )
@@ -171,11 +152,11 @@ alwaysReadStateOn ::
     -> (Notice -> MaybeT IO a)
     -> (a -> ReaderT (Scene s) (State (DL.DList cmd)) ())
     -> Gadget cmd p s ()
-alwaysReadStateOn gid n goStrict =
-    addTriggerHandler1 (_2._Tagged' @"Always") gid n (handleNotice goStrict)
+alwaysOn gid n goStrict =
+    postReadAction1 (_2._Tagged' @"Always") gid n (handlesNotice goStrict)
 
--- | Variation of 'alwaysReadStateOn' that is called back only once.
-studyOnceOn ::
+-- | Variation of 'alwaysOn' that is called back only once.
+onceOn ::
     ( NFData a
     , AsReactor cmd
     )
@@ -184,11 +165,11 @@ studyOnceOn ::
     -> (Notice -> MaybeT IO a)
     -> (a -> ReaderT (Scene s) (State (DL.DList cmd)) ())
     -> Gadget cmd p s ()
-studyOnceOn gid n goStrict =
-    addTriggerHandler1 (_1._Tagged' @"Once") gid n (handleNotice goStrict)
+onceOn gid n goStrict =
+    postReadAction1 (_1._Tagged' @"Once") gid n (handlesNotice goStrict)
 
 -- | Register commands to call after every render.
--- Do not 'post'' 'TickState' or 'Rerender' otherwise it will go into infinite render loops.
+-- Do not 'post'' 'TickScene' or 'Rerender' otherwise it will go into infinite render loops.
 --
 -- NB. This is trigged by react 'componentDidUpdate' and 'componentDidMount'
 -- so it is also called for the initial render.
@@ -199,14 +180,14 @@ alwaysOnRendered ::
     AsReactor cmd
     => ReaderT (Scene s) (State (DL.DList cmd)) ()
     -> Gadget cmd p s ()
-alwaysOnRendered = addTriggerHandler (_2._Tagged' @"Always")
+alwaysOnRendered = postReadAction (_2._Tagged' @"Always")
 
 -- | Variation of 'alwaysOnRendered' that is called back only once.
 onceOnRendered ::
     AsReactor cmd
     => ReaderT (Scene s) (State (DL.DList cmd)) ()
     -> Gadget cmd p s ()
-onceOnRendered = addTriggerHandler (_1._Tagged' @"Once")
+onceOnRendered = postReadAction (_1._Tagged' @"Once")
 
 -- | This adds a ReactJS "ref" callback assign the ref into an 'EventTarget'
 -- for the gizmo in the plan.
@@ -214,6 +195,6 @@ trackRef ::
     AsReactor cmd
     => GizmoId
     -> Gadget cmd p s ()
-trackRef gid = addTickHandler1 (_2._Tagged' @"Always") gid "ref" (pure . JE.fromJSR) hdlRef
+trackRef gid = postTickAction1 (_2._Tagged' @"Always") gid "ref" (pure . JE.fromJSR) hdlRef
   where
     hdlRef et = _scene._plan._gizmos.ix gid._targetRef .= et
