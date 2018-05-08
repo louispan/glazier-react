@@ -20,6 +20,7 @@ import Control.Monad.Delegate
 import Control.Monad.Trans.AReader
 import Control.Monad.Trans.AState.Strict
 import Glazier.React.Scene
+import Glazier.React.Subject
 
 type GadgetT cmd p s m = AReaderT (Entity p s) (AContT () (AStateT (Scenario cmd p) m))
 type Gadget cmd p s = GadgetT cmd p s Identity

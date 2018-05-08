@@ -13,9 +13,13 @@ module Glazier.React.Reactor where
 
 import Control.DeepSeq
 import qualified Control.Disposable as CD
+import Control.Monad.Reader
 import Control.Monad.State.Strict
+import Control.Monad.Trans.Maybe
 import Data.Diverse.Lens
+import qualified Data.DList as DL
 import Glazier.React.Scene
+import Glazier.React.Subject
 import Glazier.React.Widget
 import qualified JavaScript.Extras as JE
 
@@ -48,17 +52,17 @@ data ReactorCmd cmd where
     MkAction :: cmd -> (IO () -> cmd) -> ReactorCmd cmd
     -- | Convert a callback to a @JE.JSRep -> IO ()@
     MkAction1 :: NFData a
-        => (JE.JSRep -> IO (Maybe a))
+        => (JE.JSRep -> MaybeT IO a)
         -> (a -> cmd)
         -> ((JE.JSRep -> IO ()) -> cmd)
         -> ReactorCmd cmd
-    -- ReadState :: Subject s -> ReaderT (Scene s) (State (DL.DList cmd)) () -> ReactorCmd cmd
-    TickState :: Subject s -> State (Scenario cmd s) () -> ReactorCmd cmd
+    Study :: Subject s -> ReaderT (Scene s) (State (DL.DList cmd)) () -> ReactorCmd cmd
+    Revise :: Subject s -> State (Scenario cmd s) () -> ReactorCmd cmd
 
 instance Show cmd => Show (ReactorCmd cmd) where
     showsPrec _ (Rerender _) = showString "Rerender"
-    showsPrec _ (TickState _ _) = showString "TickState"
-    -- showsPrec _ (ReadState _ _) = showString "ReadState"
+    showsPrec _ (Revise _ _) = showString "Revise"
+    showsPrec _ (Study _ _) = showString "Study"
     showsPrec p (MkAction c _) = showParen (p >= 11) $
         showString "MkAction " . shows c
     showsPrec _ (MkAction1 _ _ _) = showString "MkAction1"

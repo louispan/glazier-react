@@ -35,7 +35,6 @@ import qualified Data.DList as DL
 import Data.Foldable
 import Data.IORef
 import Data.Maybe
-import Data.Proxy
 import Data.Tagged
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Foreign.Callback.Internal as J
@@ -49,6 +48,7 @@ import Glazier.React.Markup
 import Glazier.React.MkId.Internal
 import Glazier.React.Reactor
 import Glazier.React.Scene
+import Glazier.React.Subject.Internal
 import Glazier.React.Widget
 import qualified JavaScript.Array as JA
 import qualified JavaScript.Extras as JE
@@ -57,7 +57,7 @@ import qualified JavaScript.Extras as JE
 -- maybeExec' = maybeExec
 
 displaySubject :: (MonadIO m, MonadState (DL.DList ReactMarkup) m) => Subject s -> m ()
-displaySubject (Subject scnRef _) = do
+displaySubject (Subject scnRef _ _) = do
     scn <- liftIO $ readIORef scnRef
     let ShimCallbacks renderCb updatedCb refCb _ = scn ^. _plan._shimCallbacks
     -- These are the callbacks on the 'ShimComponent'
@@ -105,12 +105,12 @@ mkSubject exec (Widget win gad) s = do
             -- update componentRef held in the Plan
             Scene pln mdl <- takeMVar scnVar
             putMVar scnVar $ Scene (pln & _componentRef .~ JE.fromJS j) mdl
-        doUpdated = join $ do
-            -- Get the IO actions onUpdated and reset the "Once" actions
+        doRendered = join $ do
+            -- Get the IO actions doOnRendered and reset the "Once" actions
             Scene pln mdl <- takeMVar scnVar
-            let ((`proxy` (Proxy @"Once")) -> x, (`proxy` (Proxy @"Every")) -> y) = doOnUpdated pln
-            putMVar scnVar $ Scene (pln & _doOnUpdated._1 .~ (Tagged @"Once" mempty)) mdl
-            -- runs the "Once" actions before "Every".
+            let ((untag @"Once") -> x, (untag @"Always") -> y) = doOnRendered pln
+            putMVar scnVar $ Scene (pln & _doOnRendered._1 .~ (Tagged @"Once" mempty)) mdl
+            -- runs the "Once" actions before "Always".
             pure (x *> y)
         doListen ctx j = void $ runMaybeT $ do
             -- ctx is [ GizmoId, event name (eg OnClick) ]
@@ -140,8 +140,8 @@ mkSubject exec (Widget win gad) s = do
                             go' ml = case ml of
                                     Nothing -> (Nothing, Nothing)
                                     -- Found listener with event name, reset "Once" actions
-                                    Just ((`proxy` (Proxy @"Once")) -> x, y) ->
-                                        ( Just (x *> (y `proxy` (Proxy @"Every")))
+                                    Just ((untag @"Once") -> x, y) ->
+                                        ( Just (x *> (untag @"Always" y))
                                         , Just (Tagged @"Once" mempty, y))
                         -- update the gizmo with resetted "Once" listeners
                         -- and return the combined handler
@@ -154,16 +154,27 @@ mkSubject exec (Widget win gad) s = do
 
     renderCb <- liftIO $ J.syncCallback' doRender
     refCb <- liftIO $ J.syncCallback1 J.ContinueAsync doRef
-    updatedCb <- liftIO $ J.syncCallback J.ContinueAsync doUpdated
+    renderedCb <- liftIO $ J.syncCallback J.ContinueAsync doRendered
     listenCb <- liftIO $ J.syncCallback2 J.ContinueAsync doListen
-    let pln = newPlan & _shimCallbacks .~ (ShimCallbacks renderCb updatedCb refCb listenCb)
+    -- Create a MVar just for auto cleanup of the callbacks
+    -- This mvar must not be reachable from the callbacks,
+    -- otherwise the callbacks will always be alive.
+    zombieVar <- liftIO $ newEmptyMVar
+    let cbs = ShimCallbacks renderCb renderedCb refCb listenCb
+        pln = newPlan & _shimCallbacks .~ cbs
         scn = Scene pln s
-        sbj = Subject scnRef scnVar
+        sbj = Subject scnRef scnVar (void $ isEmptyMVar zombieVar)
         -- initalize the subject using the Gadget
         tick = runGadgetT gad (Entity sbj id) (const $ pure ())
         Scenario cs scn' = execAState tick (Scenario mempty scn)
-    liftIO $ atomicWriteIORef scnRef scn'
-    liftIO $ putMVar scnVar scn'
+        cleanup = CD.runDisposable $ CD.dispose cbs
+    liftIO $
+        -- Create automatic garbage collection of the callbacks
+        -- that will run when the zombieVar is garbage collected.
+        mkWeakMVar zombieVar cleanup
+        -- update the mutable variables
+        >> atomicWriteIORef scnRef scn'
+        >> putMVar scnVar scn'
     -- execute additional commands
     exec (stamp' $ DL.toList cs)
     -- return the initialized subject
@@ -174,7 +185,6 @@ mkSubject exec (Widget win gad) s = do
         Nothing
         (ShimCallbacks (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef))
         (Tagged mempty, Tagged mempty)
-        mempty
         mempty
 
 -- -- | Given an initializing state action, and an executor (eg. 'reactorExecutor'),
@@ -217,16 +227,16 @@ mkSubject exec (Widget win gad) s = do
 --     pure (CD.dispose scnVar, view _model <$> readMVar scnVar)
 
 -- | Upate the world 'TVar' with the given action, and return the commands produced.
+-- Also triggers a rerender
 _tickState :: Subject s -> State (Scenario cmd s) () -> IO (DL.DList cmd)
-_tickState (Subject scnRef scnVar) tick = do
-    -- | 'tickState' is the only place where we 'takeMVar' the plan or model
-    -- So as long as we take and put in the correct order, we won't block.
+_tickState (Subject scnRef scnVar _) tick = do
     scn <- takeMVar scnVar
     let (Scenario cs scn') = execState tick (Scenario mempty scn)
-
     -- Update the back buffer
     atomicWriteIORef scnRef scn'
     putMVar scnVar scn'
+    -- automatically rerender the scene
+    _rerender scn'
     pure cs
 
 _rerender :: Scene s -> IO ()
@@ -260,8 +270,8 @@ execReactorCmd exec c = case c of
     MkSubject wid s k -> execMkSubject exec wid s k
     MkAction c' k -> execMkAction exec c' k
     MkAction1 goStrict goLazy k -> execMkAction1 exec goStrict goLazy k
-    -- ReadState sbj go -> execReadState exec sbj go
-    TickState sbj tick -> execTickState exec sbj tick
+    Study sbj go -> execStudy exec sbj go
+    Revise sbj tick -> execRevise exec sbj tick
 
 -----------------------------------------------------------------
 
@@ -269,13 +279,12 @@ execRerender ::
     ( MonadIO m
     )
     => Subject s -> m ()
-execRerender (Subject scnRef _) = liftIO $ do
+execRerender (Subject scnRef _ _) = liftIO $ do
     scn <- readIORef scnRef
     _rerender scn
 
 -- | No need to run in a separate thread because it should never block for a significant amount of time.
--- Automatically rerender the shim component.
-execTickState ::
+execRevise ::
     ( MonadIO m
     , AsFacet [cmd] cmd
     )
@@ -283,40 +292,36 @@ execTickState ::
     -> Subject s
     -> (State (Scenario cmd s) ())
     -> m ()
-execTickState exec sbj tick = do
+execRevise exec sbj tick = do
     cs <- liftIO $ _tickState sbj tick
     exec (stamp' $ DL.toList cs)
 
--- execReadState ::
---     ( MonadIO m
---     , AsFacet [cmd] cmd
---     )
---     => (cmd -> m ())
---     -> Subject s
---     -> ReaderT (Scene s) (State (DL.DList cmd)) ()
---     -> m ()
--- execReadState exec  (Subject scnRef _) go = do
---     scn <- liftIO $ readIORef scnRef
---     let cs = (`execState` mempty) $ (`runReaderT` scn) go
---     exec (stamp' $ DL.toList cs)
+execStudy ::
+    ( MonadIO m
+    , AsFacet [cmd] cmd
+    )
+    => (cmd -> m ())
+    -> Subject s
+    -> ReaderT (Scene s) (State (DL.DList cmd)) ()
+    -> m ()
+execStudy exec  (Subject scnRef _ _) go = do
+    scn <- liftIO $ readIORef scnRef
+    let cs = (`execState` mempty) $ (`runReaderT` scn) go
+    exec (stamp' $ DL.toList cs)
 
 execMkAction1 ::
     (NFData a, MonadUnliftIO m)
     => (cmd -> m ())
-    -> (JE.JSRep -> IO (Maybe a))
+    -> (JE.JSRep -> MaybeT IO a)
     -> (a -> cmd)
     -> ((JE.JSRep -> IO ()) -> cmd)
     -> m ()
 execMkAction1 exec goStrict goLazy k = do
     UnliftIO u <- askUnliftIO
     let f = handleEventM goStrict goLazy'
-        goLazy' ma = case ma of
-            -- trigger didn't produce anything useful
-            Nothing -> pure mempty
-            -- get and run the command given the trigger
-            Just a -> u . exec $ goLazy a
+        goLazy' = liftIO . u . exec . goLazy
     -- Apply to result to the continuation, and execute any produced commands
-    exec $ k f
+    exec . k $ (void . runMaybeT) <$> f
 
 execMkAction ::
     (MonadUnliftIO m)

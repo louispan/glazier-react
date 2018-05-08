@@ -41,6 +41,8 @@ library
                        Glazier.React.Reactor
                        Glazier.React.Reactor.Exec
                        Glazier.React.Scene
+                       Glazier.React.Subject
+                       Glazier.React.Subject.Internal
                        Glazier.React.Trigger
                        Glazier.React.Widget
                        Glazier.React.Window

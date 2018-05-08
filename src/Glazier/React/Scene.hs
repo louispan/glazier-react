@@ -19,13 +19,11 @@
 
 module Glazier.React.Scene where
 
-import Control.Concurrent
 import qualified Control.Disposable as CD
 import Control.Lens
 import Control.Lens.Misc
 import Control.Monad.RWS
 import qualified Data.DList as DL
-import Data.IORef
 import qualified Data.Map.Strict as M
 import Data.Maybe
 import Data.Tagged
@@ -45,7 +43,7 @@ import qualified JavaScript.Extras as JE
 data Gizmo = Gizmo
     { targetRef :: Maybe EventTarget
     -- (name of event, context of event)
-    , listeners :: M.Map J.JSString (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Every" (JE.JSRep -> IO ()))
+    , listeners :: M.Map J.JSString (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Always" (JE.JSRep -> IO ()))
     } deriving (G.Generic)
 
 makeLenses_ ''Gizmo
@@ -58,8 +56,8 @@ newGizmo = Gizmo Nothing mempty
 data ShimCallbacks = ShimCallbacks
     -- render function of the ReactComponent
     { onRender :: J.Callback (IO J.JSVal)
-    -- Run the doOnUpdated in the plan
-    , onUpdated :: J.Callback (IO ())
+    -- Run the doOnRendered in the plan
+    , onRendered :: J.Callback (IO ())
     -- updates the componenRef
     , onRef :: J.Callback (J.JSVal -> IO ())
     -- all listeners use the same entry function, just a different
@@ -77,7 +75,7 @@ instance CD.Dispose ShimCallbacks where
 -- | Interactivity data for a react component
 data Plan = Plan
     -- Plan rquires planId for 'Glazier.React.Framework.Reactor.MkOnceOnUpdatedCallback'
-    -- and 'Glazier.React.Framework.Reactor.MkEveryOnUpdatedCallback'
+    -- and 'Glazier.React.Framework.Reactor.MkAlwaysOnUpdatedCallback'
     -- { planId :: PlanId
     -- a react "ref" to the javascript instance of ReactComponent
     -- so that react "componentRef.setState()" can be called.
@@ -93,9 +91,9 @@ data Plan = Plan
     --   -- cannot be hidden inside afterOnUpdated, as this also needs to be used
     --   -- when finalizing
     -- -- , disposeOnRemoved :: CD.Disposable
-    , doOnUpdated :: (Tagged "Once" (IO ()), Tagged "Every" (IO ()))
+    , doOnRendered :: (Tagged "Once" (IO ()), Tagged "Always" (IO ()))
     --  Things to dispose on updated
-    , disposeOnUpdated :: CD.Disposable
+    -- , disposeOnUpdated :: CD.Disposable
     -- interactivity data for child DOM elements
     , gizmos :: M.Map GizmoId Gizmo
     -- interactivity data for child react components
@@ -104,10 +102,10 @@ data Plan = Plan
 
 makeLenses_ ''Plan
 
-instance CD.Dispose Plan where
-    dispose pln = (CD.dispose (shimCallbacks pln))
-        <> (disposeOnUpdated pln)
-        -- <> (foldMap CD.dispose (plans pln))
+-- instance CD.Dispose Plan where
+--     dispose pln = (CD.dispose (shimCallbacks pln))
+--         <> (disposeOnUpdated pln)
+--         -- <> (foldMap CD.dispose (plans pln))
 
 instance Show Plan where
     showsPrec d pln = showParen
@@ -147,8 +145,8 @@ _model = lens model (\s a -> s { model = a})
 _plan :: Lens' (Scene s) Plan
 _plan = lens plan (\s a -> s { plan = a})
 
-instance CD.Dispose s => CD.Dispose (Scene s) where
-    dispose (Scene pln mdl) = CD.dispose pln <> CD.dispose mdl
+-- instance CD.Dispose s => CD.Dispose (Scene s) where
+--     dispose (Scene pln mdl) = CD.dispose pln <> CD.dispose mdl
 
 ----------------------------------------------------------------------------------
 
@@ -176,44 +174,6 @@ editScenarioModel l safa s = (\s' -> s & _scene._model .~ s' ) <$> l afa' (s ^. 
   where
     afa' a = (view (_scene._model)) <$> safa (s & _scene._model .~ a)
 
-----------------------------------------------------------------------------------
-
--- | Using MVar to synchronizing because it guarantees FIFO wakeup
--- which will help prevent old updates overriding new updates.
--- NB. Different 'Arena' may have different modelVar, but share the same planVar.
-data Subject p = Subject
-    -- | so we can have non-blocking reads
-    { sceneRef :: IORef (Scene p)
-    -- | canonical data
-    , sceneVar :: MVar (Scene p)
-    }
-
-instance CD.Dispose (Scene p) => CD.Dispose (Subject p) where
-    dispose (Subject _ v) = CD.dispose v
-
-data Entity p s = Entity (Subject p) (Traversal' p s)
-
-_subject :: Lens' (Entity p s) (Subject p)
-_subject = lens (\(Entity p _) -> p) (\(Entity _ s) p -> Entity p s)
-
-_self :: Lens (Entity p s) (Entity p s') (ReifiedTraversal' p s) (ReifiedTraversal' p s')
-_self = lens (\(Entity _ s) -> Traversal s) (\(Entity p _) (Traversal t) -> Entity p t)
-
-magnifySelf ::
-    ( Magnify m n (Entity p a) (Entity p b)
-    , Contravariant (Magnified m r)
-    )
-    => Traversal' b a -> m r -> n r
-magnifySelf l = magnify (to go)
-  where
-    go (Entity sbj slf) = Entity sbj (slf.l)
-
-magnifyModel ::
-    ( Magnify m n (Scene a) (Scene b)
-    , Functor (Magnified m r)
-    )
-    => LensLike' (Magnified m r) b a -> m r -> n r
-magnifyModel l = magnify (editSceneModel l)
 
 ----------------------------------------------------------------------------------
 
