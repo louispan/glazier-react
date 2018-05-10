@@ -19,10 +19,10 @@ import Control.Lens
 import Control.Monad.Delegate
 import Control.Monad.Trans.AReader
 import Control.Monad.Trans.AState.Strict
-import Glazier.React.Scene
+import qualified Data.DList as DL
 import Glazier.React.Subject
 
-type GadgetT cmd p s m = AReaderT (Entity p s) (AContT () (AStateT (Scenario cmd p) m))
+type GadgetT cmd p s m = AReaderT (Entity p s) (AContT () (AStateT (DL.DList cmd) m))
 type Gadget cmd p s = GadgetT cmd p s Identity
 
 -- data Gadget2 r c p s a where
@@ -62,8 +62,8 @@ type Gadget cmd p s = GadgetT cmd p s Identity
 
 gadgetT ::
     (Entity p s
-        -> (a -> AStateT (Scenario cmd p) m ())
-        -> AStateT (Scenario cmd p) m ())
+        -> (a -> AStateT (DL.DList cmd) m ())
+        -> AStateT (DL.DList cmd) m ())
     -> GadgetT cmd p s m a
 gadgetT f = areaderT (\r -> acontT (f r))
 
@@ -122,8 +122,8 @@ gadgetT f = areaderT (\r -> acontT (f r))
 runGadgetT ::
     GadgetT cmd p s m a
     -> Entity p s
-    -> (a -> AStateT (Scenario cmd p) m ())
-    -> AStateT (Scenario cmd p) m ()
+    -> (a -> AStateT (DL.DList cmd) m ())
+    -> AStateT (DL.DList cmd) m ()
 runGadgetT x l = runAContT (runAReaderT x l)
 
 -- runGadget ::

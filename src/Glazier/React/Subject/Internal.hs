@@ -5,7 +5,6 @@ module Glazier.React.Subject.Internal where
 
 import Control.Concurrent
 import Control.Lens
-import Control.Monad.RWS
 import Data.IORef
 import Glazier.React.Scene
 ----------------------------------------------------------------------------------

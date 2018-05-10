@@ -30,7 +30,7 @@ type Window s = WindowT s Identity
 
 getListeners :: Monad m => GizmoId -> WindowT s m [JE.Property]
 getListeners gid = do
-    cb <- view (_plan._shimCallbacks._onListen)
+    cb <- view (_plan._shimCallbacks._shimListen)
     ks <- view (_plan._gizmos.ix gid._listeners.to M.keys)
     let go k = (k, bindListenerContext (context k) cb)
     pure (go <$> ks)

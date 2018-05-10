@@ -38,6 +38,12 @@ import qualified JavaScript.Extras as JE
 
 ----------------------------------------------------------------------------------
 
+_once :: Lens' (Tagged "Once" a, Tagged "Always" a) a
+_once = (_1._Tagged' @"Once")
+
+_always :: Lens' (Tagged "Once" a, Tagged "Always" a) a
+_always = (_2._Tagged' @"Always")
+
 -- | Interactivity for a particular DOM element.
 -- type Listener = (J.JSString, J.Callback (J.JSVal -> IO ()))
 data Gizmo = Gizmo
@@ -55,14 +61,14 @@ newGizmo = Gizmo Nothing mempty
 
 data ShimCallbacks = ShimCallbacks
     -- render function of the ReactComponent
-    { onRender :: J.Callback (IO J.JSVal)
+    { shimRender :: J.Callback (IO J.JSVal)
     -- Run the doOnRendered in the plan
-    , onRendered :: J.Callback (IO ())
+    , shimRendered :: J.Callback (IO ())
     -- updates the componenRef
-    , onRef :: J.Callback (J.JSVal -> IO ())
+    , shimRef :: J.Callback (J.JSVal -> IO ())
     -- all listeners use the same entry function, just a different
     -- first arg context.
-    , onListen :: J.Callback (J.JSVal -> J.JSVal -> IO ())
+    , shimListen :: J.Callback (J.JSVal -> J.JSVal -> IO ())
     } deriving (G.Generic)
 
 makeLenses_ ''ShimCallbacks
@@ -145,8 +151,21 @@ _model = lens model (\s a -> s { model = a})
 _plan :: Lens' (Scene s) Plan
 _plan = lens plan (\s a -> s { plan = a})
 
--- instance CD.Dispose s => CD.Dispose (Scene s) where
---     dispose (Scene pln mdl) = CD.dispose pln <> CD.dispose mdl
+class HasScene c c' s s' | c -> s, c' -> s' where
+    _scene :: Lens c c' (Scene s) (Scene s')
+
+type HasScene' c s = HasScene c c s s
+
+_scene' :: HasScene' c s => Lens' c (Scene s)
+_scene' = _scene
+
+instance HasScene (Scene s) (Scene s') s s' where
+    _scene = id
+
+editSceneModel :: (Functor f) => LensLike' f s a -> LensLike' f (Scene s) (Scene a)
+editSceneModel l safa s = (\s' -> s & _model .~ s' ) <$> l afa' (s ^. _model)
+  where
+    afa' a = (view _model) <$> safa (s & _model .~ a)
 
 ----------------------------------------------------------------------------------
 
@@ -158,16 +177,11 @@ data Scenario cmd s = Scenario
     , scene :: Scene s
     } deriving (G.Generic, Functor)
 
-instance HasCommands (Scenario cmd s) cmd where
+instance HasCommands (Scenario cmd s) (Scenario cmd' s) cmd cmd' where
     _commands = lens commands (\s a -> s { commands = a})
 
-_scene :: Lens (Scenario x s) (Scenario x s') (Scene s) (Scene s')
-_scene = lens scene (\s a -> s { scene = a})
-
-editSceneModel :: (Functor f) => LensLike' f s a -> LensLike' f (Scene s) (Scene a)
-editSceneModel l safa s = (\s' -> s & _model .~ s' ) <$> l afa' (s ^. _model)
-  where
-    afa' a = (view _model) <$> safa (s & _model .~ a)
+instance HasScene (Scenario cmd s) (Scenario cmd s') s s' where
+    _scene = lens scene (\s a -> s { scene = a})
 
 editScenarioModel :: (Functor f) => LensLike' f s a -> LensLike' f (Scenario cmd s) (Scenario cmd a)
 editScenarioModel l safa s = (\s' -> s & _scene._model .~ s' ) <$> l afa' (s ^. _scene._model)

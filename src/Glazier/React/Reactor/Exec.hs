@@ -163,18 +163,19 @@ mkSubject exec (Widget win gad) s = do
     let cbs = ShimCallbacks renderCb renderedCb refCb listenCb
         pln = newPlan & _shimCallbacks .~ cbs
         scn = Scene pln s
+        -- keep zombie alive as long as 'Subject' 'prolong' is reachable.
         sbj = Subject scnRef scnVar (void $ isEmptyMVar zombieVar)
         -- initalize the subject using the Gadget
         tick = runGadgetT gad (Entity sbj id) (const $ pure ())
-        Scenario cs scn' = execAState tick (Scenario mempty scn)
+        cs = execAState tick mempty
         cleanup = CD.runDisposable $ CD.dispose cbs
-    liftIO $
+    liftIO $ do
         -- Create automatic garbage collection of the callbacks
         -- that will run when the zombieVar is garbage collected.
-        mkWeakMVar zombieVar cleanup
+        void $ mkWeakMVar zombieVar cleanup
         -- update the mutable variables
-        >> atomicWriteIORef scnRef scn'
-        >> putMVar scnVar scn'
+        atomicWriteIORef scnRef scn
+        putMVar scnVar scn
     -- execute additional commands
     exec (stamp' $ DL.toList cs)
     -- return the initialized subject
@@ -271,7 +272,7 @@ execReactorCmd exec c = case c of
     MkAction c' k -> execMkAction exec c' k
     MkAction1 goStrict goLazy k -> execMkAction1 exec goStrict goLazy k
     ReadScene sbj go -> execReadScene exec sbj go
-    TickScene sbj tick -> execTickScene exec sbj tick
+    TickScenario sbj tick -> execTickScenario exec sbj tick
 
 -----------------------------------------------------------------
 
@@ -284,7 +285,7 @@ execRerender (Subject scnRef _ _) = liftIO $ do
     _rerender scn
 
 -- | No need to run in a separate thread because it should never block for a significant amount of time.
-execTickScene ::
+execTickScenario ::
     ( MonadIO m
     , AsFacet [cmd] cmd
     )
@@ -292,7 +293,7 @@ execTickScene ::
     -> Subject s
     -> (State (Scenario cmd s) ())
     -> m ()
-execTickScene exec sbj tick = do
+execTickScenario exec sbj tick = do
     cs <- liftIO $ _tickState sbj tick
     exec (stamp' $ DL.toList cs)
 

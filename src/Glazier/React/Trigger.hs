@@ -6,24 +6,21 @@
 {-# LANGUAGE TypeApplications #-}
 
 module Glazier.React.Trigger
-    ( alwaysTick
-    , tickOnce
-    , alwaysOn
-    , onceOn
-    , alwaysOnRendered
-    , onceOnRendered
-    , trackRef
+    ( _once
+    , _always
+    , trigger
+    , trigger'
+    , whenRendered
+    , trackGizmo
     ) where
 
 import Control.DeepSeq
 import Control.Lens
-import Control.Lens.Misc.Tagged
-import Control.Monad.Delegate
+import Control.Monad.Defer
 import Control.Monad.Reader
-import Control.Monad.State.Strict
+import Control.Monad.Trans.AReader
 import Control.Monad.Trans.AState.Strict
 import Control.Monad.Trans.Maybe
-import Data.Coerce
 import qualified Data.DList as DL
 import Data.Maybe
 import Data.Tagged
@@ -39,43 +36,34 @@ import qualified JavaScript.Extras as JE
 
 ------------------------------------------------------
 
-postReadAction ::
-    ( AsReactor cmd
-    )
-    => Lens' (Tagged "Once" (IO ()), Tagged "Always" (IO ())) (IO ())
-    -> ReaderT (Scene s) (State (DL.DList cmd)) ()
-    -> Gadget cmd p s ()
-postReadAction l go = do
-    sbj <- view _subject
-    Traversal slf <- view _self
-    let go' = stamp' $ ReadScene sbj (magnifyModel slf go)
-    post' $ MkAction go' $ \act ->
-            let addListener = _scene._plan._doOnRendered.l %= (*> act)
-            in stamp' $ TickScene sbj addListener
-
 -- | Create a callback and add it to this gizmo's dlist of listeners.
-postAction1 ::
+trigger_ ::
     ( NFData a
     , AsReactor cmd
-    , MonadState s m
-    , HasCommands s cmd
     )
     => Lens' (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Always" (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
-    -> Subject p
     -> GizmoId
     -> J.JSString
     -> (JE.JSRep -> MaybeT IO a)
-    -> (a -> cmd)
-    -> m ()
-postAction1 l sbj gid n goStrict goLazy = post' $
-    MkAction1 goStrict goLazy $ \act ->
+    -> (a -> Gadget cmd p s ())
+    -> Gadget cmd p s ()
+trigger_ l gid n goStrict goLazy = do
+    ent@(Entity sbj _) <- ask
+    let goLazy' = stamp' @[] . DL.toList
+            . (`execAState` mempty)
+            . evalAContT
+            . (`runAReaderT` ent) . goLazy
+    post' $ MkAction1 goStrict goLazy' $ \act ->
         -- save the created action handler in the gizmo
-        let updateGizmo = _scene._plan._gizmos.at gid %= (Just . addListener . fromMaybe newGizmo)
+        let updateGizmo = _scene'._plan._gizmos.at gid %= (Just . addListener . fromMaybe newGizmo)
             addListener = _listeners.at n %~ (Just . addAction . fromMaybe (Tagged mempty, Tagged mempty))
             addAction acts = acts & l %~ (*> act)
-        in stamp' $ TickScene sbj updateGizmo
+        in stamp' $ TickScenario sbj updateGizmo
 
-postTickAction1 ::
+-- | Create a callback for a 'JE.JSRep' and add it to this gizmos's dlist of listeners.
+-- You probably want to use 'trigger'' since most React callbacks return a 'Notice',
+-- except for the "ref" callback, in which case you probably want to use 'trackGizmo'.
+trigger ::
     ( NFData a
     , AsReactor cmd
     )
@@ -83,118 +71,53 @@ postTickAction1 ::
     -> GizmoId
     -> J.JSString
     -> (JE.JSRep -> MaybeT IO a)
-    -> (a -> State (Scenario cmd p) b)
-    -> Gadget cmd p s b
-postTickAction1 l gid n goStrict goLazy = do
-    sbj <- view _subject
-    delegate $ \fire ->
-        let goLazy' a = stamp' @[]
-                [ stamp' $ TickScene sbj (goLazy a >>= coerce fire)
-                , stamp' $ Rerender sbj
-                ]
-        in postAction1 l sbj gid n goStrict goLazy'
-
-postReadAction1 ::
-    ( NFData a
-    , AsReactor cmd
-    )
-    => Lens' (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Always" (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
-    -> GizmoId
-    -> J.JSString
-    -> (JE.JSRep -> MaybeT IO a)
-    -> (a -> ReaderT (Scene s) (State (DL.DList cmd)) ())
-    -> Gadget cmd p s ()
-postReadAction1 l gid n goStrict goLazy = do
-    sbj <- view _subject
-    Traversal slf <- view _self
-    let goLazy' = stamp' . ReadScene sbj . magnifyModel slf . goLazy
-    postAction1 l sbj gid n goStrict goLazy'
-
-handlesNotice :: (Notice -> MaybeT IO a) -> (JE.JSRep -> MaybeT IO a)
-handlesNotice k j = MaybeT (pure $ JE.fromJSR j) >>= k
-
--- | Create stateful callback for a 'Notice' and add it to this gizmos's dlist of listeners.
--- The state function will be converted to a 'TickScene' followed by a 'Rerender' command.
-alwaysTick ::
-    ( NFData a
-    , AsReactor cmd
-    )
-    => GizmoId
-    -> J.JSString
-    -> (Notice -> MaybeT IO a)
-    -> (a -> State (Scenario cmd p) b)
-    -> Gadget cmd p s b
-alwaysTick gid n goStrict =
-    postTickAction1 (_2._Tagged' @"Always") gid n (handlesNotice goStrict)
-
--- | Variation of 'alwaysTick' that is called back only once.
-tickOnce ::
-    ( NFData a
-    , AsReactor cmd
-    )
-    => GizmoId
-    -> J.JSString
-    -> (Notice -> MaybeT IO a)
-    -> (a -> State (Scenario cmd p) b)
-    -> Gadget cmd p s b
-tickOnce gid n goStrict =
-    postTickAction1 (_1._Tagged @"Once") gid n (handlesNotice goStrict)
+    -> Gadget cmd p s a
+trigger l gid n goStrict = defer $ trigger_ l gid n goStrict
 
 -- | Create a callback for a 'Notice' and add it to this gizmos's dlist of listeners.
--- Unlike 'alwaysTickOn', this does not result in 'TickScene' or 'Rerender'
--- but results in a 'ReadScene' command.
-alwaysOn ::
+trigger' ::
     ( NFData a
     , AsReactor cmd
     )
-    => GizmoId
+    => Lens' (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Always" (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
+    -> GizmoId
     -> J.JSString
     -> (Notice -> MaybeT IO a)
-    -> (a -> ReaderT (Scene s) (State (DL.DList cmd)) ())
-    -> Gadget cmd p s ()
-alwaysOn gid n goStrict =
-    postReadAction1 (_2._Tagged' @"Always") gid n (handlesNotice goStrict)
+    -> Gadget cmd p s a
+trigger' l gid n goStrict = trigger l gid n $ handlesNotice goStrict
+  where
+    handlesNotice :: (Notice -> MaybeT IO a) -> (JE.JSRep -> MaybeT IO a)
+    handlesNotice k j = MaybeT (pure $ JE.fromJSR j) >>= k
 
--- | Variation of 'alwaysOn' that is called back only once.
-onceOn ::
-    ( NFData a
-    , AsReactor cmd
-    )
-    => GizmoId
-    -> J.JSString
-    -> (Notice -> MaybeT IO a)
-    -> (a -> ReaderT (Scene s) (State (DL.DList cmd)) ())
-    -> Gadget cmd p s ()
-onceOn gid n goStrict =
-    postReadAction1 (_1._Tagged' @"Once") gid n (handlesNotice goStrict)
-
--- | Register commands to call after every render.
--- Do not 'post'' 'TickScene' or 'Rerender' otherwise it will go into infinite render loops.
+-- | Register commands to call after a render.
+-- Do not 'post'' 'TickScenario' or 'Rerender' otherwise it will go into infinite render loops.
 --
 -- NB. This is trigged by react 'componentDidUpdate' and 'componentDidMount'
 -- so it is also called for the initial render.
 -- See jsbits/react.js hgr$shimComponent.
 -- These callbacks are called after the ref callback by React
 -- See https://reactjs.org/docs/refs-and-the-dom.html.
-alwaysOnRendered ::
-    AsReactor cmd
-    => ReaderT (Scene s) (State (DL.DList cmd)) ()
+whenRendered ::
+    ( AsReactor cmd
+    )
+    => Lens' (Tagged "Once" (IO ()), Tagged "Always" (IO ())) (IO ())
+    -> cmd
     -> Gadget cmd p s ()
-alwaysOnRendered = postReadAction (_2._Tagged' @"Always")
-
--- | Variation of 'alwaysOnRendered' that is called back only once.
-onceOnRendered ::
-    AsReactor cmd
-    => ReaderT (Scene s) (State (DL.DList cmd)) ()
-    -> Gadget cmd p s ()
-onceOnRendered = postReadAction (_1._Tagged' @"Once")
+whenRendered l c = do
+    sbj <- view _subject
+    post' $ MkAction c $ \act ->
+            -- save the rendered action handler in the plan
+            let addListener = _scene'._plan._doOnRendered.l %= (*> act)
+            in stamp' $ TickScenario sbj addListener
 
 -- | This adds a ReactJS "ref" callback assign the ref into an 'EventTarget'
--- for the gizmo in the plan.
-trackRef ::
+-- for the gizmo in the plan, so that the gizmo '_targetRef' can be used.
+trackGizmo ::
     AsReactor cmd
     => GizmoId
     -> Gadget cmd p s ()
-trackRef gid = postTickAction1 (_2._Tagged' @"Always") gid "ref" (pure . JE.fromJSR) hdlRef
+trackGizmo gid = trigger _always gid "ref" (pure . JE.fromJSR) >>= hdlRef
   where
-    hdlRef et = _scene._plan._gizmos.ix gid._targetRef .= et
+    hdlRef x = do
+        sbj <- view _subject
+        post' . TickScenario sbj $ _scene'._plan._gizmos.ix gid._targetRef .= x
