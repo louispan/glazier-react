@@ -48,7 +48,7 @@ trigger_ ::
 trigger_ l eid n goStrict goLazy = do
     ent@(Entity sbj _) <- ask
     let goLazy' = codify . unAStateT . (`evalGadgetT` ent) . goLazy
-    mandate' $ MkHandler1 goStrict goLazy' $ \act ->
+    postcmd' $ MkHandler1 goStrict goLazy' $ \act ->
         -- save the created action handler in the elemental
         let updateElemental = _plan._elementals.at eid %= (Just . addListener . fromMaybe newElemental)
             addListener = _listeners.at n %~ (Just . addAction . fromMaybe (Tagged mempty, Tagged mempty))
@@ -85,7 +85,7 @@ trigger' l eid n goStrict = trigger l eid n $ handlesNotice goStrict
     handlesNotice k j = MaybeT (pure $ JE.fromJSR j) >>= k
 
 -- | Register commands to call after a render.
--- Do not 'mandate'' 'TickScene' or 'Rerender' otherwise it will go into infinite render loops.
+-- Do not 'postcmd'' 'TickScene' or 'Rerender' otherwise it will go into infinite render loops.
 --
 -- NB. This is trigged by react 'componentDidUpdate' and 'componentDidMount'
 -- so it is also called for the initial render.
@@ -100,7 +100,7 @@ onRendered ::
     -> Gadget cmd p s ()
 onRendered l c = do
     sbj <- view _subject
-    mandate' $ MkHandler c $ \act ->
+    postcmd' $ MkHandler c $ \act ->
             -- save the rendered action handler in the plan
             let addListener = _plan._doOnRendered.l %= (*> act)
             in command' $ TickScene sbj addListener
@@ -115,4 +115,4 @@ hdlElementalRef eid = trigger _always eid "ref" (pure . JE.fromJSR) >>= hdlRef
   where
     hdlRef x = do
         sbj <- view _subject
-        mandate' . TickScene sbj $ _plan._elementals.ix eid._elementalRef .= x
+        postcmd' . TickScene sbj $ _plan._elementals.ix eid._elementalRef .= x

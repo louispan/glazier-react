@@ -63,8 +63,9 @@ data ReactorCmd cmd where
         -> (a -> cmd)
         -> ((JE.JSRep -> IO ()) -> cmd)
         -> ReactorCmd cmd
+    -- Generate a list of commands from reading a scene.
     Scenario :: Subject s -> ReaderT (Scene s) (State (DL.DList cmd)) () -> ReactorCmd cmd
-    -- Update and rerneder a scene.
+    -- Update and rerender a scene.
     TickScene :: Subject s -> State (Scene s) () -> ReactorCmd cmd
 
 instance Show cmd => Show (ReactorCmd cmd) where
