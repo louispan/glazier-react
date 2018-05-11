@@ -11,7 +11,7 @@ module Glazier.React.Trigger
     , trigger
     , trigger'
     , onRendered
-    , hdlGizmoRef
+    , hdlElementalRef
     ) where
 
 import Control.DeepSeq
@@ -34,52 +34,52 @@ import qualified JavaScript.Extras as JE
 
 ------------------------------------------------------
 
--- | Create a callback and add it to this gizmo's dlist of listeners.
+-- | Create a callback and add it to this elemental's dlist of listeners.
 trigger_ ::
     ( NFData a
     , AsReactor cmd
     )
     => Lens' (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Always" (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
-    -> GizmoId
+    -> ElementalId
     -> J.JSString
     -> (JE.JSRep -> MaybeT IO a)
     -> (a -> Gadget cmd p s ())
     -> Gadget cmd p s ()
-trigger_ l gid n goStrict goLazy = do
+trigger_ l eid n goStrict goLazy = do
     ent@(Entity sbj _) <- ask
     let goLazy' = codify . unAStateT . (`evalGadgetT` ent) . goLazy
     mandate' $ MkHandler1 goStrict goLazy' $ \act ->
-        -- save the created action handler in the gizmo
-        let updateGizmo = _scene'._plan._gizmos.at gid %= (Just . addListener . fromMaybe newGizmo)
+        -- save the created action handler in the elemental
+        let updateElemental = _scene'._plan._elementals.at eid %= (Just . addListener . fromMaybe newElemental)
             addListener = _listeners.at n %~ (Just . addAction . fromMaybe (Tagged mempty, Tagged mempty))
             addAction acts = acts & l %~ (*> act)
-        in command' $ TickScenario sbj updateGizmo
+        in command' $ TickScenario sbj updateElemental
 
--- | Create a callback for a 'JE.JSRep' and add it to this gizmos's dlist of listeners.
+-- | Create a callback for a 'JE.JSRep' and add it to this elementals's dlist of listeners.
 -- You probably want to use 'trigger'' since most React callbacks return a 'Notice',
--- except for the "ref" callback, in which case you probably want to use 'trackGizmo'.
+-- except for the "ref" callback, in which case you probably want to use 'trackElemental'.
 trigger ::
     ( NFData a
     , AsReactor cmd
     )
     => Lens' (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Always" (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
-    -> GizmoId
+    -> ElementalId
     -> J.JSString
     -> (JE.JSRep -> MaybeT IO a)
     -> Gadget cmd p s a
-trigger l gid n goStrict = defer $ trigger_ l gid n goStrict
+trigger l eid n goStrict = defer $ trigger_ l eid n goStrict
 
--- | Create a callback for a 'Notice' and add it to this gizmos's dlist of listeners.
+-- | Create a callback for a 'Notice' and add it to this elementals's dlist of listeners.
 trigger' ::
     ( NFData a
     , AsReactor cmd
     )
     => Lens' (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Always" (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
-    -> GizmoId
+    -> ElementalId
     -> J.JSString
     -> (Notice -> MaybeT IO a)
     -> Gadget cmd p s a
-trigger' l gid n goStrict = trigger l gid n $ handlesNotice goStrict
+trigger' l eid n goStrict = trigger l eid n $ handlesNotice goStrict
   where
     handlesNotice :: (Notice -> MaybeT IO a) -> (JE.JSRep -> MaybeT IO a)
     handlesNotice k j = MaybeT (pure $ JE.fromJSR j) >>= k
@@ -106,13 +106,13 @@ onRendered l c = do
             in command' $ TickScenario sbj addListener
 
 -- | This adds a ReactJS "ref" callback assign the ref into an 'EventTarget'
--- for the gizmo in the plan, so that the gizmo '_targetRef' can be used.
-hdlGizmoRef ::
+-- for the elemental in the plan, so that the elemental '_targetRef' can be used.
+hdlElementalRef ::
     AsReactor cmd
-    => GizmoId
+    => ElementalId
     -> Gadget cmd p s ()
-hdlGizmoRef gid = trigger _always gid "ref" (pure . JE.fromJSR) >>= hdlRef
+hdlElementalRef eid = trigger _always eid "ref" (pure . JE.fromJSR) >>= hdlRef
   where
     hdlRef x = do
         sbj <- view _subject
-        mandate' . TickScenario sbj $ _scene'._plan._gizmos.ix gid._gizmoRef .= x
+        mandate' . TickScenario sbj $ _scene'._plan._elementals.ix eid._elementalRef .= x

@@ -28,36 +28,36 @@ type Window s = WindowT s Identity
 -- type SceneDisplay x s r = Display (Scene x s) r
 ----------------------------------------------------------------------------------
 
-getListeners :: Monad m => GizmoId -> WindowT s m [JE.Property]
-getListeners gid = do
+getListeners :: Monad m => ElementalId -> WindowT s m [JE.Property]
+getListeners eid = do
     cb <- view (_plan._shimCallbacks._shimListen)
-    ks <- view (_plan._gizmos.ix gid._listeners.to M.keys)
+    ks <- view (_plan._elementals.ix eid._listeners.to M.keys)
     let go k = (k, bindListenerContext (context k) cb)
     pure (go <$> ks)
   where
-    context k = JE.toJSR $ JA.fromList [JE.toJS gid, JE.toJS k]
+    context k = JE.toJSR $ JA.fromList [JE.toJS eid, JE.toJS k]
 
--- | Interactive version of 'lf' using listeners obtained from the 'Plan' for a 'GizmoId'.
+-- | Interactive version of 'lf' using listeners obtained from the 'Plan' for a 'ElementalId'.
 lf' ::
     Monad m
-    => GizmoId
+    => ElementalId
     -> JE.JSRep -- ^ eg "div" or "input"
     -> DL.DList JE.Property
     -> WindowT s m ()
-lf' gid n props = do
-    ls <- getListeners gid
+lf' eid n props = do
+    ls <- getListeners eid
     leaf n (props <> DL.fromList ls)
 
 -- | Interactive version of 'bh'
 bh' ::
     Monad m
-    => GizmoId
+    => ElementalId
     -> JE.JSRep
     -> DL.DList JE.Property
     -> WindowT s m r
     -> WindowT s m r
-bh' gid n props childs = do
-    ls <- getListeners gid
+bh' eid n props childs = do
+    ls <- getListeners eid
     branch n (props <> DL.fromList ls) childs
 
 

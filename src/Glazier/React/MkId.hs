@@ -1,8 +1,8 @@
 module Glazier.React.MkId
-    ( GizmoId -- constructor not exported
+    ( ElementalId -- constructor not exported
     , PlanId -- constructor not exported
     , mkId
-    , mkGizmoId
+    , mkElementalId
     , mkPlanId
     )
     where

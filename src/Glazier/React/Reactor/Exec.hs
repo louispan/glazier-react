@@ -114,28 +114,28 @@ mkSubject exec (Widget win gad) s = do
             -- runs the "Once" actions before "Always".
             pure (x *> y)
         doListen ctx j = void $ runMaybeT $ do
-            -- ctx is [ GizmoId, event name (eg OnClick) ]
+            -- ctx is [ ElementalId, event name (eg OnClick) ]
             -- Javascript doesn't have tuples, only list
-            (gid, n) <- MaybeT $ pure $ do
+            (eid, n) <- MaybeT $ pure $ do
                 ctx' <- JE.fromJS ctx
                 case JA.toList ctx' of
-                        [gid', n'] -> do
-                            gid'' <- GizmoId <$> JE.fromJS gid'
+                        [eid', n'] -> do
+                            eid'' <- ElementalId <$> JE.fromJS eid'
                             n'' <- JE.fromJS n'
-                            Just (gid'', n'')
+                            Just (eid'', n'')
                         -- malformed ctx, ignore
                         _ -> Nothing
             lift $ do
                 mhdl <- do
                         Scene pln mdl <- takeMVar scnVar
-                        -- get the handler for the gizmo and event name.
-                        -- also get the updated gizmo as the "Once" handler may be reset.
-                        -- returns (Maybe handler, Maybe newGizmo)
-                        -- First, look for gizmo:
-                        let (mhdl, gs') = at gid go (pln ^. _gizmos)
+                        -- get the handler for the elemental and event name.
+                        -- also get the updated elemental as the "Once" handler may be reset.
+                        -- returns (Maybe handler, Maybe newElemental)
+                        -- First, look for elemental:
+                        let (mhdl, gs') = at eid go (pln ^. _elementals)
                             go mg = case mg of
                                     Nothing -> (Nothing, Nothing)
-                                    -- found gizmo, check listeners for event name
+                                    -- found elemental, check listeners for event name
                                     Just g -> let (ret, l) = at n go' (g ^. _listeners)
                                               in (ret, Just (g & _listeners .~ l))
                             go' ml = case ml of
@@ -144,9 +144,9 @@ mkSubject exec (Widget win gad) s = do
                                     Just ((untag @"Once") -> x, y) ->
                                         ( Just (x *> (untag @"Always" y))
                                         , Just (Tagged @"Once" mempty, y))
-                        -- update the gizmo with resetted "Once" listeners
+                        -- update the elemental with resetted "Once" listeners
                         -- and return the combined handler
-                        putMVar scnVar $ Scene (pln & _gizmos .~ gs') mdl
+                        putMVar scnVar $ Scene (pln & _elementals .~ gs') mdl
                         pure mhdl
                 -- pass the javascript event arg into the combined handler
                 case mhdl of

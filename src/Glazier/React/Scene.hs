@@ -46,16 +46,16 @@ _always = (_2._Tagged' @"Always")
 
 -- | Interactivity for a particular DOM element.
 -- type Listener = (J.JSString, J.Callback (J.JSVal -> IO ()))
-data Gizmo = Gizmo
-    { gizmoRef :: Maybe EventTarget
+data Elemental = Elemental
+    { elementalRef :: Maybe EventTarget
     -- (name of event, context of event)
     , listeners :: M.Map J.JSString (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Always" (JE.JSRep -> IO ()))
     } deriving (G.Generic)
 
-makeLenses_ ''Gizmo
+makeLenses_ ''Elemental
 
-newGizmo :: Gizmo
-newGizmo = Gizmo Nothing mempty
+newElemental :: Elemental
+newElemental = Elemental Nothing mempty
 
 ----------------------------------------------------------------------------------
 
@@ -101,7 +101,7 @@ data Plan = Plan
     --  Things to dispose on updated
     -- , disposeOnUpdated :: CD.Disposable
     -- interactivity data for child DOM elements
-    , gizmos :: M.Map GizmoId Gizmo
+    , elementals :: M.Map ElementalId Elemental
     -- interactivity data for child react components
     -- , plans :: M.Map PlanId (MVar Plan)
     } deriving (G.Generic)
@@ -119,8 +119,8 @@ instance Show Plan where
         ( showString "Plan {" . showString "componentRef ? " . shows (isJust $ componentRef pln)
         -- . showString ", " . showString "previousFrameNum = " . shows (previousFrameNum pln)
         -- . showString ", " . showString "currentFrameNum = " . shows (currentFrameNum pln)
-        . showString ", " . showString "gizmoIds = " . showList (M.keys $ gizmos pln)
-        . showString ", " . showString "planIds = " . showList (M.keys $ gizmos pln)
+        . showString ", " . showString "elementalIds = " . showList (M.keys $ elementals pln)
+        . showString ", " . showString "planIds = " . showList (M.keys $ elementals pln)
         . showString "}"
         )
 

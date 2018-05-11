@@ -28,14 +28,14 @@ mkId n = do
 -- for the pure thing to read?
 
 -- This id can also be used as the react @key@
-newtype GizmoId = GizmoId { unGizmoId :: J.JSString }
+newtype ElementalId = ElementalId { unElementalId :: J.JSString }
     deriving (Read, Show, Eq, Ord, JE.ToJS, IsString, J.IsJSVal, J.PToJSVal)
 
 newtype PlanId = PlanId { unPlanId :: J.JSString }
     deriving (Read, Show, Eq, Ord, JE.ToJS, IsString, J.IsJSVal, J.PToJSVal)
 
-mkGizmoId :: MonadState Int m => J.JSString -> m GizmoId
-mkGizmoId n = GizmoId <$> mkId n
+mkElementalId :: MonadState Int m => J.JSString -> m ElementalId
+mkElementalId n = ElementalId <$> mkId n
 
 mkPlanId :: MonadState Int m => J.JSString -> m PlanId
 mkPlanId n = PlanId <$> mkId n
