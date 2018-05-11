@@ -159,12 +159,12 @@ mkSubject exec (Widget win gad) s = do
     -- Create a MVar just for auto cleanup of the callbacks
     -- This mvar must not be reachable from the callbacks,
     -- otherwise the callbacks will always be alive.
-    zombieVar <- liftIO $ newEmptyMVar
+    rel <- liftIO $ newEmptyMVar
     let cbs = ShimCallbacks renderCb renderedCb refCb listenCb
         pln = newPlan & _shimCallbacks .~ cbs
         scn = Scene pln s
         -- keep zombie alive as long as 'Subject' 'prolong' is reachable.
-        sbj = Subject scnRef scnVar (void $ isEmptyMVar zombieVar)
+        sbj = Subject scnRef scnVar rel
         -- initalize the subject using the Gadget
         tick = runGadgetT gad (Entity sbj id) (const $ pure ())
         cs = execAState tick mempty
@@ -172,7 +172,7 @@ mkSubject exec (Widget win gad) s = do
     liftIO $ do
         -- Create automatic garbage collection of the callbacks
         -- that will run when the zombieVar is garbage collected.
-        void $ mkWeakMVar zombieVar cleanup
+        void $ mkWeakMVar rel cleanup
         -- update the mutable variables
         atomicWriteIORef scnRef scn
         putMVar scnVar scn

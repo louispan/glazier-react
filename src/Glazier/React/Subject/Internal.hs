@@ -5,6 +5,7 @@ module Glazier.React.Subject.Internal where
 
 import Control.Concurrent
 import Control.Lens
+import Control.Monad
 import Data.IORef
 import Glazier.React.Scene
 ----------------------------------------------------------------------------------
@@ -12,9 +13,10 @@ import Glazier.React.Scene
 -- | Using MVar for synchronizing because it guarantees FIFO wakeup
 -- which will help prevent old updates overriding new updates.
 -- The constructor is hidden to maintain the expectation that
--- the 'prolong' member will keep the 'ShimCallbacks' inside the 'Scene' alive.
--- Before removing Subject from a container, store 'prolong' in the
--- "onceOnRendered" action handler, so that the 'ShimCallbacks' is garbage collected
+-- the 'lease' member will keep the 'ShimCallbacks' inside the 'Scene' alive.
+-- Before removing Subject from a container, use 'prolong' to store
+-- the prolonging IO action "onceOnRendered" action handler,
+-- so that the 'ShimCallbacks' is garbage collected
 -- only after the child widget is no longer rendered.
 
 data Subject p = Subject
@@ -22,13 +24,14 @@ data Subject p = Subject
     { sceneRef :: IORef (Scene p)
     -- | canonical data
     , sceneVar :: MVar (Scene p)
-    -- | The existence of prolong keeps the 'ShimCallbacks' inside the 'Scene' alive.
-    -- Running it should effectively do nothing.
-    , prolong_ :: IO ()
-    }
+    -- | The existence of this keeps the 'ShimCallbacks' inside the 'Scene' alive.
+    , relevant :: MVar ()
+    } deriving Eq
 
-prolong :: Subject p -> IO ()
-prolong (Subject _ _ p) = p
+-- | Creates an IO action whose existence will keep the lease alive.
+-- Running it has no side effects.
+prolong :: Subject r -> IO ()
+prolong (Subject _ _ r) = (void $ isEmptyMVar r)
 
 data Entity p s = Entity (Subject p) (Traversal' p s)
 
