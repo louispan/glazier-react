@@ -47,7 +47,7 @@ _always = (_2._Tagged' @"Always")
 -- | Interactivity for a particular DOM element.
 -- type Listener = (J.JSString, J.Callback (J.JSVal -> IO ()))
 data Gizmo = Gizmo
-    { targetRef :: Maybe EventTarget
+    { gizmoRef :: Maybe EventTarget
     -- (name of event, context of event)
     , listeners :: M.Map J.JSString (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Always" (JE.JSRep -> IO ()))
     } deriving (G.Generic)

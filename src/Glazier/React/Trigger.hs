@@ -10,15 +10,14 @@ module Glazier.React.Trigger
     , _always
     , trigger
     , trigger'
-    , whenRendered
-    , trackGizmo
+    , onRendered
+    , hdlGizmoRef
     ) where
 
 import Control.DeepSeq
 import Control.Lens
 import Control.Monad.Defer
 import Control.Monad.Reader
-import Control.Monad.Trans.AReader
 import Control.Monad.Trans.AState.Strict
 import Control.Monad.Trans.Maybe
 import qualified Data.DList as DL
@@ -49,11 +48,8 @@ trigger_ ::
     -> Gadget cmd p s ()
 trigger_ l gid n goStrict goLazy = do
     ent@(Entity sbj _) <- ask
-    let goLazy' = stamp' @[] . DL.toList
-            . (`execAState` mempty)
-            . evalAContT
-            . (`runAReaderT` ent) . goLazy
-    post' $ MkAction1 goStrict goLazy' $ \act ->
+    let goLazy' = stamp' @[] . DL.toList . (`execAState` mempty) . (`evalGadgetT` ent) . goLazy
+    post' $ MkHandler1 goStrict goLazy' $ \act ->
         -- save the created action handler in the gizmo
         let updateGizmo = _scene'._plan._gizmos.at gid %= (Just . addListener . fromMaybe newGizmo)
             addListener = _listeners.at n %~ (Just . addAction . fromMaybe (Tagged mempty, Tagged mempty))
@@ -97,27 +93,27 @@ trigger' l gid n goStrict = trigger l gid n $ handlesNotice goStrict
 -- See jsbits/react.js hgr$shimComponent.
 -- These callbacks are called after the ref callback by React
 -- See https://reactjs.org/docs/refs-and-the-dom.html.
-whenRendered ::
+onRendered ::
     ( AsReactor cmd
     )
     => Lens' (Tagged "Once" (IO ()), Tagged "Always" (IO ())) (IO ())
     -> cmd
     -> Gadget cmd p s ()
-whenRendered l c = do
+onRendered l c = do
     sbj <- view _subject
-    post' $ MkAction c $ \act ->
+    post' $ MkHandler c $ \act ->
             -- save the rendered action handler in the plan
             let addListener = _scene'._plan._doOnRendered.l %= (*> act)
             in stamp' $ TickScenario sbj addListener
 
 -- | This adds a ReactJS "ref" callback assign the ref into an 'EventTarget'
 -- for the gizmo in the plan, so that the gizmo '_targetRef' can be used.
-trackGizmo ::
+hdlGizmoRef ::
     AsReactor cmd
     => GizmoId
     -> Gadget cmd p s ()
-trackGizmo gid = trigger _always gid "ref" (pure . JE.fromJSR) >>= hdlRef
+hdlGizmoRef gid = trigger _always gid "ref" (pure . JE.fromJSR) >>= hdlRef
   where
     hdlRef x = do
         sbj <- view _subject
-        post' . TickScenario sbj $ _scene'._plan._gizmos.ix gid._targetRef .= x
+        post' . TickScenario sbj $ _scene'._plan._gizmos.ix gid._gizmoRef .= x

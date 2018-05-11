@@ -16,7 +16,7 @@
 module Glazier.React.Gadget where
 
 import Control.Lens
-import Control.Monad.Delegate
+import Control.Monad.Trans.ACont
 import Control.Monad.Trans.AReader
 import Control.Monad.Trans.AState.Strict
 import qualified Data.DList as DL
@@ -126,9 +126,5 @@ runGadgetT ::
     -> AStateT (DL.DList cmd) m ()
 runGadgetT x l = runAContT (runAReaderT x l)
 
--- runGadget ::
---     Gadget c p s a
---     -> Entity p s
---     -> (a -> AState (Scenario c p) ())
---     -> AState (Scenario c p) ()
--- runGadget = runGadgetT
+evalGadgetT :: Monad m => GadgetT cmd p s m () -> Entity p s -> AStateT (DL.DList cmd) m ()
+evalGadgetT gad ent = evalAContT . (`runAReaderT` ent) $ gad

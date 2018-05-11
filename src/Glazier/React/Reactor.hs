@@ -49,9 +49,9 @@ data ReactorCmd cmd where
     -- The original window should be dropped and the 'Widget' reduced to just a
     -- 'Gadget' to emphasis the fact that the 'Window' was used up.
     MkSubject :: Widget cmd s s () -> s -> (Subject s -> cmd) -> ReactorCmd cmd
-    MkAction :: cmd -> (IO () -> cmd) -> ReactorCmd cmd
+    MkHandler :: cmd -> (IO () -> cmd) -> ReactorCmd cmd
     -- | Convert a callback to a @JE.JSRep -> IO ()@
-    MkAction1 :: NFData a
+    MkHandler1 :: NFData a
         => (JE.JSRep -> MaybeT IO a)
         -> (a -> cmd)
         -> ((JE.JSRep -> IO ()) -> cmd)
@@ -63,8 +63,8 @@ instance Show cmd => Show (ReactorCmd cmd) where
     showsPrec _ (Rerender _) = showString "Rerender"
     showsPrec _ (TickScenario _ _) = showString "TickScenario"
     showsPrec _ (ReadScene _ _) = showString "ReadScene"
-    showsPrec p (MkAction c _) = showParen (p >= 11) $
-        showString "MkAction " . shows c
-    showsPrec _ (MkAction1 _ _ _) = showString "MkAction1"
+    showsPrec p (MkHandler c _) = showParen (p >= 11) $
+        showString "MkHandler " . shows c
+    showsPrec _ (MkHandler1 _ _ _) = showString "MkHandler1"
     showsPrec _ (MkSubject _ _ _) = showString "MkSubject"
 

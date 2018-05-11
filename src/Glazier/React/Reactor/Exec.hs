@@ -269,8 +269,8 @@ execReactorCmd exec c = case c of
     -- MkShimCallbacks sbj rndr -> execMkShimCallbacks sbj rndr
     Rerender sbj -> execRerender sbj
     MkSubject wid s k -> execMkSubject exec wid s k
-    MkAction c' k -> execMkAction exec c' k
-    MkAction1 goStrict goLazy k -> execMkAction1 exec goStrict goLazy k
+    MkHandler c' k -> execMkHandler exec c' k
+    MkHandler1 goStrict goLazy k -> execMkHandler1 exec goStrict goLazy k
     ReadScene sbj go -> execReadScene exec sbj go
     TickScenario sbj tick -> execTickScenario exec sbj tick
 
@@ -310,27 +310,27 @@ execReadScene exec  (Subject scnRef _ _) go = do
     let cs = (`execState` mempty) $ (`runReaderT` scn) go
     exec (stamp' $ DL.toList cs)
 
-execMkAction1 ::
+execMkHandler1 ::
     (NFData a, MonadUnliftIO m)
     => (cmd -> m ())
     -> (JE.JSRep -> MaybeT IO a)
     -> (a -> cmd)
     -> ((JE.JSRep -> IO ()) -> cmd)
     -> m ()
-execMkAction1 exec goStrict goLazy k = do
+execMkHandler1 exec goStrict goLazy k = do
     UnliftIO u <- askUnliftIO
     let f = handleEventM goStrict goLazy'
         goLazy' = liftIO . u . exec . goLazy
     -- Apply to result to the continuation, and execute any produced commands
     exec . k $ (void . runMaybeT) <$> f
 
-execMkAction ::
+execMkHandler ::
     (MonadUnliftIO m)
     => (cmd -> m ())
     -> cmd
     -> (IO () -> cmd)
     -> m ()
-execMkAction  exec c k = do
+execMkHandler  exec c k = do
     UnliftIO u <- askUnliftIO
     let f = u $ exec c
     -- Apply to result to the continuation, and execute any produced commands
