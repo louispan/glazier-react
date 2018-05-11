@@ -19,14 +19,14 @@ import Glazier.React.Scene
 -- so that the 'ShimCallbacks' is garbage collected
 -- only after the child widget is no longer rendered.
 
-data Subject p = Subject
-    -- | so we can have non-blocking reads
-    { sceneRef :: IORef (Scene p)
-    -- | canonical data
-    , sceneVar :: MVar (Scene p)
-    -- | The existence of this keeps the 'ShimCallbacks' inside the 'Scene' alive.
-    , relevant :: MVar ()
-    } deriving Eq
+data Subject p = Subject (IORef (Scene p)) (MVar (Scene p)) (MVar ())
+    deriving Eq
+
+sceneRef :: Subject p -> IORef (Scene p)
+sceneRef (Subject x _ _) = x
+
+sceneVar :: Subject p -> MVar (Scene p)
+sceneVar (Subject _ x _) = x
 
 -- | Creates an IO action whose existence will keep the lease alive.
 -- Running it has no side effects.
