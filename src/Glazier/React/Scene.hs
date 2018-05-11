@@ -137,6 +137,14 @@ instance Show Plan where
 
 ----------------------------------------------------------------------------------
 
+class HasModel c c' s s' | c -> s, c' -> s' where
+    _model :: Lens c c' s s'
+
+type HasModel' c s = HasModel c c s s
+
+-- _model' :: HasModel' c s => Lens' c s
+-- _model' = _model
+
 -- | A 'Scene' contains interactivity data for all widgets as well as the model data.
 data Scene s = Scene
     -- commands could be in a writer monad, but then you can't get
@@ -145,8 +153,11 @@ data Scene s = Scene
     , model :: s
     } deriving (G.Generic, Show, Functor)
 
-_model :: Lens (Scene s) (Scene s') s s'
-_model = lens model (\s a -> s { model = a})
+-- _model :: Lens (Scene s) (Scene s') s s'
+-- _model = lens model (\s a -> s { model = a})
+
+instance HasModel (Scene s) (Scene s') s s' where
+    _model = lens model (\s a -> s { model = a})
 
 _plan :: Lens' (Scene s) Plan
 _plan = lens plan (\s a -> s { plan = a})
@@ -183,6 +194,9 @@ instance HasCommands (Scenario cmd s) (Scenario cmd' s) cmd cmd' where
 instance HasScene (Scenario cmd s) (Scenario cmd s') s s' where
     _scene = lens scene (\s a -> s { scene = a})
 
+instance HasModel (Scenario cmd s) (Scenario cmd s') s s' where
+    _model = (lens scene (\s a -> s { scene = a})) . _model
+
 editScenarioModel :: (Functor f) => LensLike' f s a -> LensLike' f (Scenario cmd s) (Scenario cmd a)
 editScenarioModel l safa s = (\s' -> s & _scene._model .~ s' ) <$> l afa' (s ^. _scene._model)
   where
@@ -190,6 +204,12 @@ editScenarioModel l safa s = (\s' -> s & _scene._model .~ s' ) <$> l afa' (s ^. 
 
 
 ----------------------------------------------------------------------------------
+
+elementTarget :: HasScene' c s => ElementalId -> Traversal' c EventTarget
+elementTarget eid = _scene._plan._elementals.ix eid._elementalRef._Just
+
+-- sceneModel :: HasScene c c' s s' => Lens c c' s s'
+-- sceneModel = _scene._model
 
 -- -- Marks the current widget as dirty, and rerender is required
 -- -- A 'rerender' will called at the very end of a 'Glazier.React.Framework.Trigger.trigger'
