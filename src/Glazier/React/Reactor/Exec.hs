@@ -228,22 +228,6 @@ mkSubject exec (Widget win gad) s = do
 --     exec (cmd' $ DL.toList cs)
 --     pure (CD.dispose scnVar, view _model <$> readMVar scnVar)
 
--- | Upate the world 'TVar' with the given action, and return the commands produced.
--- Also triggers a rerender
-_tickState :: Subject s -> State (Scenario cmd s) () -> IO (DL.DList cmd)
-_tickState (Subject scnRef scnVar _) tick = do
-    scn <- takeMVar scnVar
-    let (Scenario cs scn') = execState tick (Scenario mempty scn)
-    -- Update the back buffer
-    atomicWriteIORef scnRef scn'
-    putMVar scnVar scn'
-    -- automatically rerender the scene
-    _rerender scn'
-    pure cs
-
-_rerender :: Scene s -> IO ()
-_rerender scn = fromMaybe mempty $ rerenderShim <$> (scn ^. _plan._componentRef)
-
 -- | Create a executor for all the core commands required by the framework
 maybeExecReactor ::
     ( MonadUnliftIO m
@@ -272,10 +256,13 @@ execReactorCmd exec c = case c of
     MkSubject wid s k -> execMkSubject exec wid s k
     MkHandler c' k -> execMkHandler exec c' k
     MkHandler1 goStrict goLazy k -> execMkHandler1 exec goStrict goLazy k
-    ReadScene sbj go -> execReadScene exec sbj go
-    TickScenario sbj tick -> execTickScenario exec sbj tick
+    Scenario sbj go -> execScenario exec sbj go
+    TickScene sbj tick -> execTickScene sbj tick
 
 -----------------------------------------------------------------
+
+_rerender :: Scene s -> IO ()
+_rerender scn = fromMaybe mempty $ rerenderShim <$> (scn ^. _plan._componentRef)
 
 execRerender ::
     ( MonadIO m
@@ -286,19 +273,24 @@ execRerender (Subject scnRef _ _) = liftIO $ do
     _rerender scn
 
 -- | No need to run in a separate thread because it should never block for a significant amount of time.
-execTickScenario ::
+-- Upate the scene 'MVar' with the given action. Also triggers a rerender.
+execTickScene ::
     ( MonadIO m
-    , AsFacet [cmd] cmd
     )
-    => (cmd -> m ())
-    -> Subject s
-    -> (State (Scenario cmd s) ())
+    => Subject s
+    -> State (Scene s) ()
     -> m ()
-execTickScenario exec sbj tick = do
-    cs <- liftIO $ _tickState sbj tick
-    exec (command' $ DL.toList cs)
+execTickScene (Subject scnRef scnVar _) tick = liftIO $ do
+    scn <- takeMVar scnVar
+    let scn' = execState tick scn
+    -- Update the back buffer
+    atomicWriteIORef scnRef scn'
+    putMVar scnVar scn'
+    -- automatically rerender the scene
+    _rerender scn'
 
-execReadScene ::
+
+execScenario ::
     ( MonadIO m
     , AsFacet [cmd] cmd
     )
@@ -306,7 +298,7 @@ execReadScene ::
     -> Subject s
     -> ReaderT (Scene s) (State (DL.DList cmd)) ()
     -> m ()
-execReadScene exec  (Subject scnRef _ _) go = do
+execScenario exec  (Subject scnRef _ _) go = do
     scn <- liftIO $ readIORef scnRef
     let cs = (`execState` mempty) $ (`runReaderT` scn) go
     exec (command' $ DL.toList cs)

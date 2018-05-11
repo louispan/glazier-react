@@ -23,14 +23,12 @@ import qualified Control.Disposable as CD
 import Control.Lens
 import Control.Lens.Misc
 import Control.Monad.RWS
-import qualified Data.DList as DL
 import qualified Data.Map.Strict as M
 import Data.Maybe
 import Data.Tagged
 import qualified GHC.Generics as G
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
-import Glazier.Command
 import Glazier.React.Component
 import Glazier.React.EventTarget
 import Glazier.React.MkId
@@ -137,13 +135,6 @@ instance Show Plan where
 
 ----------------------------------------------------------------------------------
 
-class HasModel c c' s s' | c -> s, c' -> s' where
-    _model :: Lens c c' s s'
-
-type HasModel' c s = HasModel c c s s
-
--- _model' :: HasModel' c s => Lens' c s
--- _model' = _model
 
 -- | A 'Scene' contains interactivity data for all widgets as well as the model data.
 data Scene s = Scene
@@ -153,25 +144,33 @@ data Scene s = Scene
     , model :: s
     } deriving (G.Generic, Show, Functor)
 
--- _model :: Lens (Scene s) (Scene s') s s'
--- _model = lens model (\s a -> s { model = a})
+-- class HasModel c c' s s' | c -> s, c' -> s' where
+--     _model :: Lens c c' s s'
 
-instance HasModel (Scene s) (Scene s') s s' where
-    _model = lens model (\s a -> s { model = a})
+-- type HasModel' c s = HasModel c c s s
+
+-- _model' :: HasModel' c s => Lens' c s
+-- _model' = _model
+
+-- instance HasModel (Scene s) (Scene s') s s' where
+--     _model = lens model (\s a -> s { model = a})
+
+_model :: Lens (Scene s) (Scene s') s s'
+_model = lens model (\s a -> s { model = a})
 
 _plan :: Lens' (Scene s) Plan
 _plan = lens plan (\s a -> s { plan = a})
 
-class HasScene c c' s s' | c -> s, c' -> s' where
-    _scene :: Lens c c' (Scene s) (Scene s')
+-- class HasScene c c' s s' | c -> s, c' -> s' where
+--     _scene :: Lens c c' (Scene s) (Scene s')
 
-type HasScene' c s = HasScene c c s s
+-- type HasScene' c s = HasScene c c s s
 
-_scene' :: HasScene' c s => Lens' c (Scene s)
-_scene' = _scene
+-- _scene' :: HasScene' c s => Lens' c (Scene s)
+-- _scene' = _scene
 
-instance HasScene (Scene s) (Scene s') s s' where
-    _scene = id
+-- instance HasScene (Scene s) (Scene s') s s' where
+--     _scene = id
 
 editSceneModel :: (Functor f) => LensLike' f s a -> LensLike' f (Scene s) (Scene a)
 editSceneModel l safa s = (\s' -> s & _model .~ s' ) <$> l afa' (s ^. _model)
@@ -180,33 +179,33 @@ editSceneModel l safa s = (\s' -> s & _model .~ s' ) <$> l afa' (s ^. _model)
 
 ----------------------------------------------------------------------------------
 
--- | A 'Scene' contains interactivity data for all widgets as well as the model data.
-data Scenario cmd s = Scenario
-    -- commands could be in a writer monad, but then you can't get
-    -- a MonadWriter with ContT, but you can have a MonadState with ContT.
-    { commands :: DL.DList cmd
-    , scene :: Scene s
-    } deriving (G.Generic, Functor)
+-- -- | A 'Scene' contains interactivity data for all widgets as well as the model data.
+-- data Scenario cmd s = Scenario
+--     -- commands could be in a writer monad, but then you can't get
+--     -- a MonadWriter with ContT, but you can have a MonadState with ContT.
+--     { commands :: DL.DList cmd
+--     , scene :: Scene s
+--     } deriving (G.Generic, Functor)
 
-instance HasCommands (Scenario cmd s) (Scenario cmd' s) cmd cmd' where
-    _commands = lens commands (\s a -> s { commands = a})
+-- instance HasCommands (Scenario cmd s) (Scenario cmd' s) cmd cmd' where
+--     _commands = lens commands (\s a -> s { commands = a})
 
-instance HasScene (Scenario cmd s) (Scenario cmd s') s s' where
-    _scene = lens scene (\s a -> s { scene = a})
+-- instance HasScene (Scenario cmd s) (Scenario cmd s') s s' where
+--     _scene = lens scene (\s a -> s { scene = a})
 
-instance HasModel (Scenario cmd s) (Scenario cmd s') s s' where
-    _model = (lens scene (\s a -> s { scene = a})) . _model
+-- instance HasModel (Scenario cmd s) (Scenario cmd s') s s' where
+--     _model = (lens scene (\s a -> s { scene = a})) . _model
 
-editScenarioModel :: (Functor f) => LensLike' f s a -> LensLike' f (Scenario cmd s) (Scenario cmd a)
-editScenarioModel l safa s = (\s' -> s & _scene._model .~ s' ) <$> l afa' (s ^. _scene._model)
-  where
-    afa' a = (view (_scene._model)) <$> safa (s & _scene._model .~ a)
+-- editScenarioModel :: (Functor f) => LensLike' f s a -> LensLike' f (Scenario cmd s) (Scenario cmd a)
+-- editScenarioModel l safa s = (\s' -> s & _scene._model .~ s' ) <$> l afa' (s ^. _scene._model)
+--   where
+--     afa' a = (view (_scene._model)) <$> safa (s & _scene._model .~ a)
 
 
 ----------------------------------------------------------------------------------
 
-elementTarget :: HasScene' c s => ElementalId -> Traversal' c EventTarget
-elementTarget eid = _scene._plan._elementals.ix eid._elementalRef._Just
+elementTarget :: ElementalId -> Traversal' (Scene s) EventTarget
+elementTarget eid = _plan._elementals.ix eid._elementalRef._Just
 
 -- sceneModel :: HasScene c c' s s' => Lens c c' s s'
 -- sceneModel = _scene._model

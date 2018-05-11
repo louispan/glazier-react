@@ -18,6 +18,7 @@ import Control.Monad.State.Strict
 import Control.Monad.Trans.Maybe
 import Data.Diverse.Lens
 import qualified Data.DList as DL
+import Glazier.Command
 import Glazier.React.Scene
 import Glazier.React.Subject
 import Glazier.React.Widget
@@ -41,6 +42,12 @@ type AsReactor cmd =
     , AsFacet CD.Disposable cmd
     )
 
+type MonadScenario s cmd m =
+    ( MonadState s m
+    , HasCommands' s cmd
+    , MonadReader (Scene s) m
+    )
+
 data ReactorCmd cmd where
     -- | Rerender a ShimComponent using the given state.
     Rerender :: Subject s -> ReactorCmd cmd
@@ -56,13 +63,14 @@ data ReactorCmd cmd where
         -> (a -> cmd)
         -> ((JE.JSRep -> IO ()) -> cmd)
         -> ReactorCmd cmd
-    ReadScene :: Subject s -> ReaderT (Scene s) (State (DL.DList cmd)) () -> ReactorCmd cmd
-    TickScenario :: Subject s -> State (Scenario cmd s) () -> ReactorCmd cmd
+    Scenario :: Subject s -> ReaderT (Scene s) (State (DL.DList cmd)) () -> ReactorCmd cmd
+    -- Update and rerneder a scene.
+    TickScene :: Subject s -> State (Scene s) () -> ReactorCmd cmd
 
 instance Show cmd => Show (ReactorCmd cmd) where
     showsPrec _ (Rerender _) = showString "Rerender"
-    showsPrec _ (TickScenario _ _) = showString "TickScenario"
-    showsPrec _ (ReadScene _ _) = showString "ReadScene"
+    showsPrec _ (TickScene _ _) = showString "TickScene"
+    showsPrec _ (Scenario _ _) = showString "Scenario"
     showsPrec p (MkHandler c _) = showParen (p >= 11) $
         showString "MkHandler " . shows c
     showsPrec _ (MkHandler1 _ _ _) = showString "MkHandler1"

@@ -50,10 +50,10 @@ trigger_ l eid n goStrict goLazy = do
     let goLazy' = codify . unAStateT . (`evalGadgetT` ent) . goLazy
     mandate' $ MkHandler1 goStrict goLazy' $ \act ->
         -- save the created action handler in the elemental
-        let updateElemental = _scene'._plan._elementals.at eid %= (Just . addListener . fromMaybe newElemental)
+        let updateElemental = _plan._elementals.at eid %= (Just . addListener . fromMaybe newElemental)
             addListener = _listeners.at n %~ (Just . addAction . fromMaybe (Tagged mempty, Tagged mempty))
             addAction acts = acts & l %~ (*> act)
-        in command' $ TickScenario sbj updateElemental
+        in command' $ TickScene sbj updateElemental
 
 -- | Create a callback for a 'JE.JSRep' and add it to this elementals's dlist of listeners.
 -- You probably want to use 'trigger'' since most React callbacks return a 'Notice',
@@ -85,7 +85,7 @@ trigger' l eid n goStrict = trigger l eid n $ handlesNotice goStrict
     handlesNotice k j = MaybeT (pure $ JE.fromJSR j) >>= k
 
 -- | Register commands to call after a render.
--- Do not 'mandate'' 'TickScenario' or 'Rerender' otherwise it will go into infinite render loops.
+-- Do not 'mandate'' 'TickScene' or 'Rerender' otherwise it will go into infinite render loops.
 --
 -- NB. This is trigged by react 'componentDidUpdate' and 'componentDidMount'
 -- so it is also called for the initial render.
@@ -102,8 +102,8 @@ onRendered l c = do
     sbj <- view _subject
     mandate' $ MkHandler c $ \act ->
             -- save the rendered action handler in the plan
-            let addListener = _scene'._plan._doOnRendered.l %= (*> act)
-            in command' $ TickScenario sbj addListener
+            let addListener = _plan._doOnRendered.l %= (*> act)
+            in command' $ TickScene sbj addListener
 
 -- | This adds a ReactJS "ref" callback assign the ref into an 'EventTarget'
 -- for the elemental in the plan, so that the elemental '_targetRef' can be used.
@@ -115,4 +115,4 @@ hdlElementalRef eid = trigger _always eid "ref" (pure . JE.fromJSR) >>= hdlRef
   where
     hdlRef x = do
         sbj <- view _subject
-        mandate' . TickScenario sbj $ _scene'._plan._elementals.ix eid._elementalRef .= x
+        mandate' . TickScene sbj $ _plan._elementals.ix eid._elementalRef .= x
