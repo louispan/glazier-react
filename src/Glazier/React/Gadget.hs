@@ -20,7 +20,7 @@ import Control.Monad.Trans.ACont
 import Control.Monad.Trans.AReader
 import Control.Monad.Trans.AState.Strict
 import qualified Data.DList as DL
-import Glazier.React.Subject
+import Glazier.React.Entity
 
 type GadgetT cmd p s m = AReaderT (Entity p s) (AContT () (AStateT (DL.DList cmd) m))
 type Gadget cmd p s = GadgetT cmd p s Identity

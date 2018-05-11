@@ -7,6 +7,7 @@ module Glazier.React
     , module Glazier.React.Element
     , module Glazier.React.EventTarget
     , module Glazier.React.Gadget
+    , module Glazier.React.Entity
     , module Glazier.React.HandleEvent
     , module Glazier.React.Markup
     , module Glazier.React.MkId
@@ -46,6 +47,7 @@ import Glazier.Command
 import Glazier.Command.Exec
 import Glazier.React.Component
 import Glazier.React.Element
+import Glazier.React.Entity
 import Glazier.React.EventTarget
 import Glazier.React.Gadget
 import Glazier.React.HandleEvent

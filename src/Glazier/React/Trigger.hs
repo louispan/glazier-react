@@ -25,12 +25,12 @@ import Data.Maybe
 import Data.Tagged
 import qualified GHCJS.Types as J
 import Glazier.Command
+import Glazier.React.Entity
 import Glazier.React.Gadget
 import Glazier.React.MkId
 import Glazier.React.Notice
 import Glazier.React.Reactor
 import Glazier.React.Scene
-import Glazier.React.Subject
 import qualified JavaScript.Extras as JE
 
 ------------------------------------------------------

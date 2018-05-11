@@ -22,14 +22,15 @@ library
                        Glazier.React.Component
                        Glazier.React.Component.Internal
                        Glazier.React.Element
+                       Glazier.React.Entity
                        Glazier.React.Event.HashChange
                        Glazier.React.Event.Keyboard
                        Glazier.React.Event.Mouse
                        Glazier.React.Event.Synthetic
                        Glazier.React.EventTarget
                        Glazier.React.EventTarget.Internal
-                       Glazier.React.HandleEvent
                        Glazier.React.Gadget
+                       Glazier.React.HandleEvent
                        Glazier.React.Markup
                        Glazier.React.MkId
                        Glazier.React.MkId.Internal

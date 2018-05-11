@@ -42,6 +42,7 @@ import qualified GHCJS.Types as J
 import Glazier.Command
 import Glazier.Command.Exec
 import Glazier.React.Component
+import Glazier.React.Entity
 import Glazier.React.Gadget
 import Glazier.React.HandleEvent
 import Glazier.React.Markup

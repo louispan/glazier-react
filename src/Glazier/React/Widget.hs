@@ -21,8 +21,8 @@ import Control.Lens
 import Control.Lens.Misc
 import Data.Semigroup
 import qualified GHC.Generics as G
+import Glazier.React.Entity
 import Glazier.React.Gadget
-import Glazier.React.Subject
 import Glazier.React.Window
 
 -- | Unforunately, because each widget contains callbacks

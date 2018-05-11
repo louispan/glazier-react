@@ -3,11 +3,6 @@ module Glazier.React.Subject
     , sceneRef
     , sceneVar
     , prolong -- read only accessor
-    , Entity(..)
-    , _subject
-    , _self
-    , magnifySelf
-    , magnifyModel
     ) where
 
 import Glazier.React.Subject.Internal
