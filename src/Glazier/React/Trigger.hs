@@ -20,7 +20,6 @@ import Control.Monad.Defer
 import Control.Monad.Reader
 import Control.Monad.Trans.AState.Strict
 import Control.Monad.Trans.Maybe
-import qualified Data.DList as DL
 import Data.Maybe
 import Data.Tagged
 import qualified GHCJS.Types as J
@@ -48,13 +47,13 @@ trigger_ ::
     -> Gadget cmd p s ()
 trigger_ l gid n goStrict goLazy = do
     ent@(Entity sbj _) <- ask
-    let goLazy' = stamp' @[] . DL.toList . (`execAState` mempty) . (`evalGadgetT` ent) . goLazy
-    post' $ MkHandler1 goStrict goLazy' $ \act ->
+    let goLazy' = codify . unAStateT . (`evalGadgetT` ent) . goLazy
+    mandate' $ MkHandler1 goStrict goLazy' $ \act ->
         -- save the created action handler in the gizmo
         let updateGizmo = _scene'._plan._gizmos.at gid %= (Just . addListener . fromMaybe newGizmo)
             addListener = _listeners.at n %~ (Just . addAction . fromMaybe (Tagged mempty, Tagged mempty))
             addAction acts = acts & l %~ (*> act)
-        in stamp' $ TickScenario sbj updateGizmo
+        in command' $ TickScenario sbj updateGizmo
 
 -- | Create a callback for a 'JE.JSRep' and add it to this gizmos's dlist of listeners.
 -- You probably want to use 'trigger'' since most React callbacks return a 'Notice',
@@ -86,7 +85,7 @@ trigger' l gid n goStrict = trigger l gid n $ handlesNotice goStrict
     handlesNotice k j = MaybeT (pure $ JE.fromJSR j) >>= k
 
 -- | Register commands to call after a render.
--- Do not 'post'' 'TickScenario' or 'Rerender' otherwise it will go into infinite render loops.
+-- Do not 'mandate'' 'TickScenario' or 'Rerender' otherwise it will go into infinite render loops.
 --
 -- NB. This is trigged by react 'componentDidUpdate' and 'componentDidMount'
 -- so it is also called for the initial render.
@@ -101,10 +100,10 @@ onRendered ::
     -> Gadget cmd p s ()
 onRendered l c = do
     sbj <- view _subject
-    post' $ MkHandler c $ \act ->
+    mandate' $ MkHandler c $ \act ->
             -- save the rendered action handler in the plan
             let addListener = _scene'._plan._doOnRendered.l %= (*> act)
-            in stamp' $ TickScenario sbj addListener
+            in command' $ TickScenario sbj addListener
 
 -- | This adds a ReactJS "ref" callback assign the ref into an 'EventTarget'
 -- for the gizmo in the plan, so that the gizmo '_targetRef' can be used.
@@ -116,4 +115,4 @@ hdlGizmoRef gid = trigger _always gid "ref" (pure . JE.fromJSR) >>= hdlRef
   where
     hdlRef x = do
         sbj <- view _subject
-        post' . TickScenario sbj $ _scene'._plan._gizmos.ix gid._gizmoRef .= x
+        mandate' . TickScenario sbj $ _scene'._plan._gizmos.ix gid._gizmoRef .= x

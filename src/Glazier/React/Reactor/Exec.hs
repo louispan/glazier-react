@@ -178,7 +178,7 @@ mkSubject exec (Widget win gad) s = do
         atomicWriteIORef scnRef scn
         putMVar scnVar scn
     -- execute additional commands
-    exec (stamp' $ DL.toList cs)
+    exec (command' $ DL.toList cs)
     -- return the initialized subject
     pure sbj
   where
@@ -296,7 +296,7 @@ execTickScenario ::
     -> m ()
 execTickScenario exec sbj tick = do
     cs <- liftIO $ _tickState sbj tick
-    exec (stamp' $ DL.toList cs)
+    exec (command' $ DL.toList cs)
 
 execReadScene ::
     ( MonadIO m
@@ -309,7 +309,7 @@ execReadScene ::
 execReadScene exec  (Subject scnRef _ _) go = do
     scn <- liftIO $ readIORef scnRef
     let cs = (`execState` mempty) $ (`runReaderT` scn) go
-    exec (stamp' $ DL.toList cs)
+    exec (command' $ DL.toList cs)
 
 execMkHandler1 ::
     (NFData a, MonadUnliftIO m)
