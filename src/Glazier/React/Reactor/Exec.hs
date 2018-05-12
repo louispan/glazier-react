@@ -60,26 +60,15 @@ import qualified JavaScript.Extras as JE
 displaySubject :: (MonadIO m, MonadState (DL.DList ReactMarkup) m) => Subject s -> m ()
 displaySubject (Subject scnRef _ _) = do
     scn <- liftIO $ readIORef scnRef
-    let ShimCallbacks renderCb updatedCb refCb _ = scn ^. _plan._shimCallbacks
+    let ShimCallbacks renderCb renderedCb refCb _ = scn ^. _plan._shimCallbacks
     -- These are the callbacks on the 'ShimComponent'
     -- See jsbits/react.js
     leaf shimComponent
         [ ("render", JE.toJSR renderCb)
-        , ("updated", JE.toJSR updatedCb)
+        , ("rendered", JE.toJSR renderedCb)
         , ("ref", JE.toJSR refCb)
         ]
 
--- displaySubject' :: WindowT (Subject s) IO ()
--- displaySubject' (Subject scnRef _) = do
---     scn <- liftIO $ readIORef scnRef
---     let ShimCallbacks renderCb updatedCb refCb _ = scn ^. _plan._shimCallbacks
---     -- These are the callbacks on the 'ShimComponent'
---     -- See jsbits/react.js
---     leaf shimComponent
---         [ ("render", JE.toJSR renderCb)
---         , ("updated", JE.toJSR updatedCb)
---         , ("ref", JE.toJSR refCb)
---         ]
 
 -- | Make an initialized 'Subject' for a given model using the given
 -- 'Window' rendering function.
