@@ -10,15 +10,20 @@
 module Glazier.React.Window where
 
 import Control.Lens
+import Control.Monad.IO.Class
+import Control.Monad.State.Strict
 import Control.Monad.Trans.ARWS.Strict
 import qualified Data.DList as DL
+import Data.IORef
 import qualified Data.Map.Strict as M
 import Data.Semigroup
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
+import Glazier.React.Component
 import Glazier.React.Markup
 import Glazier.React.MkId
 import Glazier.React.Scene
+import Glazier.React.Subject
 import qualified JavaScript.Array as JA
 import qualified JavaScript.Extras as JE
 
@@ -63,6 +68,19 @@ bh' eid n props childs = do
 
 bindListenerContext :: JE.JSRep -> J.Callback (J.JSVal -> J.JSVal -> IO ()) -> JE.JSRep
 bindListenerContext = js_bindListenerContext
+
+
+displaySubject :: (MonadIO m, MonadState (DL.DList ReactMarkup) m) => Subject s -> m ()
+displaySubject sbj = do
+    scn <- liftIO . readIORef $ sceneRef sbj
+    let ShimCallbacks renderCb renderedCb refCb _ = scn ^. _plan._shimCallbacks
+    -- These are the callbacks on the 'ShimComponent'
+    -- See jsbits/react.js
+    leaf shimComponent
+        [ ("render", JE.toJSR renderCb)
+        , ("rendered", JE.toJSR renderedCb)
+        , ("ref", JE.toJSR refCb)
+        ]
 
 #ifdef __GHCJS__
 
