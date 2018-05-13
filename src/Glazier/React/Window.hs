@@ -76,7 +76,7 @@ displaySubject sbj = do
     let ShimCallbacks renderCb renderedCb refCb _ = scn ^. _plan._shimCallbacks
     -- These are the callbacks on the 'ShimComponent'
     -- See jsbits/react.js
-    leaf shimComponent
+    leaf (JE.toJSR shimComponent)
         [ ("render", JE.toJSR renderCb)
         , ("rendered", JE.toJSR renderedCb)
         , ("ref", JE.toJSR refCb)

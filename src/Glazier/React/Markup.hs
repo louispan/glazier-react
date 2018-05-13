@@ -88,11 +88,11 @@ txt n = modify' (`DL.snoc` TextMarkup n)
 -- if the same key is used across listeners and props.
 -- "If an attribute/prop is duplicated the last one defined wins."
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
-leaf :: (JE.ToJS n, MonadState (DL.DList ReactMarkup) m)
-    => n
+leaf :: (MonadState (DL.DList ReactMarkup) m)
+    => JE.JSRep
     -> (DL.DList JE.Property)
     -> m ()
-leaf n props = modify' (`DL.snoc` LeafMarkup (LeafParam (JE.toJSR n) props))
+leaf n props = modify' (`DL.snoc` LeafMarkup (LeafParam n props))
 
 -- | Create a MonadState that run the given given a combining function and markup producing MonadState.
 withMarkup :: MonadState (DL.DList ReactMarkup) m
@@ -116,12 +116,12 @@ withMarkup f childs = do
 -- if the same key is used across listeners and props.
 -- "If an attribute/prop is duplicated the last one defined wins."
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
-branch :: (JE.ToJS n, MonadState (DL.DList ReactMarkup) m)
-    => n
+branch :: (MonadState (DL.DList ReactMarkup) m)
+    => JE.JSRep
     -> (DL.DList JE.Property)
     -> m a
     -> m a
-branch n props = withMarkup (\childs' ms -> ms `DL.snoc` BranchMarkup (BranchParam (JE.toJSR n) props (DL.toList childs')))
+branch n props = withMarkup (\childs' ms -> ms `DL.snoc` BranchMarkup (BranchParam n props (DL.toList childs')))
 
 -- Given a mapping function, apply it to children of the markup
 modifyMarkup :: MonadState (DL.DList ReactMarkup) m
