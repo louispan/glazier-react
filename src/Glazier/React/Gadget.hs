@@ -7,7 +7,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE UndecidableInstances #-}
 
 #if __GLASGOW_HASKELL__ < 802
 {-# OPTIONS_GHC -Wno-incomplete-patterns #-}
@@ -16,7 +15,9 @@
 module Glazier.React.Gadget where
 
 import Control.Lens
-import Control.Monad.Trans.ACont
+import Control.Monad.Delegate
+import Control.Monad.Reader
+import Control.Monad.State.Strict
 import Control.Monad.Trans.AReader
 import Control.Monad.Trans.AState.Strict
 import qualified Data.DList as DL
@@ -24,6 +25,12 @@ import Glazier.React.Entity
 
 type GadgetT cmd p s m = AReaderT (Entity p s) (AContT () (AStateT (DL.DList cmd) m))
 type Gadget cmd p s = GadgetT cmd p s Identity
+
+type MonadGadget cmd p s m =
+    ( MonadReader (Entity p s) m
+    , MonadDelegate ()  m
+    , MonadState (DL.DList cmd) m
+    )
 
 gadgetT ::
     (Entity p s
