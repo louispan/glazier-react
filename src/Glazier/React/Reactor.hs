@@ -13,6 +13,7 @@
 module Glazier.React.Reactor
     ( ReactorCmds
     , AsReactor
+    , MonadReactor
     , ReactorCmd(..)
     , trigger
     , trigger'
@@ -58,6 +59,12 @@ type AsReactor cmd =
     , AsFacet (ReactorCmd cmd) cmd
     )
 
+type MonadReactor p s cmd m =
+    ( AsReactor cmd
+    , MonadReader (Entity p s) m
+    , MonadCommand cmd m
+    )
+
 data ReactorCmd cmd where
     -- | Rerender a ShimComponent using the given state.
     Rerender :: Subject s -> ReactorCmd cmd
@@ -92,9 +99,7 @@ instance Show cmd => Show (ReactorCmd cmd) where
 -- | Create a callback and add it to this elemental's dlist of listeners.
 trigger_ ::
     ( NFData a
-    , AsReactor cmd
-    , MonadReader (Entity p s) m
-    , MonadCommand cmd m
+    , MonadReactor p s cmd m
     )
     => Lens' (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Always" (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
     -> ElementalId
@@ -117,9 +122,7 @@ trigger_ l eid n goStrict goLazy = do
 -- except for the "ref" callback, in which case you probably want to use 'trackElemental'.
 trigger ::
     ( NFData a
-    , AsReactor cmd
-    , MonadReader (Entity p s) m
-    , MonadCommand cmd m
+    , MonadReactor p s cmd m
     )
     => Lens' (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Always" (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
     -> ElementalId
@@ -131,9 +134,7 @@ trigger l eid n goStrict = delegate $ trigger_ l eid n goStrict
 -- | Create a callback for a 'Notice' and add it to this elementals's dlist of listeners.
 trigger' ::
     ( NFData a
-    , AsReactor cmd
-    , MonadReader (Entity p s) m
-    , MonadCommand cmd m
+    , MonadReactor p s cmd m
     )
     => Lens' (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Always" (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
     -> ElementalId
@@ -154,10 +155,7 @@ trigger' l eid n goStrict = trigger l eid n $ handlesNotice goStrict
 -- These callbacks are called after the ref callback by React
 -- See https://reactjs.org/docs/refs-and-the-dom.html.
 onRendered ::
-    ( AsReactor cmd
-    , MonadReader (Entity p s) m
-    , MonadCommand cmd m
-    )
+    MonadReactor p s cmd m
     => Lens' (Tagged "Once" (IO ()), Tagged "Always" (IO ())) (IO ())
     -> m ()
     -> m ()
@@ -171,12 +169,7 @@ onRendered l m = do
 
 -- | This adds a ReactJS "ref" callback assign the ref into an 'EventTarget'
 -- for the elemental in the plan, so that the elemental '_targetRef' can be used.
-hdlElementalRef ::
-    (AsReactor cmd
-    , MonadReader (Entity p s) m
-    , MonadCommand cmd m
-    ) => ElementalId
-    -> m ()
+hdlElementalRef :: MonadReactor p s cmd m => ElementalId -> m ()
 hdlElementalRef eid = trigger _always eid "ref" (pure . JE.fromJSR) >>= hdlRef
   where
     hdlRef x = do
@@ -184,15 +177,13 @@ hdlElementalRef eid = trigger _always eid "ref" (pure . JE.fromJSR) >>= hdlRef
         postcmd' . TickScene sbj $ _plan._elementals.ix eid._elementalRef .= x
 
 -- | Rerender the ShimComponent using the current @Entity@ context
-rerender :: (AsReactor cmd, MonadReader (Entity p s) m, MonadCommand cmd m) => m ()
+rerender :: MonadReactor p s cmd m => m ()
 rerender = do
     sbj <- view _subject
     postcmd' $ Rerender sbj
 
 -- | Get the 'Scene' and exec actions, using the current @Entity@ context
-getScene ::
-    (AsReactor cmd, MonadReader (Entity p s) m, MonadCommand cmd m)
-    => (Scene s -> m ()) -> m ()
+getScene :: MonadReactor p s cmd m => (Scene s -> m ()) -> m ()
 getScene go = do
     Entity sbj slf <- ask
     let go' s = case preview (editSceneModel slf) s of
@@ -202,17 +193,13 @@ getScene go = do
     postcmd' $ GetScene sbj c
 
 -- | Update the 'Scene' using the current @Entity@ context
-tickScene ::
-    (AsReactor cmd, MonadReader (Entity p s) m, MonadCommand cmd m)
-    => State (Scene s) () -> m ()
+tickScene ::MonadReactor p s cmd m => State (Scene s) () -> m ()
 tickScene m = do
     Entity sbj slf <- ask
     let m' = zoom (editSceneModel slf) m
     postcmd' $ TickScene sbj m'
 
-mkSubject ::
-    (AsReactor cmd, MonadCommand cmd m)
-    => Widget cmd s s () -> s -> (Subject s -> m ()) -> m ()
+mkSubject :: (AsReactor cmd, MonadCommand cmd m) => Widget cmd s s () -> s -> (Subject s -> m ()) -> m ()
 mkSubject wid s k = do
     k' <- codify k
     postcmd' $ MkSubject wid s k'
