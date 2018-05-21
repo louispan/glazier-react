@@ -117,75 +117,15 @@ execReactorCmd ::
     => (cmd -> m ()) -> ReactorCmd cmd -> m ()
 execReactorCmd exec c = case c of
     -- MkShimCallbacks sbj rndr -> execMkShimCallbacks sbj rndr
-    Rerender sbj -> execRerender sbj
     MkSubject wid s k -> execMkSubject exec wid s >>= (exec . k)
-    MkHandler c' k -> execMkHandler exec c' >>= (exec . k)
-    MkHandler1 goStrict goLazy k -> execMkHandler1 exec goStrict goLazy >>= (exec . k)
+    Rerender sbj -> execRerender sbj
     GetScene sbj k -> execGetScene sbj >>= (exec . k)
     TickScene sbj tick -> execTickScene sbj tick
+    MkHandler c' k -> execMkHandler exec c' >>= (exec . k)
+    MkHandler1 goStrict goLazy k -> execMkHandler1 exec goStrict goLazy >>= (exec . k)
 
 -----------------------------------------------------------------
 
-_rerender :: Scene s -> IO ()
-_rerender scn = fromMaybe mempty $ rerenderShim <$> (scn ^. _plan._componentRef)
-
-execRerender ::
-    ( MonadIO m
-    )
-    => Subject s -> m ()
-execRerender sbj = liftIO $ do
-    scn <- readIORef $ sceneRef sbj
-    _rerender scn
-
--- | No need to run in a separate thread because it should never block for a significant amount of time.
--- Upate the scene 'MVar' with the given action. Also triggers a rerender.
-execTickScene ::
-    ( MonadIO m
-    )
-    => Subject s
-    -> State (Scene s) ()
-    -> m ()
-execTickScene sbj tick = liftIO $ do
-    scn <- takeMVar scnVar
-    let scn' = execState tick scn
-    -- Update the back buffer
-    atomicWriteIORef scnRef scn'
-    putMVar scnVar scn'
-    -- automatically rerender the scene
-    _rerender scn'
-  where
-    scnRef = sceneRef sbj
-    scnVar = sceneVar sbj
-
-execGetScene ::
-    MonadIO m
-    => Subject s
-    -> m (Scene s)
-execGetScene sbj = liftIO . readIORef $ sceneRef sbj
-
-execMkHandler1 ::
-    (NFData a, MonadUnliftIO m)
-    => (cmd -> m ())
-    -> (JE.JSRep -> MaybeT IO a)
-    -> (a -> cmd)
-    -> m (JE.JSRep -> IO ())
-execMkHandler1 exec goStrict goLazy = do
-    UnliftIO u <- askUnliftIO
-    let f = handleEventM goStrict goLazy'
-        goLazy' = liftIO . u . exec . goLazy
-    -- Apply to result to the continuation, and execute any produced commands
-    pure $ (void . runMaybeT) <$> f
-
-execMkHandler ::
-    (MonadUnliftIO m)
-    => (cmd -> m ())
-    -> cmd
-    -> m (IO ())
-execMkHandler exec c = do
-    UnliftIO u <- askUnliftIO
-    let f = u $ exec c
-    -- Apply to result to the continuation, and execute any produced commands
-    pure f
 
 -- | Make an initialized 'Subject' for a given model using the given
 -- 'Window' rendering function.
@@ -294,3 +234,64 @@ execMkSubject exec (Widget win gad) s = do
         (ShimCallbacks (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef))
         (Tagged mempty, Tagged mempty)
         mempty
+
+_rerender :: Scene s -> IO ()
+_rerender scn = fromMaybe mempty $ rerenderShim <$> (scn ^. _plan._componentRef)
+
+execRerender ::
+    ( MonadIO m
+    )
+    => Subject s -> m ()
+execRerender sbj = liftIO $ do
+    scn <- readIORef $ sceneRef sbj
+    _rerender scn
+
+execGetScene ::
+    MonadIO m
+    => Subject s
+    -> m (Scene s)
+execGetScene sbj = liftIO . readIORef $ sceneRef sbj
+
+-- | No need to run in a separate thread because it should never block for a significant amount of time.
+-- Upate the scene 'MVar' with the given action. Also triggers a rerender.
+execTickScene ::
+    ( MonadIO m
+    )
+    => Subject s
+    -> State (Scene s) ()
+    -> m ()
+execTickScene sbj tick = liftIO $ do
+    scn <- takeMVar scnVar
+    let scn' = execState tick scn
+    -- Update the back buffer
+    atomicWriteIORef scnRef scn'
+    putMVar scnVar scn'
+    -- automatically rerender the scene
+    _rerender scn'
+  where
+    scnRef = sceneRef sbj
+    scnVar = sceneVar sbj
+
+execMkHandler1 ::
+    (NFData a, MonadUnliftIO m)
+    => (cmd -> m ())
+    -> (JE.JSRep -> MaybeT IO a)
+    -> (a -> cmd)
+    -> m (JE.JSRep -> IO ())
+execMkHandler1 exec goStrict goLazy = do
+    UnliftIO u <- askUnliftIO
+    let f = handleEventM goStrict goLazy'
+        goLazy' = liftIO . u . exec . goLazy
+    -- Apply to result to the continuation, and execute any produced commands
+    pure $ (void . runMaybeT) <$> f
+
+execMkHandler ::
+    (MonadUnliftIO m)
+    => (cmd -> m ())
+    -> cmd
+    -> m (IO ())
+execMkHandler exec c = do
+    UnliftIO u <- askUnliftIO
+    let f = u $ exec c
+    -- Apply to result to the continuation, and execute any produced commands
+    pure f
