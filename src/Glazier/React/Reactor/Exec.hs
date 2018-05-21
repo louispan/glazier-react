@@ -9,6 +9,12 @@ module Glazier.React.Reactor.Exec
     ( maybeExec
     , maybeExecReactor
     , execReactorCmd
+    , execRerender
+    , execMkSubject
+    , execMkHandler
+    , execMkHandler1
+    , execGetScene
+    , execTickScene
     ) where
 
 import Control.Applicative
@@ -111,10 +117,10 @@ execReactorCmd ::
 execReactorCmd exec c = case c of
     -- MkShimCallbacks sbj rndr -> execMkShimCallbacks sbj rndr
     Rerender sbj -> execRerender sbj
-    MkSubject wid s k -> execMkSubject exec wid s k
-    MkHandler c' k -> execMkHandler exec c' k
-    MkHandler1 goStrict goLazy k -> execMkHandler1 exec goStrict goLazy k
-    GetScene sbj go -> execGetScene exec sbj go
+    MkSubject wid s k -> execMkSubject exec wid s >>= (exec . k)
+    MkHandler c' k -> execMkHandler exec c' >>= (exec . k)
+    MkHandler1 goStrict goLazy k -> execMkHandler1 exec goStrict goLazy >>= (exec . k)
+    GetScene sbj k -> execGetScene sbj >>= (exec . k)
     TickScene sbj tick -> execTickScene sbj tick
 
 -----------------------------------------------------------------
@@ -152,39 +158,33 @@ execTickScene sbj tick = liftIO $ do
 
 execGetScene ::
     MonadIO m
-    => (cmd -> m ())
-    -> Subject s
-    -> (Scene s -> cmd)
-    -> m ()
-execGetScene exec sbj go = do
-    scn <- liftIO . readIORef $ sceneRef sbj
-    exec (go scn)
+    => Subject s
+    -> m (Scene s)
+execGetScene sbj = liftIO . readIORef $ sceneRef sbj
 
 execMkHandler1 ::
     (NFData a, MonadUnliftIO m)
     => (cmd -> m ())
     -> (JE.JSRep -> MaybeT IO a)
     -> (a -> cmd)
-    -> ((JE.JSRep -> IO ()) -> cmd)
-    -> m ()
-execMkHandler1 exec goStrict goLazy k = do
+    -> m (JE.JSRep -> IO ())
+execMkHandler1 exec goStrict goLazy = do
     UnliftIO u <- askUnliftIO
     let f = handleEventM goStrict goLazy'
         goLazy' = liftIO . u . exec . goLazy
     -- Apply to result to the continuation, and execute any produced commands
-    exec . k $ (void . runMaybeT) <$> f
+    pure $ (void . runMaybeT) <$> f
 
 execMkHandler ::
     (MonadUnliftIO m)
     => (cmd -> m ())
     -> cmd
-    -> (IO () -> cmd)
-    -> m ()
-execMkHandler  exec c k = do
+    -> m (IO ())
+execMkHandler exec c = do
     UnliftIO u <- askUnliftIO
     let f = u $ exec c
     -- Apply to result to the continuation, and execute any produced commands
-    exec $ k f
+    pure f
 
 -- | Make an initialized 'Subject' for a given model using the given
 -- 'Window' rendering function.
@@ -198,9 +198,8 @@ execMkSubject ::
     => (cmd -> m ())
     -> Widget cmd s s ()
     -> s
-    -> (Subject s -> cmd)
-    -> m ()
-execMkSubject exec (Widget win gad) s k = do
+    -> m (Subject s)
+execMkSubject exec (Widget win gad) s = do
     scnRef <- liftIO $ newIORef (Scene newPlan s)
     scnVar <- liftIO $ newEmptyMVar
     let doRender = do
@@ -286,7 +285,7 @@ execMkSubject exec (Widget win gad) s k = do
     -- execute additional commands
     exec (command' $ DL.toList cs)
     -- return the initialized subject
-    exec $ k sbj
+    pure sbj
   where
     newPlan :: Plan
     newPlan = Plan

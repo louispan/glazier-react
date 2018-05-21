@@ -110,7 +110,7 @@ trigger_ ::
 trigger_ l eid n goStrict goLazy = do
     Entity sbj _ <- ask
     goLazy' <- codify goLazy
-    postcmd' $ MkHandler1 goStrict goLazy' $ \act ->
+    post . command' $ MkHandler1 goStrict goLazy' $ \act ->
         -- save the created action handler in the elemental
         let updateElemental = _plan._elementals.at eid %= (Just . addListener . fromMaybe newElemental)
             addListener = _listeners.at n %~ (Just . addAction . fromMaybe (Tagged mempty, Tagged mempty))
@@ -147,7 +147,7 @@ trigger' l eid n goStrict = trigger l eid n $ handlesNotice goStrict
     handlesNotice k j = MaybeT (pure $ JE.fromJSR j) >>= k
 
 -- | Register actions to execute after a render.
--- Do not 'postcmd'' 'TickScene' or 'Rerender' otherwise it will go into infinite render loops.
+-- Do not 'postCmd'' 'TickScene' or 'Rerender' otherwise it will go into infinite render loops.
 --
 -- NB. This is trigged by react 'componentDidUpdate' and 'componentDidMount'
 -- so it is also called for the initial render.
@@ -162,7 +162,7 @@ onRendered ::
 onRendered l m = do
     sbj <- view _subject
     c <- codify' m
-    postcmd' $ MkHandler c $ \act ->
+    post . command' $ MkHandler c $ \act ->
             -- save the rendered action handler in the plan
             let addListener = _plan._doOnRendered.l %= (*> act)
             in command' $ TickScene sbj addListener
@@ -174,13 +174,13 @@ hdlElementalRef eid = trigger _always eid "ref" (pure . JE.fromJSR) >>= hdlRef
   where
     hdlRef x = do
         sbj <- view _subject
-        postcmd' . TickScene sbj $ _plan._elementals.ix eid._elementalRef .= x
+        post . command' . TickScene sbj $ _plan._elementals.ix eid._elementalRef .= x
 
 -- | Rerender the ShimComponent using the current @Entity@ context
 rerender :: MonadReactor p s cmd m => m ()
 rerender = do
     sbj <- view _subject
-    postcmd' $ Rerender sbj
+    post . command' $ Rerender sbj
 
 -- | Get the 'Scene' and exec actions, using the current @Entity@ context
 getScene :: MonadReactor p s cmd m => (Scene s -> m ()) -> m ()
@@ -190,16 +190,16 @@ getScene go = do
             Nothing -> pure ()
             Just s' -> go s'
     c <- codify go'
-    postcmd' $ GetScene sbj c
+    post . command' $ GetScene sbj c
 
 -- | Update the 'Scene' using the current @Entity@ context
 tickScene ::MonadReactor p s cmd m => State (Scene s) () -> m ()
 tickScene m = do
     Entity sbj slf <- ask
     let m' = zoom (editSceneModel slf) m
-    postcmd' $ TickScene sbj m'
+    post . command' $ TickScene sbj m'
 
 mkSubject :: (AsReactor cmd, MonadCommand cmd m) => Widget cmd s s () -> s -> (Subject s -> m ()) -> m ()
 mkSubject wid s k = do
     k' <- codify k
-    postcmd' $ MkSubject wid s k'
+    post . command' $ MkSubject wid s k'
