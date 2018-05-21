@@ -107,6 +107,7 @@ maybeExecReactor exec c =
     -- We'll let the individual executors of the commands decide if
     -- "slow" commands should be forked in a thread.
     maybeExec (traverse_ @[] exec) c
+    <|> maybeExec pure c
     <|> maybeExec (execReactorCmd exec) c
 
 execReactorCmd ::
