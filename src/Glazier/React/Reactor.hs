@@ -11,8 +11,7 @@
 {-# LANGUAGE TypeOperators #-}
 
 module Glazier.React.Reactor
-    ( ReactorCmds
-    , AsReactor
+    ( AsReactor
     , MonadReactor
     , ReactorCmd(..)
     , mkSubject
@@ -44,21 +43,10 @@ import Glazier.React.Subject
 import Glazier.React.Widget
 import qualified JavaScript.Extras as JE
 
--- -- | Convenience function to avoid @TypeApplications@ when using OverloadedLists
--- cmds :: AsFacet [c] c => [c] -> c
--- cmds = cmd @[]
-
 -----------------------------------------------------------------
 
-type ReactorCmds cmd =
-    '[ [cmd]
-    , ()
-    , ReactorCmd cmd
-    ]
-
 type AsReactor cmd =
-    ( AsFacet [cmd] cmd
-    , AsFacet () cmd
+    ( AsFacet [cmd] cmd -- implicity required by 'MonadCodify'
     , AsFacet (ReactorCmd cmd) cmd
     )
 
@@ -68,6 +56,7 @@ type MonadReactor p s cmd m =
     , MonadCommand cmd m
     )
 
+-- | NB. ReactorCmd is not a functor.
 data ReactorCmd cmd where
     -- | Make an initialized 'Subject' for a given model using the given
     -- 'Window' rendering function.

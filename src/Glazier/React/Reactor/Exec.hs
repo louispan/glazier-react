@@ -44,6 +44,7 @@ import Glazier.React.Component
 import Glazier.React.Entity
 import Glazier.React.Gadget
 import Glazier.React.HandleEvent
+import Glazier.React.IORefReader
 import Glazier.React.Markup
 import Glazier.React.MkId.Internal
 import Glazier.React.Reactor
@@ -107,7 +108,6 @@ maybeExecReactor exec c =
     -- We'll let the individual executors of the commands decide if
     -- "slow" commands should be forked in a thread.
     maybeExec (traverse_ @[] exec) c
-    <|> maybeExec pure c
     <|> maybeExec (execReactorCmd exec) c
 
 execReactorCmd ::
@@ -116,7 +116,6 @@ execReactorCmd ::
     )
     => (cmd -> m ()) -> ReactorCmd cmd -> m ()
 execReactorCmd exec c = case c of
-    -- MkShimCallbacks sbj rndr -> execMkShimCallbacks sbj rndr
     MkSubject wid s k -> execMkSubject exec wid s >>= (exec . k)
     Rerender sbj -> execRerender sbj
     GetScene sbj k -> execGetScene sbj >>= (exec . k)
@@ -146,7 +145,7 @@ execMkSubject exec (Widget win gad) s = do
     let doRender = do
             -- render using from scnRef (doesn't block)
             scn <- readIORef scnRef
-            (mrkup, _) <- execARWST win scn mempty -- ignore unit writer output
+            (mrkup, _) <- unIORefReader (execARWST win scn mempty) -- ignore unit writer output
             JE.toJS <$> toElement mrkup
         doRef j = do
             -- update componentRef held in the Plan

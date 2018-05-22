@@ -26,7 +26,7 @@ import Glazier.React.Window
 -- (GetScene c p)
 
 data Widget cmd p s a = Widget
-    { window :: WindowT s IO () -- so it can read IORef
+    { window :: Window s () -- so it can read IORef
     , gadget :: Gadget cmd p s a
     } deriving (G.Generic, Functor)
 

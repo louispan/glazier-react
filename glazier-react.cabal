@@ -32,6 +32,8 @@ library
                        Glazier.React.Gadget
                        Glazier.React.HandleEvent
                        Glazier.React.Markup
+                       Glazier.React.IORefReader
+                       Glazier.React.IORefReader.Internal
                        Glazier.React.MkId
                        Glazier.React.MkId.Internal
                        Glazier.React.NativeEvent
