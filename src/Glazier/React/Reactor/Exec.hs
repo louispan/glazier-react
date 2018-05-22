@@ -212,7 +212,7 @@ execMkSubject exec (Widget win gad) s = do
         -- keep zombie alive as long as 'Subject' 'prolong' is reachable.
         sbj = Subject scnRef scnVar rel
         -- initalize the subject using the Gadget
-        tick = runGadgetT gad (Entity sbj id) (const $ pure ())
+        tick = runGadget gad (Entity sbj id) (const $ pure ())
         cs = execAState tick mempty
         cleanup = CD.runDisposable $ CD.dispose cbs
     liftIO $ do
