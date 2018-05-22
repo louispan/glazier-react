@@ -62,9 +62,9 @@ Please read the [README.md](https://github.com/louispan/glazier) for a brief ove
 bh (strJS "footer") [("className", strJS "footer")] $ do
     bh (strJS "span") [ ("className", strJS "todo-count")
                       , ("key", strJS "todo-count")] $ do
-            bh (strJS "strong") [("key", strJS "items")]
+            bh (strJS "strong") [("key", strJS "pieces")]
                 (s ^. activeCount . to (txt . pack . show))
-            txt " items left"
+            txt " pieces left"
 ```
 
 ## Event handling

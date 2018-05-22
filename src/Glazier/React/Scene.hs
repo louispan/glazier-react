@@ -233,7 +233,7 @@ elementTarget eid = _plan._elementals.ix eid._elementalRef._Just
 --     , MonadReader r m
 --     )
 --     => m (ReifiedTraversal' p s)
--- viewSelf = view item
+-- viewSelf = view piece
 
 -- magnifySelf :: forall p s a r m n b proxy.
 --     ( HasItem (ReifiedTraversal' p s) r
@@ -242,7 +242,7 @@ elementTarget eid = _plan._elementals.ix eid._elementalRef._Just
 --     , Contravariant (Magnified m b)
 --     )
 --     => proxy p -> Traversal' s a -> m b -> n b
--- magnifySelf p l = magnify (to $ item %~ go p l)
+-- magnifySelf p l = magnify (to $ piece %~ go p l)
 --   where
 --     go :: forall p s a proxy. proxy p -> Traversal' s a -> ReifiedTraversal' p s -> ReifiedTraversal' p a
 --     go _ l' (Traversal s) = Traversal (s.l')
@@ -255,7 +255,7 @@ elementTarget eid = _plan._elementals.ix eid._elementalRef._Just
 --     , Contravariant (Magnified m b)
 --     )
 --     => proxy p -> Traversal' s a -> m b -> n b
--- magnifySelf p l = magnify (to $ item %~ go p l)
+-- magnifySelf p l = magnify (to $ piece %~ go p l)
 --   where
 --     go :: forall p s a proxy. proxy p -> Traversal' s a -> ReifiedTraversal' p s -> ReifiedTraversal' p a
 --     go _ l' (Traversal s) = Traversal (s.l')
