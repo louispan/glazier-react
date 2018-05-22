@@ -69,12 +69,7 @@ bindListenerContext = js_bindListenerContext
 
 -- | This will work for 'Window' transformer stack, but you can use
 -- 'Control.Monad.Morph.hoist' for other transformer stacks.
-displaySubject ::
-    ( MonadTrans t
-    , MonadReader (Scene s) (t IORefReader)
-    , MonadState (DL.DList ReactMarkup) (t IORefReader)
-    )
-    => Subject s -> t IORefReader ()
+displaySubject :: Subject s -> Window s' ()
 displaySubject sbj = do
     scn <- lift (doReadIORef (sceneRef sbj))
     let ShimCallbacks renderCb renderedCb refCb _ = scn ^. _plan._shimCallbacks
