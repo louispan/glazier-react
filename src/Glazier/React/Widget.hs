@@ -23,7 +23,7 @@ import Glazier.React.Window
 -- type Handler x s m = (Widget x s m, MonadCont m)
 
 -- (Arena p s)
--- (GetScene c p)
+-- (WithScene c p)
 
 data Widget cmd p s a = Widget
     { window :: Window s () -- so it can read IORef

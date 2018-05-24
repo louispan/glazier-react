@@ -179,24 +179,24 @@ editSceneModel l safa s = (\s' -> s & _model .~ s' ) <$> l afa' (s ^. _model)
 ----------------------------------------------------------------------------------
 
 -- -- | A 'Scene' contains interactivity data for all widgets as well as the model data.
--- data GetScene cmd s = GetScene
+-- data WithScene cmd s = WithScene
 --     -- commands could be in a writer monad, but then you can't get
 --     -- a MonadWriter with ContT, but you can have a MonadState with ContT.
 --     { commands :: DL.DList cmd
 --     , scene :: Scene s
 --     } deriving (G.Generic, Functor)
 
--- instance HasCommands (GetScene cmd s) (GetScene cmd' s) cmd cmd' where
+-- instance HasCommands (WithScene cmd s) (WithScene cmd' s) cmd cmd' where
 --     _commands = lens commands (\s a -> s { commands = a})
 
--- instance HasScene (GetScene cmd s) (GetScene cmd s') s s' where
+-- instance HasScene (WithScene cmd s) (WithScene cmd s') s s' where
 --     _scene = lens scene (\s a -> s { scene = a})
 
--- instance HasModel (GetScene cmd s) (GetScene cmd s') s s' where
+-- instance HasModel (WithScene cmd s) (WithScene cmd s') s s' where
 --     _model = (lens scene (\s a -> s { scene = a})) . _model
 
--- editGetSceneModel :: (Functor f) => LensLike' f s a -> LensLike' f (GetScene cmd s) (GetScene cmd a)
--- editGetSceneModel l safa s = (\s' -> s & _scene._model .~ s' ) <$> l afa' (s ^. _scene._model)
+-- editWithSceneModel :: (Functor f) => LensLike' f s a -> LensLike' f (WithScene cmd s) (WithScene cmd a)
+-- editWithSceneModel l safa s = (\s' -> s & _scene._model .~ s' ) <$> l afa' (s ^. _scene._model)
 --   where
 --     afa' a = (view (_scene._model)) <$> safa (s & _scene._model .~ a)
 
@@ -213,7 +213,7 @@ elementTarget eid = _plan._elementals.ix eid._elementalRef._Just
 -- -- A 'rerender' will called at the very end of a 'Glazier.React.Framework.Trigger.trigger'
 -- -- This means calling 'dirty' on other widgets from a different widget's 'Glazier.React.Framework.Trigger.trigger'
 -- -- will not result in a rerender for the other widget.
--- dirty :: (MonadState (GetScene c s) m) => m ()
+-- dirty :: (MonadState (WithScene c s) m) => m ()
 -- dirty = _scene._plan._currentFrameNum %= JE.safeModularIncrement
 
 -- viewSubject ::

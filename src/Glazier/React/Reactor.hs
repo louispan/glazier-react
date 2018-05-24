@@ -16,7 +16,7 @@ module Glazier.React.Reactor
     , ReactorCmd(..)
     , mkSubject
     , rerender
-    , getScene
+    , withScene
     , tickScene
     , trigger
     , trigger'
@@ -38,11 +38,11 @@ import Glazier.Command
 import Glazier.React.Entity
 import Glazier.React.MkId
 import Glazier.React.Notice
+import Glazier.React.ReadIORef
 import Glazier.React.Scene
 import Glazier.React.Subject
 import Glazier.React.Widget
 import qualified JavaScript.Extras as JE
-
 -----------------------------------------------------------------
 
 type AsReactor cmd =
@@ -58,17 +58,14 @@ type MonadReactor p s cmd m =
 
 -- | NB. ReactorCmd is not a functor.
 data ReactorCmd cmd where
-    -- | Make an initialized 'Subject' for a given model using the given
-    -- 'Window' rendering function.
-    -- The original window should be dropped and the 'Widget' reduced to just a
-    -- 'Gadget' to emphasis the fact that the 'Window' was used up.
     MkSubject :: Widget cmd s s () -> s -> (Subject s -> cmd) -> ReactorCmd cmd
     -- | Rerender a ShimComponent using the given state.
     Rerender :: Subject s -> ReactorCmd cmd
     -- Generate a list of commands from reading a scene.
-    GetScene :: Subject s -> (Scene s -> cmd) -> ReactorCmd cmd
+    WithScene :: Subject s -> (Scene s -> cmd) -> ReactorCmd cmd
     -- Update and rerender a scene.
-    TickScene :: Subject s -> State (Scene s) () -> ReactorCmd cmd
+    TickScene :: Subject s -> StateT (Scene s) ReadIORef () -> ReactorCmd cmd
+    -- DoReadIORef :: IORef a -> (a -> cmd) -> ReactorCmd
     MkHandler :: cmd -> (IO () -> cmd) -> ReactorCmd cmd
     -- | Convert a callback to a @JE.JSRep -> IO ()@
     MkHandler1 :: NFData a
@@ -80,7 +77,7 @@ data ReactorCmd cmd where
 instance Show cmd => Show (ReactorCmd cmd) where
     showsPrec _ (MkSubject _ _ _) = showString "MkSubject"
     showsPrec _ (Rerender _) = showString "Rerender"
-    showsPrec _ (GetScene _ _) = showString "GetScene"
+    showsPrec _ (WithScene _ _) = showString "WithScene"
     showsPrec _ (TickScene _ _) = showString "TickScene"
     showsPrec p (MkHandler c _) = showParen (p >= 11) $
         showString "MkHandler " . shows c
@@ -88,10 +85,16 @@ instance Show cmd => Show (ReactorCmd cmd) where
 
 ------------------------------------------------------
 
-mkSubject :: (AsReactor cmd, MonadCommand cmd m) => Widget cmd s s () -> s -> (Subject s -> m ()) -> m ()
-mkSubject wid s k = do
-    k' <- codify k
-    postCmd' $ MkSubject wid s k'
+-- | Make an initialized 'Subject' for a given model using the given 'Widget'.
+mkSubject :: (AsReactor cmd, MonadCommand cmd m) => Widget cmd s s a -> s -> (Subject s -> m ()) -> m a
+mkSubject (Widget win gad) s k =
+    -- given a handler for @a@
+    delegate $ \fire -> do
+        f' <- codifies fire
+        -- convert the gadget to also handle @a@
+        let gad' = gad >>= (posts . f')
+        k' <- codify k
+        postCmd' $ MkSubject (Widget win gad') s k'
 
 -- | Rerender the ShimComponent using the current @Entity@ context
 rerender :: MonadReactor p s cmd m => m ()
@@ -100,22 +103,21 @@ rerender = do
     postCmd' $ Rerender sbj
 
 -- | Get the 'Scene' and exec actions, using the current @Entity@ context
-getScene :: MonadReactor p s cmd m => (Scene s -> m ()) -> m ()
-getScene go = do
+withScene :: (MonadReactor p s cmd m) => (Scene s -> m ()) -> m ()
+withScene go = do
     Entity sbj slf <- ask
     let go' s = case preview (editSceneModel slf) s of
             Nothing -> pure ()
             Just s' -> go s'
     c <- codify go'
-    postCmd' $ GetScene sbj c
+    postCmd' $ WithScene sbj c
 
 -- | Update the 'Scene' using the current @Entity@ context
-tickScene ::MonadReactor p s cmd m => State (Scene s) () -> m ()
+tickScene :: MonadReactor p s cmd m => StateT (Scene s) ReadIORef () -> m ()
 tickScene m = do
     Entity sbj slf <- ask
     let m' = zoom (editSceneModel slf) m
     postCmd' $ TickScene sbj m'
-
 
 -- | Create a callback and add it to this elemental's dlist of listeners.
 trigger_ ::

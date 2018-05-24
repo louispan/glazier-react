@@ -13,7 +13,7 @@ module Glazier.React.Reactor.Exec
     , execMkSubject
     , execMkHandler
     , execMkHandler1
-    , execGetScene
+    , execWithScene
     , execTickScene
     ) where
 
@@ -44,10 +44,10 @@ import Glazier.React.Component
 import Glazier.React.Entity
 import Glazier.React.Gadget
 import Glazier.React.HandleEvent
-import Glazier.React.IORefReader
 import Glazier.React.Markup
 import Glazier.React.MkId.Internal
 import Glazier.React.Reactor
+import Glazier.React.ReadIORef
 import Glazier.React.Scene
 import Glazier.React.Subject
 import Glazier.React.Subject.Internal
@@ -67,7 +67,7 @@ import qualified JavaScript.Extras as JE
 --     )
 --     => (c -> m ())
 --     -> s
---     -> AState (GetScene c s) ()
+--     -> AState (WithScene c s) ()
 --     -> m (CD.Disposable, IO s)
 -- initialize' exec s ini = do
 --     scnRef <- liftIO $ newIORef (Scene newPlan s)
@@ -118,7 +118,7 @@ execReactorCmd ::
 execReactorCmd exec c = case c of
     MkSubject wid s k -> execMkSubject exec wid s >>= (exec . k)
     Rerender sbj -> execRerender sbj
-    GetScene sbj k -> execGetScene sbj >>= (exec . k)
+    WithScene sbj k -> execWithScene sbj >>= (exec . k)
     TickScene sbj tick -> execTickScene sbj tick
     MkHandler c' k -> execMkHandler exec c' >>= (exec . k)
     MkHandler1 goStrict goLazy k -> execMkHandler1 exec goStrict goLazy >>= (exec . k)
@@ -145,7 +145,7 @@ execMkSubject exec (Widget win gad) s = do
     let doRender = do
             -- render using from scnRef (doesn't block)
             scn <- readIORef scnRef
-            (mrkup, _) <- unIORefReader (execARWST win scn mempty) -- ignore unit writer output
+            (mrkup, _) <- unReadIORef (execARWST win scn mempty) -- ignore unit writer output
             JE.toJS <$> toElement mrkup
         doRef j = do
             -- update componentRef held in the Plan
@@ -245,11 +245,11 @@ execRerender sbj = liftIO $ do
     scn <- readIORef $ sceneRef sbj
     _rerender scn
 
-execGetScene ::
+execWithScene ::
     MonadIO m
     => Subject s
     -> m (Scene s)
-execGetScene sbj = liftIO . readIORef $ sceneRef sbj
+execWithScene sbj = liftIO . readIORef $ sceneRef sbj
 
 -- | No need to run in a separate thread because it should never block for a significant amount of time.
 -- Upate the scene 'MVar' with the given action. Also triggers a rerender.
@@ -257,11 +257,11 @@ execTickScene ::
     ( MonadIO m
     )
     => Subject s
-    -> State (Scene s) ()
+    -> StateT (Scene s) ReadIORef ()
     -> m ()
 execTickScene sbj tick = liftIO $ do
     scn <- takeMVar scnVar
-    let scn' = execState tick scn
+    scn' <- unReadIORef $ execStateT tick scn
     -- Update the back buffer
     atomicWriteIORef scnRef scn'
     putMVar scnVar scn'

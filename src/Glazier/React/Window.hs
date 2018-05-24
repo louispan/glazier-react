@@ -20,15 +20,15 @@ import Data.Semigroup
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
 import Glazier.React.Component
-import Glazier.React.IORefReader
 import Glazier.React.Markup
 import Glazier.React.MkId
+import Glazier.React.ReadIORef
 import Glazier.React.Scene
 import Glazier.React.Subject
 import qualified JavaScript.Array as JA
 import qualified JavaScript.Extras as JE
 
-type Window s = ARWST (Scene s) () (DL.DList ReactMarkup) IORefReader
+type Window s = ARWST (Scene s) () (DL.DList ReactMarkup) ReadIORef
 
 -- type SceneDisplay x s r = Display (Scene x s) r
 ----------------------------------------------------------------------------------

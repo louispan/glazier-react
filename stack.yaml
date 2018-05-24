@@ -52,8 +52,8 @@ packages:
 # (e.g., acme-missiles-0.3)
 extra-deps:
 - async-2.2.1
-- data-diverse-3.1.0.0
-- data-diverse-lens-3.1.1.0
+- data-diverse-4.0.0.0
+- data-diverse-lens-4.0.0.0
 - data-has-0.3.0.0
 - generic-lens-0.5.1.0
 - ghcjs-base-stub-0.1.0.4
