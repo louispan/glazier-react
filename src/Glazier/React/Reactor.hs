@@ -15,6 +15,8 @@ module Glazier.React.Reactor
     , MonadReactor
     , ReactorCmd(..)
     , mkSubject
+    -- , addSubject
+    , cleanupSubject
     , rerender
     , withScene
     , tickScene
@@ -95,6 +97,22 @@ mkSubject (Widget win gad) s k =
         let gad' = gad >>= (posts . f')
         k' <- codify k
         postCmd' $ MkSubject (Widget win gad') s k'
+
+-- -- | Add a constructed subject to a parent widget
+-- addSubject :: (MonadReactor p ss cmd m)
+--     => Widget cmd s s a
+--     -> s
+--     -> (Subject s -> StateT (Scene ss) ReadIORef ())
+--     -> m a
+-- addSubject wid s f = mkSubject wid s $ \sbj -> tickScene $ f sbj
+
+-- | Schedule cleanup of the callbacks when the parent widget is rerendered.
+cleanupSubject ::
+    (MonadState (Scene ss) m)
+    => Subject s -> m ()
+cleanupSubject sbj =
+    let cleanup = prolong sbj
+    in _plan._doOnRendered._once %= (*> cleanup)
 
 -- | Rerender the ShimComponent using the current @Entity@ context
 rerender :: MonadReactor p s cmd m => m ()
