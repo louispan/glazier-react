@@ -48,10 +48,10 @@ instance Applicative (Widget cmd p s) where
 
 -- merge ContT together by pre-firing the left ContT's output.
 -- That is, the resultant ContT will fire the output twice.
-instance (Semigroup a) => Semigroup (Widget cmd p s a) where
+instance Semigroup (Widget cmd p s a) where
     (<>) = mapWidget2 (<>)
 
-instance (Monoid a) => Monoid (Widget cmd p s a) where
+instance Monoid (Widget cmd p s a) where
     mempty = Widget mempty mempty
     mappend = mapWidget2 mappend
 

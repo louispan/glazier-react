@@ -11,12 +11,6 @@ import Glazier.React.Entity
 
 type Gadget cmd p s = AReaderT (Entity p s) (AContT () (AState (DL.DList cmd)))
 
--- type MonadGadget cmd p s m =
---     ( MonadReader (Entity p s) m
---     , MonadDelegate ()  m
---     , MonadState (DL.DList cmd) m
---     )
-
 toGadget ::
     (Entity p s
         -> (a -> AState (DL.DList cmd) ())
