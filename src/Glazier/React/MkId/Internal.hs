@@ -1,3 +1,4 @@
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
@@ -14,6 +15,8 @@ import Data.String
 -- 'GadgetId' and 'PlanId'
 -- prototype :: MonadState Int p => p (Widget w x s m c)
 -- protot
+
+type MkId m = MonadState Int m
 
 mkId :: MonadState Int m => J.JSString -> m J.JSString
 mkId n = do

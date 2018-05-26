@@ -23,6 +23,7 @@ module Glazier.React.Reactor
     , tickScene
     , trigger
     , trigger'
+    , constTrigger
     , onRendered
     , hdlElementalRef
     ) where
@@ -145,13 +146,13 @@ trigger_ ::
     ( NFData a
     , MonadReactor p s cmd m
     )
-    => Lens' (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Always" (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
-    -> ElementalId
+    => ElementalId
+    -> Lens' (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Always" (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
     -> J.JSString
     -> (JE.JSRep -> MaybeT IO a)
     -> (a -> m ())
     -> m ()
-trigger_ l eid n goStrict goLazy = do
+trigger_ eid l n goStrict goLazy = do
     Entity sbj _ <- ask
     goLazy' <- codify goLazy
     postCmd' $ MkHandler1 goStrict goLazy' $ \act ->
@@ -168,27 +169,40 @@ trigger ::
     ( NFData a
     , MonadReactor p s cmd m
     )
-    => Lens' (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Always" (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
-    -> ElementalId
+    => ElementalId
+    -> Lens' (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Always" (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
     -> J.JSString
     -> (JE.JSRep -> MaybeT IO a)
     -> m a
-trigger l eid n goStrict = delegate $ trigger_ l eid n goStrict
+trigger eid l n goStrict = delegate $ trigger_ eid l n goStrict
 
 -- | Create a callback for a 'Notice' and add it to this elementals's dlist of listeners.
 trigger' ::
     ( NFData a
     , MonadReactor p s cmd m
     )
-    => Lens' (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Always" (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
-    -> ElementalId
+    => ElementalId
+    -> Lens' (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Always" (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
     -> J.JSString
     -> (Notice -> MaybeT IO a)
     -> m a
-trigger' l eid n goStrict = trigger l eid n $ handlesNotice goStrict
+trigger' eid l n goStrict = trigger eid l n $ handlesNotice goStrict
   where
     handlesNotice :: (Notice -> MaybeT IO a) -> (JE.JSRep -> MaybeT IO a)
     handlesNotice k j = MaybeT (pure $ JE.fromJSR j) >>= k
+
+-- | A varation of trigger which ignores the event but fires the given arg instead.
+constTrigger ::
+    ( MonadReactor p s cmd m
+    )
+    => ElementalId
+    -> Lens' (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Always" (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
+    -> J.JSString
+    -> a
+    -> m a
+constTrigger eid l n a = do
+    trigger eid l n (const $ pure ())
+    pure a
 
 -- | Register actions to execute after a render.
 -- Do not 'postCmd'' 'TickScene' or 'Rerender' otherwise it will go into infinite render loops.
@@ -214,7 +228,7 @@ onRendered l m = do
 -- | This adds a ReactJS "ref" callback assign the ref into an 'EventTarget'
 -- for the elemental in the plan, so that the elemental '_targetRef' can be used.
 hdlElementalRef :: MonadReactor p s cmd m => ElementalId -> m ()
-hdlElementalRef eid = trigger _always eid "ref" (pure . JE.fromJSR) >>= hdlRef
+hdlElementalRef eid = trigger eid _always "ref" (pure . JE.fromJSR) >>= hdlRef
   where
     hdlRef x = do
         sbj <- view _subject

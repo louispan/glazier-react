@@ -1,6 +1,7 @@
 module Glazier.React.MkId
     ( ElementalId -- constructor not exported
     , PlanId -- constructor not exported
+    , MkId
     , mkId
     , mkElementalId
     , mkPlanId
