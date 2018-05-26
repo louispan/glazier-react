@@ -14,6 +14,7 @@ module Glazier.React.Reactor
     ( AsReactor
     , MonadReactor
     , ReactorCmd(..)
+    , SceneState
     , mkSubject
     -- , addSubject
     , cleanupSubject
@@ -58,6 +59,8 @@ type MonadReactor p s cmd m =
     , MonadCommand cmd m
     )
 
+type SceneState s = StateT (Scene s) ReadIORef
+
 -- | NB. ReactorCmd is not a functor.
 data ReactorCmd cmd where
     MkSubject :: Widget cmd s s () -> s -> (Subject s -> cmd) -> ReactorCmd cmd
@@ -66,7 +69,7 @@ data ReactorCmd cmd where
     -- Generate a list of commands from reading a scene.
     WithScene :: Subject s -> (Scene s -> cmd) -> ReactorCmd cmd
     -- Update and rerender a scene.
-    TickScene :: Subject s -> StateT (Scene s) ReadIORef () -> ReactorCmd cmd
+    TickScene :: Subject s -> SceneState s () -> ReactorCmd cmd
     -- DoReadIORef :: IORef a -> (a -> cmd) -> ReactorCmd
     MkHandler :: cmd -> (IO () -> cmd) -> ReactorCmd cmd
     -- | Convert a callback to a @JE.JSRep -> IO ()@
@@ -131,7 +134,7 @@ withScene go = do
     postCmd' $ WithScene sbj c
 
 -- | Update the 'Scene' using the current @Entity@ context
-tickScene :: MonadReactor p s cmd m => StateT (Scene s) ReadIORef () -> m ()
+tickScene :: MonadReactor p s cmd m => SceneState s () -> m ()
 tickScene m = do
     Entity sbj slf <- ask
     let m' = zoom (editSceneModel slf) m
