@@ -50,7 +50,7 @@ lf' :: (MonadReader (Scene s) m, MonadState (DL.DList ReactMarkup) m)
     -> m ()
 lf' eid n props = do
     ls <- getListeners eid
-    leaf n (props <> DL.fromList ls)
+    lf n (props <> DL.fromList ls)
 
 -- | Interactive version of 'bh'
 bh' :: (MonadReader (Scene s) m, MonadState (DL.DList ReactMarkup) m)
@@ -61,7 +61,7 @@ bh' :: (MonadReader (Scene s) m, MonadState (DL.DList ReactMarkup) m)
     -> m r
 bh' eid n props childs = do
     ls <- getListeners eid
-    branch n (props <> DL.fromList ls) childs
+    bh n (props <> DL.fromList ls) childs
 
 bindListenerContext :: JE.JSRep -> J.Callback (J.JSVal -> J.JSVal -> IO ()) -> JE.JSRep
 bindListenerContext = js_bindListenerContext
@@ -75,7 +75,7 @@ displaySubject sbj = do
     let ShimCallbacks renderCb renderedCb refCb _ = scn ^. _plan._shimCallbacks
     -- These are the callbacks on the 'ShimComponent'
     -- See jsbits/react.js
-    leaf (JE.toJSR shimComponent)
+    lf (JE.toJSR shimComponent)
         [ ("render", JE.toJSR renderCb)
         , ("rendered", JE.toJSR renderedCb)
         , ("ref", JE.toJSR refCb)

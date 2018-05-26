@@ -15,8 +15,8 @@ module Glazier.React.Markup
     , toElements
     , toElement
     , txt
-    , leaf
-    , branch
+    , lf
+    , bh
     , withMarkup
     , modifyMarkup
     , overSurfaceProperties
@@ -83,16 +83,17 @@ toElement xs = toElements xs >>= Z.mkCombinedElements
 txt :: MonadState (DL.DList ReactMarkup) m => J.JSString -> m ()
 txt n = modify' (`DL.snoc` TextMarkup n)
 
--- | For the contentless elements: eg 'br_'
+-- | For the contentless elements: eg 'br_'.
+-- Memonic: lf for leaf.
 -- Duplicate listeners with the same key will be combined, but it is a silent error
 -- if the same key is used across listeners and props.
 -- "If an attribute/prop is duplicated the last one defined wins."
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
-leaf :: (MonadState (DL.DList ReactMarkup) m)
+lf :: (MonadState (DL.DList ReactMarkup) m)
     => JE.JSRep
     -> (DL.DList JE.Property)
     -> m ()
-leaf n props = modify' (`DL.snoc` LeafMarkup (LeafParam n props))
+lf n props = modify' (`DL.snoc` LeafMarkup (LeafParam n props))
 
 -- | Create a MonadState that run the given given a combining function and markup producing MonadState.
 withMarkup :: MonadState (DL.DList ReactMarkup) m
@@ -111,17 +112,18 @@ withMarkup f childs = do
     modify' (f childs')
     pure a
 
--- | For the contentful elements: eg 'div_'
+-- | For the contentful elements: eg 'div_'.
+-- Memonic: bh for branch.
 -- Duplicate listeners with the same key will be combined, but it is a silent error
 -- if the same key is used across listeners and props.
 -- "If an attribute/prop is duplicated the last one defined wins."
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
-branch :: (MonadState (DL.DList ReactMarkup) m)
+bh :: (MonadState (DL.DList ReactMarkup) m)
     => JE.JSRep
     -> (DL.DList JE.Property)
     -> m a
     -> m a
-branch n props = withMarkup (\childs' ms -> ms `DL.snoc` BranchMarkup (BranchParam n props (DL.toList childs')))
+bh n props = withMarkup (\childs' ms -> ms `DL.snoc` BranchMarkup (BranchParam n props (DL.toList childs')))
 
 -- Given a mapping function, apply it to children of the markup
 modifyMarkup :: MonadState (DL.DList ReactMarkup) m
