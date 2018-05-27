@@ -119,7 +119,7 @@ execReactorCmd exec c = case c of
     MkSubject wid s k -> execMkSubject exec wid s >>= (exec . k)
     Rerender sbj -> execRerender sbj
     WithScene sbj k -> execWithScene sbj >>= (exec . k)
-    TickScene sbj tick -> execTickScene sbj tick
+    TickScene sbj tick -> execTickScene sbj tick >>= exec
     MkHandler c' k -> execMkHandler exec c' >>= (exec . k)
     MkHandler1 goStrict goLazy k -> execMkHandler1 exec goStrict goLazy >>= (exec . k)
 
@@ -257,16 +257,17 @@ execTickScene ::
     ( MonadIO m
     )
     => Subject s
-    -> StateT (Scene s) ReadIORef ()
-    -> m ()
+    -> StateT (Scene s) ReadIORef cmd
+    -> m cmd
 execTickScene sbj tick = liftIO $ do
     scn <- takeMVar scnVar
-    scn' <- unReadIORef $ execStateT tick scn
+    (c, scn') <- unReadIORef $ runStateT tick scn
     -- Update the back buffer
     atomicWriteIORef scnRef scn'
     putMVar scnVar scn'
     -- automatically rerender the scene
     _rerender scn'
+    pure c
   where
     scnRef = sceneRef sbj
     scnVar = sceneVar sbj

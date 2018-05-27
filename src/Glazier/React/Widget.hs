@@ -8,8 +8,6 @@ module Glazier.React.Widget where
 
 import Control.Lens
 import Control.Lens.Misc
-import Control.Monad.Delegate.Class
-import Data.Diverse.Profunctor
 import Data.Semigroup
 import qualified GHC.Generics as G
 import Glazier.React.Entity
@@ -69,6 +67,9 @@ dummy = mempty
 
 enlargeModel :: Traversal' s' s -> Widget cmd p s a -> Widget cmd p s' a
 enlargeModel l (Widget win gad) = Widget (magnifyModel l win) (magnifySelf l gad)
+
+-- staticGadget :: Widget cmd p s () -> Widget cmd p s a
+-- staticGadget = _gadget %~ static
 
 -- enlargePlan :: Traversal' (TVar Plan) (TVar Plan) -> Widget c p s a -> Widget c p s a
 -- enlargePlan l (Widget disp ini) = Widget disp (magnifyObjPlan l ini)
