@@ -62,8 +62,8 @@ instance Monoid (Widget cmd p s a) where
     mempty = Widget mempty mempty
     mappend = overGadget2 mappend
 
-dummy :: Widget cmd p s ()
-dummy = mempty
+blank :: Widget cmd p s ()
+blank = mempty
 
 enlargeModel :: Lens' s' s -> Widget cmd p s a -> Widget cmd p s' a
 enlargeModel l (Widget win gad) = Widget (magnifyModel l win) (magnifySelf l gad)

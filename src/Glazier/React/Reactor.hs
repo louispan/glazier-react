@@ -21,7 +21,7 @@ module Glazier.React.Reactor
     , rerender
     , withScene
     , tickScene
-    , tickScene'
+    , tickSceneThen
     , trigger
     , trigger'
     , trigger_
@@ -134,10 +134,17 @@ withScene go = do
     c <- codify (go . view (editSceneModel slf))
     postCmd' $ WithScene sbj c
 
--- | Update the 'Scene' using the current @Entity@ context, wheere the update
--- state function returns the next action to execute.
-tickScene :: (MonadReactor p s cmd m) => SceneState s (m a) -> m a
+-- | Update the 'Scene' using the current @Entity@ context
+tickScene :: MonadReactor p s cmd m => SceneState s () -> m ()
 tickScene m = do
+    Entity sbj slf <- ask
+    let m' = zoom (editSceneModel slf) m
+    postCmd' $ TickScene sbj (command_ <$> m')
+
+-- | Update the 'Scene' using the current @Entity@ context,
+-- and also return the next action to execute.
+tickSceneThen :: (MonadReactor p s cmd m) => SceneState s (m a) -> m a
+tickSceneThen m = do
     Entity sbj slf <- ask
     delegate $ \fire -> do
         let m' = zoom (editSceneModel slf) m
@@ -145,15 +152,8 @@ tickScene m = do
         f' <- codify f
         postCmd' $ TickScene sbj (f' <$> m')
 
--- | Update the 'Scene' using the current @Entity@ context
-tickScene' :: MonadReactor p s cmd m => SceneState s () -> m ()
-tickScene' m = do
-    Entity sbj slf <- ask
-    let m' = zoom (editSceneModel slf) m
-    postCmd' $ TickScene sbj (command_ <$> m')
-
-mkTickScene' :: (AsFacet [cmd] cmd) => Subject s -> SceneState s () -> ReactorCmd cmd
-mkTickScene' sbj m = TickScene sbj (command_ <$> m)
+doTickScene :: (AsFacet [cmd] cmd) => Subject s -> SceneState s () -> ReactorCmd cmd
+doTickScene sbj m = TickScene sbj (command_ <$> m)
 
 -- | Create a callback and add it to this elemental's dlist of listeners.
 doTrigger ::
@@ -174,7 +174,7 @@ doTrigger eid l n goStrict goLazy = do
         let updateElemental = _plan._elementals.at eid %= (Just . addListener . fromMaybe newElemental)
             addListener = _listeners.at n %~ (Just . addAction . fromMaybe (Tagged mempty, Tagged mempty))
             addAction acts = acts & l %~ (*> act)
-        in command' $ mkTickScene' sbj updateElemental
+        in command' $ doTickScene sbj updateElemental
 
 -- | Create a callback for a 'JE.JSRep' and add it to this elementals's dlist of listeners.
 -- You probably want to use 'trigger'' since most React callbacks return a 'Notice',
@@ -237,7 +237,7 @@ onRendered l m = do
     postCmd' $ MkHandler c $ \act ->
             -- save the rendered action handler in the plan
             let addListener = _plan._doOnRendered.l %= (*> act)
-            in command' $ mkTickScene' sbj addListener
+            in command' $ doTickScene sbj addListener
 
 -- | This adds a ReactJS "ref" callback assign the ref into an 'EventTarget'
 -- for the elemental in the plan, so that the elemental '_targetRef' can be used.
@@ -246,4 +246,4 @@ hdlElementalRef eid = trigger eid _always "ref" (pure . JE.fromJSR) >>= hdlRef
   where
     hdlRef x = do
         sbj <- view _subject
-        postCmd' . mkTickScene' sbj $ (_plan._elementals.ix eid._elementalRef .= x)
+        postCmd' . doTickScene sbj $ (_plan._elementals.ix eid._elementalRef .= x)
