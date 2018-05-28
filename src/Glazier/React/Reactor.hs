@@ -131,15 +131,12 @@ rerender = do
 withScene :: (MonadReactor p s cmd m) => (Scene s -> m ()) -> m ()
 withScene go = do
     Entity sbj slf <- ask
-    let go' s = case preview (editSceneModel slf) s of
-            Nothing -> pure ()
-            Just s' -> go s'
-    c <- codify go'
+    c <- codify (go . view (editSceneModel slf))
     postCmd' $ WithScene sbj c
 
 -- | Update the 'Scene' using the current @Entity@ context, wheere the update
 -- state function returns the next action to execute.
-tickScene :: (Monoid (m a), MonadReactor p s cmd m) => SceneState s (m a) -> m a
+tickScene :: (MonadReactor p s cmd m) => SceneState s (m a) -> m a
 tickScene m = do
     Entity sbj slf <- ask
     delegate $ \fire -> do

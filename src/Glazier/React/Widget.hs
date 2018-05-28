@@ -65,7 +65,7 @@ instance Monoid (Widget cmd p s a) where
 dummy :: Widget cmd p s ()
 dummy = mempty
 
-enlargeModel :: Traversal' s' s -> Widget cmd p s a -> Widget cmd p s' a
+enlargeModel :: Lens' s' s -> Widget cmd p s a -> Widget cmd p s' a
 enlargeModel l (Widget win gad) = Widget (magnifyModel l win) (magnifySelf l gad)
 
 -- staticGadget :: Widget cmd p s () -> Widget cmd p s a
