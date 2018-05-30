@@ -50,8 +50,8 @@ instance Monoid (Widget cmd p s a) where
     mempty = Widget mempty mempty
     mappend = overGadget2 mappend
 
-blank :: Widget cmd p s ()
-blank = mempty
+prototype :: Widget cmd p s ()
+prototype = mempty
 
 enlargeModel :: Lens' s' s -> Widget cmd p s a -> Widget cmd p s' a
-enlargeModel l (Widget win gad) = Widget (magnifyModel l win) (magnifySelf l gad)
+enlargeModel l (Widget win gad) = Widget (enlargeScene l win) (enlargeEntity l gad)
