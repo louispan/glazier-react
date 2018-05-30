@@ -19,7 +19,7 @@ module Glazier.React.Reactor
     -- , addSubject
     , cleanupSubject
     , rerender
-    , withScene
+    , getScene
     , tickScene
     , tickSceneThen
     , trigger
@@ -71,7 +71,7 @@ data ReactorCmd cmd where
     -- | Rerender a ShimComponent using the given state.
     Rerender :: Subject s -> ReactorCmd cmd
     -- Generate a list of commands from reading a scene.
-    WithScene :: Subject s -> (Scene s -> cmd) -> ReactorCmd cmd
+    GetScene :: Subject s -> (Scene s -> cmd) -> ReactorCmd cmd
     -- Update and rerender a scene.
     TickScene :: Subject s -> SceneState s cmd -> ReactorCmd cmd
     -- DoReadIORef :: IORef a -> (a -> cmd) -> ReactorCmd
@@ -86,7 +86,7 @@ data ReactorCmd cmd where
 instance Show cmd => Show (ReactorCmd cmd) where
     showsPrec _ (MkSubject _ _ _) = showString "MkSubject"
     showsPrec _ (Rerender _) = showString "Rerender"
-    showsPrec _ (WithScene _ _) = showString "WithScene"
+    showsPrec _ (GetScene _ _) = showString "GetScene"
     showsPrec _ (TickScene _ _) = showString "TickScene"
     showsPrec p (MkHandler c _) = showParen (p >= 11) $
         showString "MkHandler " . shows c
@@ -95,7 +95,8 @@ instance Show cmd => Show (ReactorCmd cmd) where
 ------------------------------------------------------
 
 -- | Make an initialized 'Subject' for a given model using the given 'Widget'.
-mkSubject :: (AsReactor cmd, MonadCommand cmd m) => Widget cmd s s a -> s -> (Subject s -> m ()) -> m a
+mkSubject :: (AsReactor cmd, MonadCommand cmd m)
+    => Widget cmd s s a -> s -> (Subject s -> m ()) -> m a
 mkSubject (Widget win gad) s k =
     -- given a handler for @a@
     delegate $ \fire -> do
@@ -128,11 +129,14 @@ rerender = do
     postCmd' $ Rerender sbj
 
 -- | Get the 'Scene' and exec actions, using the current @Entity@ context
-withScene :: (MonadReactor p s cmd m) => (Scene s -> m ()) -> m ()
-withScene go = do
+doGetScene :: (MonadReactor p s cmd m) => (Scene s -> m ()) -> m ()
+doGetScene go = do
     Entity sbj slf <- ask
     c <- codify (go . view (editSceneModel slf))
-    postCmd' $ WithScene sbj c
+    postCmd' $ GetScene sbj c
+
+getScene :: (MonadReactor p s cmd m) => m (Scene s)
+getScene = delegate doGetScene
 
 -- | Update the 'Scene' using the current @Entity@ context
 tickScene :: MonadReactor p s cmd m => SceneState s () -> m ()

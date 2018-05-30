@@ -13,7 +13,7 @@ module Glazier.React.Reactor.Exec
     , execMkSubject
     , execMkHandler
     , execMkHandler1
-    , execWithScene
+    , execGetScene
     , execTickScene
     ) where
 
@@ -67,7 +67,7 @@ import qualified JavaScript.Extras as JE
 --     )
 --     => (c -> m ())
 --     -> s
---     -> AState (WithScene c s) ()
+--     -> AState (GetScene c s) ()
 --     -> m (CD.Disposable, IO s)
 -- initialize' exec s ini = do
 --     scnRef <- liftIO $ newIORef (Scene newPlan s)
@@ -118,7 +118,7 @@ execReactorCmd ::
 execReactorCmd exec c = case c of
     MkSubject wid s k -> execMkSubject exec wid s >>= (exec . k)
     Rerender sbj -> execRerender sbj
-    WithScene sbj k -> execWithScene sbj >>= (exec . k)
+    GetScene sbj k -> execGetScene sbj >>= (exec . k)
     TickScene sbj tick -> execTickScene sbj tick >>= exec
     MkHandler c' k -> execMkHandler exec c' >>= (exec . k)
     MkHandler1 goStrict goLazy k -> execMkHandler1 exec goStrict goLazy >>= (exec . k)
@@ -245,11 +245,11 @@ execRerender sbj = liftIO $ do
     scn <- readIORef $ sceneRef sbj
     _rerender scn
 
-execWithScene ::
+execGetScene ::
     MonadIO m
     => Subject s
     -> m (Scene s)
-execWithScene sbj = liftIO . readIORef $ sceneRef sbj
+execGetScene sbj = liftIO . readIORef $ sceneRef sbj
 
 -- | No need to run in a separate thread because it should never block for a significant amount of time.
 -- Upate the scene 'MVar' with the given action. Also triggers a rerender.
