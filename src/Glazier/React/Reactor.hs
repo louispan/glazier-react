@@ -129,21 +129,21 @@ rerender = do
     postCmd' $ Rerender sbj
 
 -- | Get the 'Scene' and exec actions, using the current @Entity@ context
-doGetScene :: (MonadReactor p s cmd m) => (Scene s -> m ()) -> m ()
-doGetScene go = do
+getScene :: (MonadReactor p s cmd m) => m (Scene s)
+getScene = delegate $ \k -> do
     Entity sbj slf <- ask
-    c <- codify (go . view (editSceneModel slf))
+    c <- codify (k . view (editSceneModel slf))
     postCmd' $ GetScene sbj c
 
-getScene :: (MonadReactor p s cmd m) => m (Scene s)
-getScene = delegate doGetScene
+doTickScene :: (AsFacet [cmd] cmd) => Subject s -> SceneState s () -> ReactorCmd cmd
+doTickScene sbj m = TickScene sbj (command_ <$> m)
 
 -- | Update the 'Scene' using the current @Entity@ context
 tickScene :: MonadReactor p s cmd m => SceneState s () -> m ()
 tickScene m = do
     Entity sbj slf <- ask
     let m' = zoom (editSceneModel slf) m
-    postCmd' $ TickScene sbj (command_ <$> m')
+    postCmd' $ doTickScene sbj m'
 
 -- | Update the 'Scene' using the current @Entity@ context,
 -- and also return the next action to execute.
@@ -155,30 +155,6 @@ tickSceneThen m = do
             f n = n >>= fire
         f' <- codify f
         postCmd' $ TickScene sbj (f' <$> m')
-
-doTickScene :: (AsFacet [cmd] cmd) => Subject s -> SceneState s () -> ReactorCmd cmd
-doTickScene sbj m = TickScene sbj (command_ <$> m)
-
--- | Create a callback and add it to this elemental's dlist of listeners.
-doTrigger ::
-    ( NFData a
-    , MonadReactor p s cmd m
-    )
-    => ElementalId
-    -> Lens' (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Always" (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
-    -> J.JSString
-    -> (JE.JSRep -> MaybeT IO a)
-    -> (a -> m ())
-    -> m ()
-doTrigger eid l n goStrict goLazy = do
-    Entity sbj _ <- ask
-    goLazy' <- codify goLazy
-    postCmd' $ MkHandler1 goStrict goLazy' $ \act ->
-        -- save the created action handler in the elemental
-        let updateElemental = _plan._elementals.at eid %= (Just . addListener . fromMaybe newElemental)
-            addListener = _listeners.at n %~ (Just . addAction . fromMaybe (Tagged mempty, Tagged mempty))
-            addAction acts = acts & l %~ (*> act)
-        in command' $ doTickScene sbj updateElemental
 
 -- | Create a callback for a 'JE.JSRep' and add it to this elementals's dlist of listeners.
 -- You probably want to use 'trigger'' since most React callbacks return a 'Notice',
@@ -192,7 +168,15 @@ trigger ::
     -> J.JSString
     -> (JE.JSRep -> MaybeT IO a)
     -> m a
-trigger eid l n goStrict = delegate $ doTrigger eid l n goStrict
+trigger eid l n goStrict = delegate $ \goLazy -> do
+    Entity sbj _ <- ask
+    goLazy' <- codify goLazy
+    postCmd' $ MkHandler1 goStrict goLazy' $ \act ->
+        -- save the created action handler in the elemental
+        let updateElemental = _plan._elementals.at eid %= (Just . addListener . fromMaybe newElemental)
+            addListener = _listeners.at n %~ (Just . addAction . fromMaybe (Tagged mempty, Tagged mempty))
+            addAction acts = acts & l %~ (*> act)
+        in command' $ doTickScene sbj updateElemental
 
 -- | Create a callback for a 'Notice' and add it to this elementals's dlist of listeners.
 trigger' ::
