@@ -68,14 +68,15 @@ type SceneState s = StateT (Scene s) ReadIORef
 
 -- | NB. ReactorCmd is not a functor.
 data ReactorCmd cmd where
+    -- | Make a subject from a widget spec and state
     MkSubject :: Widget cmd s s () -> s -> (Subject s -> cmd) -> ReactorCmd cmd
     -- | Rerender a ShimComponent using the given state.
     Rerender :: Subject s -> ReactorCmd cmd
-    -- Generate a list of commands from reading a scene.
+    -- | Generate a list of commands from reading a scene.
     GetScene :: Subject s -> (Scene s -> cmd) -> ReactorCmd cmd
-    -- Update and rerender a scene.
+    -- | Update and rerender a scene.
     TickScene :: Subject s -> SceneState s cmd -> ReactorCmd cmd
-    -- DoReadIORef :: IORef a -> (a -> cmd) -> ReactorCmd
+    -- | DoReadIORef :: IORef a -> (a -> cmd) -> ReactorCmd
     MkHandler :: cmd -> (IO () -> cmd) -> ReactorCmd cmd
     -- | Convert a callback to a @JE.JSRep -> IO ()@
     MkHandler1 :: NFData a
@@ -96,26 +97,22 @@ instance Show cmd => Show (ReactorCmd cmd) where
 ------------------------------------------------------
 
 -- | Make an initialized 'Subject' for a given model using the given 'Widget'.
-doMkSubject :: (AsReactor cmd, MonadCommand cmd m)
-    => Widget cmd s s a -> s -> (Subject s -> m ()) -> m a
-doMkSubject (Widget win gad) s k =
-    -- given a handler for @a@
-    delegate $ \fire -> do
-        f' <- codifies fire
-        -- convert the gadget to also handle @a@
-        let gad' = gad >>= (posts . f')
-        k' <- codify k
-        postCmd' $ MkSubject (Widget win gad') s k'
-
--- | Make an initialized 'Subject' for a given model using the given 'Widget'.
 mkSubject :: (AsReactor cmd, MonadCommand cmd m)
-    => Widget cmd s s a -> (a -> m ()) -> s -> m (Subject s)
-mkSubject wid f s = retask (doMkSubject wid s) f
+    => Widget cmd s s a -> s -> m (Either a (Subject s))
+mkSubject (Widget win gad) s =
+    delegate $ \fire -> do
+        f <- codify fire
+        let gad' = gad >>= (post . f . Left)
+        postCmd' $ MkSubject (Widget win gad') s (f . Right)
 
 -- | Make an initialized 'Subject' for a given model using the given 'Widget'.
 mkSubject' :: (AsReactor cmd, MonadCommand cmd m)
     => Widget cmd s s () -> s -> m (Subject s)
-mkSubject' wid s = mkSubject wid pure s
+mkSubject' wid s = delegate $ \fire -> do
+    x <- mkSubject wid s
+    case x of
+        Left _ -> pure ()
+        Right sbj -> fire sbj
 
 -- -- | Add a constructed subject to a parent widget
 -- addSubject :: (MonadReactor p ss cmd m)
