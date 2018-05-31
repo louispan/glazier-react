@@ -18,9 +18,8 @@ module Glazier.React.Markup
     , lf
     , bh
     , withMarkup
-    , modifyMarkup
     , overSurfaceProperties
-    , modifySurfaceProperties
+    , overAllProperties
     ) where
 
 import Control.Monad.State.Strict
@@ -33,7 +32,7 @@ import qualified JavaScript.Extras as JE
 data BranchParam = BranchParam
     JE.JSRep
     (DL.DList JE.Property)
-    [ReactMarkup]
+    (DL.DList ReactMarkup)
 
 -- | The parameters required to create a leaf ReactElement (no children)
 data LeafParam = LeafParam
@@ -49,7 +48,7 @@ data ReactMarkup
 -- | Create 'ReactElement's from a 'ReactMarkup'
 fromMarkup :: ReactMarkup -> IO Z.ReactElement
 fromMarkup (BranchMarkup (BranchParam n props xs)) = do
-    xs' <- sequenceA $ fromMarkup <$> xs
+    xs' <- sequenceA $ fromMarkup <$> (DL.toList xs)
     Z.mkBranchElement n (DL.toList props) xs'
 
 fromMarkup (LeafMarkup (LeafParam n props)) =
@@ -95,7 +94,9 @@ lf :: (MonadState (DL.DList ReactMarkup) m)
     -> m ()
 lf n props = modify' (`DL.snoc` LeafMarkup (LeafParam n props))
 
--- | Create a MonadState that run the given given a combining function and markup producing MonadState.
+-- | Create a MonadState that run the given given a combining function
+-- where the first arg is the state from running the markup producing MonadState with mempty,
+-- and the 2nd arg the starting state of the resultant MonadState.
 withMarkup :: MonadState (DL.DList ReactMarkup) m
     => (DL.DList ReactMarkup -> DL.DList ReactMarkup -> DL.DList ReactMarkup)
     -> m a
@@ -123,13 +124,13 @@ bh :: (MonadState (DL.DList ReactMarkup) m)
     -> (DL.DList JE.Property)
     -> m a
     -> m a
-bh n props = withMarkup (\childs' ms -> ms `DL.snoc` BranchMarkup (BranchParam n props (DL.toList childs')))
+bh n props = withMarkup (\childs' ms -> ms `DL.snoc` BranchMarkup (BranchParam n props childs'))
 
--- Given a mapping function, apply it to children of the markup
-modifyMarkup :: MonadState (DL.DList ReactMarkup) m
-    => (DL.DList ReactMarkup -> DL.DList ReactMarkup)
-    -> m a -> m a
-modifyMarkup f = withMarkup (\childs' ms -> ms `DL.append` f childs')
+-- -- Given a mapping function, apply it to children of the markup
+-- modifyMarkup :: MonadState (DL.DList ReactMarkup) m
+--     => (DL.DList ReactMarkup -> DL.DList ReactMarkup)
+--     -> m a -> m a
+-- modifyMarkup f = withMarkup (\childs' ms -> ms `DL.append` f childs')
 
 -- Given a mapping function, apply it to all child BranchMarkup or LeafMarkup (if possible)
 -- Does not recurse into decendants.
@@ -143,8 +144,14 @@ overSurfaceProperties f childs = DL.fromList $ case DL.toList childs of
         BranchMarkup (BranchParam j (f ps) as) : bs
     bs -> bs
 
-modifySurfaceProperties :: MonadState (DL.DList ReactMarkup) m
-    => (DL.DList JE.Property -> DL.DList JE.Property)
-    -> m a -> m a
-modifySurfaceProperties f = modifyMarkup (overSurfaceProperties f)
-
+-- Given a mapping function, apply it to all child BranchMarkup or LeafMarkup (if possible)
+-- Recurse into decendants.
+overAllProperties ::
+    (DL.DList JE.Property -> DL.DList JE.Property)
+    -> (DL.DList ReactMarkup -> DL.DList ReactMarkup)
+overAllProperties f childs = DL.fromList $ case DL.toList childs of
+    LeafMarkup (LeafParam j ps) : bs ->
+        LeafMarkup (LeafParam j (f ps)) : bs
+    BranchMarkup (BranchParam j ps as) : bs ->
+        BranchMarkup (BranchParam j (f ps) (overAllProperties f as)) : bs
+    bs -> bs

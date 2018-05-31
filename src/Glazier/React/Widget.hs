@@ -55,3 +55,4 @@ prototype = mempty
 
 enlargeModel :: Lens' s' s -> Widget cmd p s a -> Widget cmd p s' a
 enlargeModel l (Widget win gad) = Widget (enlargeScene l win) (enlargeEntity l gad)
+
