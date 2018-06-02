@@ -22,8 +22,8 @@ type SceneState s = StateT (Scene s) ReadIORef
 data ReactorCmd cmd where
     -- | Make a unique named id
     MkReactId :: J.JSString -> (ReactId -> cmd) -> ReactorCmd cmd
-    -- | initialized Subject with ShimCallbacks
-    InitSubject :: Subject s -> Window s () -> ReactorCmd cmd
+    -- | the the rendering function in a Subject
+    SetRender :: Subject s -> Window s () -> ReactorCmd cmd
     -- | Make a fully initialized subject (with ShimCallbacks) from a widget spec and state
     MkSubject :: Widget cmd s s () -> s -> (Subject s -> cmd) -> ReactorCmd cmd
     -- | Rerender a ShimComponent using the given state.
@@ -44,7 +44,7 @@ data ReactorCmd cmd where
 instance Show cmd => Show (ReactorCmd cmd) where
     showsPrec p (MkReactId s _) = showParen (p >= 11) $
         showString "MkReactId " . shows s
-    showsPrec _ (InitSubject _ _ ) = showString "InitSubject"
+    showsPrec _ (SetRender _ _ ) = showString "SetRender"
     showsPrec _ (MkSubject _ _ _) = showString "MkSubject"
     showsPrec _ (Rerender _) = showString "Rerender"
     showsPrec _ (GetScene _ _) = showString "GetScene"

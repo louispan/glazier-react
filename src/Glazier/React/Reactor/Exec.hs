@@ -35,6 +35,7 @@ import Data.Foldable
 import Data.IORef
 import qualified Data.JSString as J
 import Data.Maybe
+import Data.Semigroup
 import Data.Tagged
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Foreign.Callback.Internal as J
@@ -124,7 +125,7 @@ execReactorCmd ::
     => (cmd -> m ()) -> ReactorCmd cmd -> m ()
 execReactorCmd exec c = case c of
     MkReactId n k -> execMkReactId n >>= (exec . k)
-    InitSubject sbj w -> execInitSubject sbj w
+    SetRender sbj w -> execSetRender sbj w
     MkSubject wid s k -> execMkSubject exec wid s >>= (exec . k)
     Rerender sbj -> execRerender sbj
     GetScene sbj k -> execGetScene sbj >>= (exec . k)
@@ -220,20 +221,19 @@ doListen scnRef scnVar ctx j = void $ runMaybeT $ do
             Just hdl -> hdl (JE.JSRep j)
 
 
-execInitSubject :: MonadIO m => Subject s -> Window s () -> m ()
-execInitSubject (Subject scnRef scnVar rel) win = liftIO $ do
+execSetRender :: MonadIO m => Subject s -> Window s () -> m ()
+execSetRender (Subject scnRef scnVar _ renderLeaseRef) win = liftIO $ do
     -- create the callbacks
     renderCb <- J.syncCallback' (doRender scnRef win)
-    refCb <- J.syncCallback1 J.ContinueAsync (doRef scnRef scnVar)
-    renderedCb <- J.syncCallback J.ContinueAsync (doRendered scnRef scnVar)
-    listenCb <- J.syncCallback2 J.ContinueAsync (doListen scnRef scnVar)
-    let cbs = ShimCallbacks renderCb renderedCb refCb listenCb
     -- Create automatic garbage collection of the callbacks
-    -- that will run when the zombieVar is garbage collected.
-    void $ mkWeakMVar rel (CD.runDisposable $ CD.dispose cbs)
+    -- that will run when the Subject lease members are garbage collected.
+    renderLease <- liftIO $ newEmptyMVar
+    void $ mkWeakMVar renderLease (CD.runDisposable $ CD.dispose renderCb)
     -- Replace the existing ShimCallbacks (was fake version)
     scn <- takeMVar scnVar
-    let scn' = scn & _plan._shimCallbacks .~ cbs
+    -- replace the rendering function
+    atomicWriteIORef renderLeaseRef renderLease
+    let scn' = scn & _plan._shimCallbacks._shimRender .~ renderCb
     atomicWriteIORef scnRef scn'
     putMVar scnVar scn'
 
@@ -251,30 +251,46 @@ execMkSubject ::
     -> s
     -> m (Subject s)
 execMkSubject exec gad s = do
-    scnRef <- liftIO $ newIORef (Scene newPlan s)
+    -- create shim with fake callbacks for now
+    let scn = Scene newPlan s
+    scnRef <- liftIO $ newIORef scn
     scnVar <- liftIO $ newEmptyMVar
     -- Create a MVar just for auto cleanup of the callbacks
     -- This mvar must not be reachable from the callbacks,
     -- otherwise the callbacks will always be alive.
-    rel <- liftIO $ newEmptyMVar
-    let sbj = Subject scnRef scnVar rel
+    otherCallbackLease <- liftIO $ newEmptyMVar
+    renderLease <- liftIO $ newEmptyMVar
+    renderLeaseRef <- liftIO $ newIORef renderLease
+    -- Create callbacks for now
+    renderCb <- liftIO $ J.syncCallback' (pure J.nullRef) -- dummy render for now
+    refCb <- liftIO $ J.syncCallback1 J.ContinueAsync (doRef scnRef scnVar)
+    renderedCb <- liftIO $ J.syncCallback J.ContinueAsync (doRendered scnRef scnVar)
+    listenCb <- liftIO $ J.syncCallback2 J.ContinueAsync (doListen scnRef scnVar)
+    -- Create automatic garbage collection of the callbacks
+    -- that will run when the Subject lease members are garbage collected.
+    liftIO $ void $ mkWeakMVar otherCallbackLease (CD.runDisposable $
+        CD.dispose refCb <> CD.dispose renderedCb <> CD.dispose listenCb)
+    liftIO $ void $ mkWeakMVar renderLease (CD.runDisposable $ CD.dispose renderCb)
+    -- Now we have enough to make a subject
+    let sbj = Subject scnRef scnVar otherCallbackLease renderLeaseRef
         -- initalize the subject using the Gadget
-        gad' = gad `bindRight` (postCmd' . InitSubject sbj)
+        gad' = gad `bindRight` (postCmd' . SetRender sbj)
         gad'' = (either id id) <$> gad'
         tick = runGadget gad'' (Entity sbj id) pure
         cs = execAState tick mempty
-        scn = Scene newPlan s
+        -- update the scene to include the real shimcallbacks
+        scn' = scn & _plan._shimCallbacks .~ ShimCallbacks renderCb renderedCb refCb listenCb
     liftIO $ do
-        -- update the mutable variables
-        atomicWriteIORef scnRef scn
-        putMVar scnVar scn
+        -- update the mutable variables with the initialzed scene
+        atomicWriteIORef scnRef scn'
+        putMVar scnVar scn'
     -- execute additional commands
-    -- one of these commands will be 'InitSubject'
+    -- one of these commands will be 'SetRender' which will
+    -- update the dummy render with the real render function.
     exec (command' $ DL.toList cs)
     -- return the subject
     pure sbj
   where
-    newPlan :: Plan
     newPlan = Plan
         Nothing
         (ShimCallbacks (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef))
