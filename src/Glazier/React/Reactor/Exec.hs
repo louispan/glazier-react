@@ -22,7 +22,7 @@ import Control.Concurrent
 import Control.DeepSeq
 import qualified Control.Disposable as CD
 import Control.Lens
-import Control.Monad.IO.Class
+import Control.Monad.Delegate
 import Control.Monad.IO.Unlift
 import Control.Monad.Reader
 import Control.Monad.State.Strict
@@ -33,6 +33,7 @@ import Data.Diverse.Lens
 import qualified Data.DList as DL
 import Data.Foldable
 import Data.IORef
+import qualified Data.JSString as J
 import Data.Maybe
 import Data.Tagged
 import qualified GHCJS.Foreign.Callback as J
@@ -45,13 +46,15 @@ import Glazier.React.Entity
 import Glazier.React.Gadget
 import Glazier.React.HandleEvent
 import Glazier.React.Markup
-import Glazier.React.MkId.Internal
+import Glazier.React.ReactId.Internal
 import Glazier.React.Reactor
+import Glazier.React.Reactor.Internal
 import Glazier.React.ReadIORef
 import Glazier.React.Scene
 import Glazier.React.Subject
 import Glazier.React.Subject.Internal
 import Glazier.React.Widget
+import Glazier.React.Window
 import qualified JavaScript.Array as JA
 import qualified JavaScript.Extras as JE
 
@@ -98,6 +101,8 @@ import qualified JavaScript.Extras as JE
 maybeExecReactor ::
     ( MonadUnliftIO m
     , AsReactor cmd
+    , Has (Tagged ReactId (MVar Int)) r
+    , MonadReader r m
     )
     => (cmd -> m ()) -> cmd -> MaybeT m ()
 maybeExecReactor exec c =
@@ -112,10 +117,14 @@ maybeExecReactor exec c =
 
 execReactorCmd ::
     ( MonadUnliftIO m
-    , AsFacet [cmd] cmd
+    , AsReactor cmd
+    , Has (Tagged ReactId (MVar Int)) r
+    , MonadReader r m
     )
     => (cmd -> m ()) -> ReactorCmd cmd -> m ()
 execReactorCmd exec c = case c of
+    MkReactId n k -> execMkReactId n >>= (exec . k)
+    InitSubject sbj w -> execInitSubject sbj w
     MkSubject wid s k -> execMkSubject exec wid s >>= (exec . k)
     Rerender sbj -> execRerender sbj
     GetScene sbj k -> execGetScene sbj >>= (exec . k)
@@ -124,7 +133,109 @@ execReactorCmd exec c = case c of
     MkHandler1 goStrict goLazy k -> execMkHandler1 exec goStrict goLazy >>= (exec . k)
 
 -----------------------------------------------------------------
+execMkReactId ::
+    ( MonadIO m
+    , Has (Tagged ReactId (MVar Int)) r
+    , MonadReader r m
+    )
+    => J.JSString
+    -> m ReactId
+execMkReactId n = do
+    v <- view (pieceTag' @ReactId)
+    liftIO $ do
+        i <- takeMVar v
+        let i' = JE.safeIncrement i
+        putMVar v i'
+        pure . ReactId . J.append n . J.cons ':' . J.pack $ show i'
 
+
+doRender :: IORef (Scene s) -> Window s () -> IO J.JSVal
+doRender scnRef win = do
+    -- render using from scnRef (doesn't block)
+    scn <- readIORef scnRef
+    (mrkup, _) <- unReadIORef (execARWST win scn mempty) -- ignore unit writer output
+    JE.toJS <$> toElement mrkup
+
+doRef :: IORef (Scene s) -> MVar (Scene s) -> J.JSVal -> IO ()
+doRef scnRef scnVar j = do
+    -- update componentRef held in the Plan
+    Scene pln mdl <- takeMVar scnVar
+    let scn' = Scene (pln & _componentRef .~ JE.fromJS j) mdl
+    atomicWriteIORef scnRef scn'
+    putMVar scnVar scn'
+
+doRendered :: IORef (Scene s) -> MVar (Scene s) -> IO ()
+doRendered scnRef scnVar = join $ do
+    -- Get the IO actions doOnRendered and reset the "Once" actions
+    Scene pln mdl <- takeMVar scnVar
+    let ((untag @"Once") -> x, (untag @"Always") -> y) = doOnRendered pln
+        scn' = Scene (pln & _doOnRendered._1 .~ (Tagged @"Once" mempty)) mdl
+    atomicWriteIORef scnRef scn'
+    putMVar scnVar scn'
+    -- runs the "Once" actions before "Always".
+    pure (x *> y)
+
+-- Refer to 'Glazier.React.Window.getListeners'
+doListen :: IORef (Scene s) -> MVar (Scene s) -> J.JSVal -> J.JSVal -> IO ()
+doListen scnRef scnVar ctx j = void $ runMaybeT $ do
+    -- ctx is [ ReactId, event name (eg OnClick) ]
+    -- Javascript doesn't have tuples, only list
+    (ri, n) <- MaybeT $ pure $ do
+        ctx' <- JE.fromJS ctx
+        case JA.toList ctx' of
+                [ri', n'] -> do
+                    ri'' <- ReactId <$> JE.fromJS ri'
+                    n'' <- JE.fromJS n'
+                    Just (ri'', n'')
+                -- malformed ctx, ignore
+                _ -> Nothing
+    lift $ do
+        mhdl <- do
+                Scene pln mdl <- takeMVar scnVar
+                -- get the handler for the elemental and event name.
+                -- also get the updated elemental as the "Once" handler may be reset.
+                -- returns (Maybe handler, Maybe newElemental)
+                -- First, look for elemental:
+                let (mhdl, gs') = at ri go (pln ^. _elementals)
+                    go mg = case mg of
+                            Nothing -> (Nothing, Nothing)
+                            -- found elemental, check listeners for event name
+                            Just g -> let (ret, l) = at n go' (g ^. _listeners)
+                                        in (ret, Just (g & _listeners .~ l))
+                    go' ml = case ml of
+                            Nothing -> (Nothing, Nothing)
+                            -- Found listener with event name, reset "Once" actions
+                            Just ((untag @"Once") -> x, y) ->
+                                ( Just (x *> (untag @"Always" y))
+                                , Just (Tagged @"Once" mempty, y))
+                    -- update the elemental with resetted "Once" listeners
+                    -- and return the combined handler
+                    scn' = Scene (pln & _elementals .~ gs') mdl
+                atomicWriteIORef scnRef scn'
+                putMVar scnVar scn'
+                pure mhdl
+        -- pass the javascript event arg into the combined handler
+        case mhdl of
+            Nothing -> pure ()
+            Just hdl -> hdl (JE.JSRep j)
+
+
+execInitSubject :: MonadIO m => Subject s -> Window s () -> m ()
+execInitSubject (Subject scnRef scnVar rel) win = liftIO $ do
+    -- create the callbacks
+    renderCb <- J.syncCallback' (doRender scnRef win)
+    refCb <- J.syncCallback1 J.ContinueAsync (doRef scnRef scnVar)
+    renderedCb <- J.syncCallback J.ContinueAsync (doRendered scnRef scnVar)
+    listenCb <- J.syncCallback2 J.ContinueAsync (doListen scnRef scnVar)
+    let cbs = ShimCallbacks renderCb renderedCb refCb listenCb
+    -- Create automatic garbage collection of the callbacks
+    -- that will run when the zombieVar is garbage collected.
+    void $ mkWeakMVar rel (CD.runDisposable $ CD.dispose cbs)
+    -- Replace the existing ShimCallbacks (was fake version)
+    scn <- takeMVar scnVar
+    let scn' = scn & _plan._shimCallbacks .~ cbs
+    atomicWriteIORef scnRef scn'
+    putMVar scnVar scn'
 
 -- | Make an initialized 'Subject' for a given model using the given
 -- 'Window' rendering function.
@@ -133,98 +244,34 @@ execReactorCmd exec c = case c of
 -- 'displaySubject' should be used to render the subject.
 execMkSubject ::
     ( MonadIO m
-    , AsFacet [cmd] cmd
+    , AsReactor cmd
     )
     => (cmd -> m ())
     -> Widget cmd s s ()
     -> s
     -> m (Subject s)
-execMkSubject exec (Widget win gad) s = do
+execMkSubject exec gad s = do
     scnRef <- liftIO $ newIORef (Scene newPlan s)
     scnVar <- liftIO $ newEmptyMVar
-    let doRender = do
-            -- render using from scnRef (doesn't block)
-            scn <- readIORef scnRef
-            (mrkup, _) <- unReadIORef (execARWST win scn mempty) -- ignore unit writer output
-            JE.toJS <$> toElement mrkup
-        doRef j = do
-            -- update componentRef held in the Plan
-            Scene pln mdl <- takeMVar scnVar
-            putMVar scnVar $ Scene (pln & _componentRef .~ JE.fromJS j) mdl
-        doRendered = join $ do
-            -- Get the IO actions doOnRendered and reset the "Once" actions
-            Scene pln mdl <- takeMVar scnVar
-            let ((untag @"Once") -> x, (untag @"Always") -> y) = doOnRendered pln
-            putMVar scnVar $ Scene (pln & _doOnRendered._1 .~ (Tagged @"Once" mempty)) mdl
-            -- runs the "Once" actions before "Always".
-            pure (x *> y)
-        doListen ctx j = void $ runMaybeT $ do
-            -- ctx is [ ElementalId, event name (eg OnClick) ]
-            -- Javascript doesn't have tuples, only list
-            (eid, n) <- MaybeT $ pure $ do
-                ctx' <- JE.fromJS ctx
-                case JA.toList ctx' of
-                        [eid', n'] -> do
-                            eid'' <- ElementalId <$> JE.fromJS eid'
-                            n'' <- JE.fromJS n'
-                            Just (eid'', n'')
-                        -- malformed ctx, ignore
-                        _ -> Nothing
-            lift $ do
-                mhdl <- do
-                        Scene pln mdl <- takeMVar scnVar
-                        -- get the handler for the elemental and event name.
-                        -- also get the updated elemental as the "Once" handler may be reset.
-                        -- returns (Maybe handler, Maybe newElemental)
-                        -- First, look for elemental:
-                        let (mhdl, gs') = at eid go (pln ^. _elementals)
-                            go mg = case mg of
-                                    Nothing -> (Nothing, Nothing)
-                                    -- found elemental, check listeners for event name
-                                    Just g -> let (ret, l) = at n go' (g ^. _listeners)
-                                              in (ret, Just (g & _listeners .~ l))
-                            go' ml = case ml of
-                                    Nothing -> (Nothing, Nothing)
-                                    -- Found listener with event name, reset "Once" actions
-                                    Just ((untag @"Once") -> x, y) ->
-                                        ( Just (x *> (untag @"Always" y))
-                                        , Just (Tagged @"Once" mempty, y))
-                        -- update the elemental with resetted "Once" listeners
-                        -- and return the combined handler
-                        putMVar scnVar $ Scene (pln & _elementals .~ gs') mdl
-                        pure mhdl
-                -- pass the javascript event arg into the combined handler
-                case mhdl of
-                    Nothing -> pure ()
-                    Just hdl -> hdl (JE.JSRep j)
-
-    renderCb <- liftIO $ J.syncCallback' doRender
-    refCb <- liftIO $ J.syncCallback1 J.ContinueAsync doRef
-    renderedCb <- liftIO $ J.syncCallback J.ContinueAsync doRendered
-    listenCb <- liftIO $ J.syncCallback2 J.ContinueAsync doListen
     -- Create a MVar just for auto cleanup of the callbacks
     -- This mvar must not be reachable from the callbacks,
     -- otherwise the callbacks will always be alive.
     rel <- liftIO $ newEmptyMVar
-    let cbs = ShimCallbacks renderCb renderedCb refCb listenCb
-        pln = newPlan & _shimCallbacks .~ cbs
-        scn = Scene pln s
-        -- keep zombie alive as long as 'Subject' 'prolong' is reachable.
-        sbj = Subject scnRef scnVar rel
+    let sbj = Subject scnRef scnVar rel
         -- initalize the subject using the Gadget
-        tick = runGadget gad (Entity sbj id) pure
+        gad' = gad `bindRight` (postCmd' . InitSubject sbj)
+        gad'' = (either id id) <$> gad'
+        tick = runGadget gad'' (Entity sbj id) pure
         cs = execAState tick mempty
-        cleanup = CD.runDisposable $ CD.dispose cbs
+        scn = Scene newPlan s
     liftIO $ do
-        -- Create automatic garbage collection of the callbacks
-        -- that will run when the zombieVar is garbage collected.
-        void $ mkWeakMVar rel cleanup
         -- update the mutable variables
         atomicWriteIORef scnRef scn
         putMVar scnVar scn
     -- execute additional commands
+    -- one of these commands will be 'InitSubject'
     exec (command' $ DL.toList cs)
-    -- return the initialized subject
+    -- return the subject
     pure sbj
   where
     newPlan :: Plan

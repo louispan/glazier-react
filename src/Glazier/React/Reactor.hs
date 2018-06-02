@@ -13,8 +13,9 @@
 module Glazier.React.Reactor
     ( AsReactor
     , MonadReactor
-    , ReactorCmd(..)
+    , ReactorCmd -- constructor not exported
     , SceneState
+    , mkReactId
     , mkSubject
     , mkSubject'
     -- , addSubject
@@ -42,9 +43,9 @@ import Data.Tagged
 import qualified GHCJS.Types as J
 import Glazier.Command
 import Glazier.React.Entity
-import Glazier.React.MkId
 import Glazier.React.Notice
-import Glazier.React.ReadIORef
+import Glazier.React.ReactId
+import Glazier.React.Reactor.Internal
 import Glazier.React.Scene
 import Glazier.React.Subject
 import Glazier.React.Widget
@@ -64,55 +65,32 @@ type MonadReactor p s cmd m =
     -- , Monoid (m ())
     )
 
-type SceneState s = StateT (Scene s) ReadIORef
-
--- | NB. ReactorCmd is not a functor.
-data ReactorCmd cmd where
-    -- | Make a subject from a widget spec and state
-    MkSubject :: Widget cmd s s () -> s -> (Subject s -> cmd) -> ReactorCmd cmd
-    -- | Rerender a ShimComponent using the given state.
-    Rerender :: Subject s -> ReactorCmd cmd
-    -- | Generate a list of commands from reading a scene.
-    GetScene :: Subject s -> (Scene s -> cmd) -> ReactorCmd cmd
-    -- | Update and rerender a scene.
-    TickScene :: Subject s -> SceneState s cmd -> ReactorCmd cmd
-    -- | DoReadIORef :: IORef a -> (a -> cmd) -> ReactorCmd
-    MkHandler :: cmd -> (IO () -> cmd) -> ReactorCmd cmd
-    -- | Convert a callback to a @JE.JSRep -> IO ()@
-    MkHandler1 :: NFData a
-        => (JE.JSRep -> MaybeT IO a)
-        -> (a -> cmd)
-        -> ((JE.JSRep -> IO ()) -> cmd)
-        -> ReactorCmd cmd
-
-instance Show cmd => Show (ReactorCmd cmd) where
-    showsPrec _ (MkSubject _ _ _) = showString "MkSubject"
-    showsPrec _ (Rerender _) = showString "Rerender"
-    showsPrec _ (GetScene _ _) = showString "GetScene"
-    showsPrec _ (TickScene _ _) = showString "TickScene"
-    showsPrec p (MkHandler c _) = showParen (p >= 11) $
-        showString "MkHandler " . shows c
-    showsPrec _ (MkHandler1 _ _ _) = showString "MkHandler1"
-
 ------------------------------------------------------
+-- | Make a unique named id
+mkReactId :: (AsReactor cmd, MonadCommand cmd m)
+    => J.JSString -> m ReactId
+mkReactId n = delegate $ \fire -> do
+    f <- codify fire
+    postCmd' $ MkReactId n f
 
 -- | Make an initialized 'Subject' for a given model using the given 'Widget'.
 mkSubject :: (AsReactor cmd, MonadCommand cmd m)
     => Widget cmd s s a -> s -> m (Either a (Subject s))
-mkSubject (Widget win gad) s =
-    delegate $ \fire -> do
-        f <- codify fire
-        let gad' = gad >>= (post . f . Left)
-        postCmd' $ MkSubject (Widget win gad') s (f . Right)
+mkSubject gad s = delegate $ \fire -> do
+    f <- codify fire
+    let gad' = do
+            e <- gad
+            delegate $ \fw -> case e of
+                Left a -> post . f $ Left a
+                Right w -> fw $ Right w
+    postCmd' $ MkSubject gad' s (f . Right)
 
 -- | Make an initialized 'Subject' for a given model using the given 'Widget'.
 mkSubject' :: (AsReactor cmd, MonadCommand cmd m)
     => Widget cmd s s () -> s -> m (Subject s)
-mkSubject' wid s = delegate $ \fire -> do
-    x <- mkSubject wid s
-    case x of
-        Left _ -> pure ()
-        Right sbj -> fire sbj
+mkSubject' gad s = delegate $ \fire -> do
+    f <- codify fire
+    postCmd' $ MkSubject gad s f
 
 -- -- | Add a constructed subject to a parent widget
 -- addSubject :: (MonadReactor p ss cmd m)
@@ -171,17 +149,17 @@ trigger ::
     ( NFData a
     , MonadReactor p s cmd m
     )
-    => ElementalId
+    => ReactId
     -> Lens' (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Always" (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
     -> J.JSString
     -> (JE.JSRep -> MaybeT IO a)
     -> m a
-trigger eid l n goStrict = delegate $ \goLazy -> do
+trigger ri l n goStrict = delegate $ \goLazy -> do
     Entity sbj _ <- ask
     goLazy' <- codify goLazy
     postCmd' $ MkHandler1 goStrict goLazy' $ \act ->
         -- save the created action handler in the elemental
-        let updateElemental = _plan._elementals.at eid %= (Just . addListener . fromMaybe newElemental)
+        let updateElemental = _plan._elementals.at ri %= (Just . addListener . fromMaybe newElemental)
             addListener = _listeners.at n %~ (Just . addAction . fromMaybe (Tagged mempty, Tagged mempty))
             addAction acts = acts & l %~ (*> act)
         in command' $ doTickScene sbj updateElemental
@@ -191,12 +169,12 @@ trigger' ::
     ( NFData a
     , MonadReactor p s cmd m
     )
-    => ElementalId
+    => ReactId
     -> Lens' (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Always" (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
     -> J.JSString
     -> (Notice -> MaybeT IO a)
     -> m a
-trigger' eid l n goStrict = trigger eid l n $ handlesNotice goStrict
+trigger' ri l n goStrict = trigger ri l n $ handlesNotice goStrict
   where
     handlesNotice :: (Notice -> MaybeT IO a) -> (JE.JSRep -> MaybeT IO a)
     handlesNotice k j = MaybeT (pure $ JE.fromJSR j) >>= k
@@ -205,13 +183,13 @@ trigger' eid l n goStrict = trigger eid l n $ handlesNotice goStrict
 trigger_ ::
     ( MonadReactor p s cmd m
     )
-    => ElementalId
+    => ReactId
     -> Lens' (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Always" (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
     -> J.JSString
     -> a
     -> m a
-trigger_ eid l n a = do
-    trigger eid l n (const $ pure ())
+trigger_ ri l n a = do
+    trigger ri l n (const $ pure ())
     pure a
 
 -- | Register actions to execute after a render.
@@ -237,9 +215,9 @@ onRendered l m = do
 
 -- | This adds a ReactJS "ref" callback assign the ref into an 'EventTarget'
 -- for the elemental in the plan, so that the elemental '_targetRef' can be used.
-hdlElementalRef :: MonadReactor p s cmd m => ElementalId -> m ()
-hdlElementalRef eid = trigger eid _always "ref" (pure . JE.fromJSR) >>= hdlRef
+hdlElementalRef :: MonadReactor p s cmd m => ReactId -> m ()
+hdlElementalRef ri = trigger ri _always "ref" (pure . JE.fromJSR) >>= hdlRef
   where
     hdlRef x = do
         sbj <- view _subject
-        postCmd' . doTickScene sbj $ (_plan._elementals.ix eid._elementalRef .= x)
+        postCmd' . doTickScene sbj $ (_plan._elementals.ix ri._elementalRef .= x)

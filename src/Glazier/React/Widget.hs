@@ -7,52 +7,63 @@
 module Glazier.React.Widget where
 
 import Control.Lens
-import Control.Lens.Misc
-import Data.Semigroup
-import qualified GHC.Generics as G
+-- import Control.Lens.Misc
+import Data.Bifunctor
+-- import Data.Semigroup
+-- import qualified GHC.Generics as G
 import Glazier.React.Entity
 import Glazier.React.Gadget
 import Glazier.React.Window
 
-data Widget cmd p s a = Widget
-    { window :: Window s () -- so it can read IORef
-    , gadget :: Gadget cmd p s a
-    } deriving (G.Generic, Functor)
+type Widget cmd p s a = Gadget cmd p s (Either a (Window s ()))
 
-makeLenses_ ''Widget
+-- type Widget' cmd p s = Gadget cmd p s (Window s ())
 
-overGadget2 ::
-    (Gadget c1 p1 s a1 -> Gadget c2 p2 s a2 -> Gadget c3 p3 s a3)
-    -> Widget c1 p1 s a1 -> Widget c2 p2 s a2 -> Widget c3 p3 s a3
-overGadget2 f (Widget dis1 ini1) (Widget dis2 ini2) =
-    Widget
-    (dis1 <> dis2)
-    (f ini1 ini2)
+-- magnifyWidget' :: Lens' t s -> Gadget cmd p s (Window s ()) -> Gadget cmd p t (Window t ())
+-- magnifyWidget' l gad = (enlargeScene l) <$> (enlargeEntity l gad)
 
--- overGadget :: (Gadget c1 p1 s a1 -> Gadget c2 p2 s a2) -> Widget c1 p1 s a1 -> Widget c2 p2 s a2
--- overGadget f = _gadget %~ f
+magnifyWidget :: Lens' t s -> Gadget cmd p s (Either a (Window s ())) -> Gadget cmd p t (Either a (Window t ()))
+magnifyWidget l gad = (second (enlargeScene l)) <$> (enlargeEntity l gad)
 
--- overWindow :: (Window s () -> Window s ()) -> Widget c p s a -> Widget c p s a
--- overWindow f = _window %~ f
+-- data Widget cmd p s a = Widget
+--     { window :: Window s () -- so it can read IORef
+--     , gadget :: Gadget cmd p s a
+--     } deriving (G.Generic, Functor)
 
-------------------------------------------
+-- makeLenses_ ''Widget
 
-instance Applicative (Widget cmd p s) where
-    pure a = Widget mempty (pure a)
-    (<*>) = overGadget2 (<*>)
+-- overGadget2 ::
+--     (Gadget c1 p1 s a1 -> Gadget c2 p2 s a2 -> Gadget c3 p3 s a3)
+--     -> Widget c1 p1 s a1 -> Widget c2 p2 s a2 -> Widget c3 p3 s a3
+-- overGadget2 f (Widget dis1 ini1) (Widget dis2 ini2) =
+--     Widget
+--     (dis1 <> dis2)
+--     (f ini1 ini2)
 
--- merge ContT together by pre-firing the left ContT's output.
--- That is, the resultant ContT will fire the output twice.
-instance Semigroup (Widget cmd p s a) where
-    (<>) = overGadget2 (<>)
+-- -- overGadget :: (Gadget c1 p1 s a1 -> Gadget c2 p2 s a2) -> Widget c1 p1 s a1 -> Widget c2 p2 s a2
+-- -- overGadget f = _gadget %~ f
 
-instance Monoid (Widget cmd p s a) where
-    mempty = Widget mempty mempty
-    mappend = overGadget2 mappend
+-- -- overWindow :: (Window s () -> Window s ()) -> Widget c p s a -> Widget c p s a
+-- -- overWindow f = _window %~ f
 
-prototype :: Widget cmd p s ()
-prototype = mempty
+-- ------------------------------------------
 
-enlargeModel :: Lens' s' s -> Widget cmd p s a -> Widget cmd p s' a
-enlargeModel l (Widget win gad) = Widget (enlargeScene l win) (enlargeEntity l gad)
+-- instance Applicative (Widget cmd p s) where
+--     pure a = Widget mempty (pure a)
+--     (<*>) = overGadget2 (<*>)
+
+-- -- merge ContT together by pre-firing the left ContT's output.
+-- -- That is, the resultant ContT will fire the output twice.
+-- instance Semigroup (Widget cmd p s a) where
+--     (<>) = overGadget2 (<>)
+
+-- instance Monoid (Widget cmd p s a) where
+--     mempty = Widget mempty mempty
+--     mappend = overGadget2 mappend
+
+-- prototype :: Widget cmd p s ()
+-- prototype = mempty
+
+-- enlargeModel :: Lens' s' s -> Widget cmd p s a -> Widget cmd p s' a
+-- enlargeModel l (Widget win gad) = Widget (enlargeScene l win) (enlargeEntity l gad)
 

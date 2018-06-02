@@ -32,17 +32,18 @@ library
                        Glazier.React.Gadget
                        Glazier.React.HandleEvent
                        Glazier.React.Markup
-                       Glazier.React.ReadIORef
-                       Glazier.React.ReadIORef.Internal
-                       Glazier.React.MkId
-                       Glazier.React.MkId.Internal
                        Glazier.React.NativeEvent
                        Glazier.React.NativeEvent.Internal
                        Glazier.React.Notice
                        Glazier.React.Notice.Internal
                        Glazier.React.ReactDOM
+                       Glazier.React.ReactId
+                       Glazier.React.ReactId.Internal
                        Glazier.React.Reactor
                        Glazier.React.Reactor.Exec
+                       Glazier.React.Reactor.Internal
+                       Glazier.React.ReadIORef
+                       Glazier.React.ReadIORef.Internal
                        Glazier.React.Scene
                        Glazier.React.Subject
                        Glazier.React.Subject.Internal

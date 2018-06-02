@@ -30,7 +30,7 @@ import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
 import Glazier.React.Component
 import Glazier.React.EventTarget
-import Glazier.React.MkId
+import Glazier.React.ReactId
 import qualified JavaScript.Extras as JE
 
 ----------------------------------------------------------------------------------
@@ -82,7 +82,7 @@ data Plan = Plan
     , shimCallbacks :: ShimCallbacks
     , doOnRendered :: (Tagged "Once" (IO ()), Tagged "Always" (IO ()))
     -- interactivity data for child DOM elements
-    , elementals :: M.Map ElementalId Elemental
+    , elementals :: M.Map ReactId Elemental
     } deriving (G.Generic)
 
 makeLenses_ ''Plan
@@ -119,5 +119,5 @@ editSceneModel l safa s = (\s' -> s & _model .~ s' ) <$> l afa' (s ^. _model)
 
 ----------------------------------------------------------------------------------
 
-elementTarget :: ElementalId -> Traversal' (Scene s) EventTarget
-elementTarget eid = _plan._elementals.ix eid._elementalRef._Just
+elementTarget :: ReactId -> Traversal' (Scene s) EventTarget
+elementTarget ri = _plan._elementals.ix ri._elementalRef._Just
