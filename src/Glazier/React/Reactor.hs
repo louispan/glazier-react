@@ -76,14 +76,10 @@ mkReactId n = delegate $ \fire -> do
 -- | Make an initialized 'Subject' for a given model using the given 'Widget'.
 mkSubject :: (AsReactor cmd, MonadCommand cmd m)
     => Widget cmd s s a -> s -> m (Either a (Subject s))
-mkSubject gad s = delegate $ \fire -> do
+mkSubject wid s = delegate $ \fire -> do
     f <- codify fire
-    let gad' = do
-            e <- gad
-            delegate $ \fw -> case e of
-                Left a -> post . f $ Left a
-                Right w -> fw $ Right w
-    postCmd' $ MkSubject gad' s (f . Right)
+    let wid' = wid `bindLeft` (post . f . Left)
+    postCmd' $ MkSubject wid' s (f . Right)
 
 -- | Make an initialized 'Subject' for a given model using the given 'Widget'.
 mkSubject' :: (AsReactor cmd, MonadCommand cmd m)
