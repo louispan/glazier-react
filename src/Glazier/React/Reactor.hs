@@ -121,7 +121,7 @@ mkSubject :: (AsReactor cmd, MonadCommand cmd m)
     => Widget cmd s s a -> s -> m (Either a (Subject s))
 mkSubject wid s = delegate $ \fire -> do
     f <- codify fire
-    let wid' = wid `bindLeft` (post . f . Left)
+    let wid' = wid >>= (post . f . Left)
     postCmd' $ MkSubject wid' s (f . Right)
 
 -- | Make an initialized 'Subject' for a given model using the given 'Widget'.

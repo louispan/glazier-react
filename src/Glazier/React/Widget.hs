@@ -11,19 +11,23 @@ import Control.Lens
 import Data.Bifunctor
 -- import Data.Semigroup
 -- import qualified GHC.Generics as G
+import Control.Monad.Trans.AExcept
 import Glazier.React.Entity
 import Glazier.React.Gadget
 import Glazier.React.Window
 
-type Widget cmd p s a = Gadget cmd p s (Either a (Window s ()))
+type Widget cmd p s a = AExceptT (Window s ()) (Gadget cmd p s) a
 
 -- type Widget' cmd p s = Gadget cmd p s (Window s ())
 
 -- magnifyWidget' :: Lens' t s -> Gadget cmd p s (Window s ()) -> Gadget cmd p t (Window t ())
 -- magnifyWidget' l gad = (enlargeScene l) <$> (enlargeEntity l gad)
 
-magnifyWidget :: Lens' t s -> Gadget cmd p s (Either a (Window s ())) -> Gadget cmd p t (Either a (Window t ()))
-magnifyWidget l gad = (second (enlargeScene l)) <$> (enlargeEntity l gad)
+-- magnifyWidget' :: Lens' t s -> Gadget cmd p s (Either (Window s ()) a) -> Gadget cmd p t (Either (Window t ()) a)
+-- magnifyWidget' l gad = (first (enlargeScene l)) <$> (enlargeEntity l gad)
+
+magnifyWidget :: Lens' t s -> AExceptT (Window s ()) (Gadget cmd p s) a -> AExceptT (Window t ()) (Gadget cmd p t) a
+magnifyWidget l wid = aexceptT ((first (enlargeScene l)) <$> (enlargeEntity l (runAExceptT wid)))
 
 -- data Widget cmd p s a = Widget
 --     { window :: Window s () -- so it can read IORef

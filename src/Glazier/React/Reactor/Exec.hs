@@ -26,6 +26,7 @@ import Control.Monad.Delegate
 import Control.Monad.IO.Unlift
 import Control.Monad.Reader
 import Control.Monad.State.Strict
+import Control.Monad.Trans.AExcept
 import Control.Monad.Trans.ARWS.Strict
 import Control.Monad.Trans.AState.Strict
 import Control.Monad.Trans.Maybe
@@ -249,7 +250,7 @@ execMkSubject ::
     -> Widget cmd s s ()
     -> s
     -> m (Subject s)
-execMkSubject exec gad s = do
+execMkSubject exec wid s = do
     -- create shim with fake callbacks for now
     let scn = Scene newPlan s
     scnRef <- liftIO $ newIORef scn
@@ -273,7 +274,8 @@ execMkSubject exec gad s = do
     -- Now we have enough to make a subject
     let sbj = Subject scnRef scnVar otherCallbackLease renderLeaseRef
         -- initalize the subject using the Gadget
-        gad' = gad `bindRight` (postCmd' . SetRender sbj)
+        gad = runAExceptT wid
+        gad' = gad `bindLeft` (postCmd' . SetRender sbj)
         gad'' = (either id id) <$> gad'
         tick = runGadget gad'' (Entity sbj id) pure
         cs = execAState tick mempty
