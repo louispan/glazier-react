@@ -41,7 +41,6 @@ library
                        Glazier.React.ReactId.Internal
                        Glazier.React.Reactor
                        Glazier.React.Reactor.Exec
-                       Glazier.React.Reactor.Internal
                        Glazier.React.ReadIORef
                        Glazier.React.ReadIORef.Internal
                        Glazier.React.Scene

@@ -49,7 +49,6 @@ import Glazier.React.HandleEvent
 import Glazier.React.Markup
 import Glazier.React.ReactId.Internal
 import Glazier.React.Reactor
-import Glazier.React.Reactor.Internal
 import Glazier.React.ReadIORef
 import Glazier.React.Scene
 import Glazier.React.Subject
@@ -358,3 +357,4 @@ execMkHandler exec c = do
     let f = u $ exec c
     -- Apply to result to the continuation, and execute any produced commands
     pure f
+
