@@ -26,18 +26,24 @@ module Glazier.React
     , module Control.Monad.Delegate
     , module Control.Monad.Reader
     , module Control.Monad.Trans.AReader
+    , module Control.Monad.Except
+    , module Control.Monad.Trans.AExcept
     , module Control.Monad.State.Class
     , module Control.Monad.Trans.AState.Strict
     , module Control.Monad.Trans.ARWS.Strict
     , module Control.Monad.Trans.Maybe
+    , module Control.Monad.Trans.AMaybe
     , module Control.Monad.Trans.Maybe.Extras
     ) where
 
 import Control.Monad
 import Control.Monad.Delegate
+import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State.Class
 import Control.Monad.Trans
+import Control.Monad.Trans.AExcept
+import Control.Monad.Trans.AMaybe
 import Control.Monad.Trans.AReader
 import Control.Monad.Trans.ARWS.Strict
 import Control.Monad.Trans.AState.Strict
