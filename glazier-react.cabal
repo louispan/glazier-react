@@ -13,7 +13,6 @@ category:            Web, GUI
 build-type:          Simple
 extra-source-files:  README.md
 cabal-version:       >=1.10
-tested-with:         GHC == 8.4.1
 
 library
   hs-source-dirs:      src
@@ -72,7 +71,7 @@ library
   if impl(ghcjs)
     build-depends: ghcjs-base
   if !impl(ghcjs)
-    build-depends: ghcjs-base-stub >= 0.1.0.4
+    build-depends: ghcjs-base-stub >= 0.2
 
 source-repository head
   type:     git

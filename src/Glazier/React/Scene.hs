@@ -21,7 +21,6 @@ module Glazier.React.Scene where
 import qualified Control.Disposable as CD
 import Control.Lens
 import Control.Lens.Misc
-import Control.Monad.RWS
 import qualified Data.Map.Strict as M
 import Data.Maybe
 import Data.Tagged
