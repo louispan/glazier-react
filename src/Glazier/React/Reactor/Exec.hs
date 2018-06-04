@@ -25,18 +25,16 @@ import Control.Lens
 import Control.Monad.Delegate
 import Control.Monad.IO.Unlift
 import Control.Monad.Reader
-import Control.Monad.State.Strict
-import Control.Monad.Trans.AExcept
-import Control.Monad.Trans.ARWS.Strict
-import Control.Monad.Trans.AState.Strict
+import Control.Monad.Trans.Except
 import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.RWS.Strict
+import Control.Monad.Trans.State.Strict
 import Data.Diverse.Lens
 import qualified Data.DList as DL
 import Data.Foldable
 import Data.IORef
 import qualified Data.JSString as J
 import Data.Maybe
-import Data.Semigroup
 import Data.Tagged
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Foreign.Callback.Internal as J
@@ -154,7 +152,7 @@ doRender :: IORef (Scene s) -> Window s () -> IO J.JSVal
 doRender scnRef win = do
     -- render using from scnRef (doesn't block)
     scn <- readIORef scnRef
-    (mrkup, _) <- unReadIORef (execARWST win scn mempty) -- ignore unit writer output
+    (mrkup, _) <- unReadIORef (execRWST win scn mempty) -- ignore unit writer output
     JE.toJS <$> toElement mrkup
 
 doRef :: IORef (Scene s) -> MVar (Scene s) -> J.JSVal -> IO ()
@@ -274,11 +272,11 @@ execMkSubject exec wid s = do
     -- Now we have enough to make a subject
     let sbj = Subject scnRef scnVar otherCallbackLease renderLeaseRef
         -- initalize the subject using the Gadget
-        gad = runAExceptT wid
+        gad = runExceptT wid
         gad' = gad `bindLeft` (postCmd' . SetRender sbj)
         gad'' = (either id id) <$> gad'
         tick = runGadget gad'' (Entity sbj id) pure
-        cs = execAState tick mempty
+        cs = execState tick mempty
         -- update the scene to include the real shimcallbacks
         scn' = scn & _plan._shimCallbacks .~ ShimCallbacks renderCb renderedCb refCb listenCb
     liftIO $ do

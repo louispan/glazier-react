@@ -13,10 +13,9 @@ module Glazier.React.Window where
 import Control.Lens
 import Control.Monad.Reader
 import Control.Monad.State.Strict
-import Control.Monad.Trans.ARWS.Strict
+import Control.Monad.Trans.RWS.Strict
 import qualified Data.DList as DL
 import qualified Data.Map.Strict as M
-import Data.Semigroup
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
 import Glazier.React.Component
@@ -29,7 +28,7 @@ import qualified JavaScript.Array as JA
 import qualified JavaScript.Extras as JE
 
 -- The @s@ can be magnified with 'enlargeScene'
-type Window s = ARWST (Scene s) () (DL.DList ReactMarkup) ReadIORef
+type Window s = RWST (Scene s) () (DL.DList ReactMarkup) ReadIORef
 
 -- type SceneDisplay x s r = Display (Scene x s) r
 ----------------------------------------------------------------------------------

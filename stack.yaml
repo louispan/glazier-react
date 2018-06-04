@@ -15,7 +15,7 @@
 # resolver:
 #  name: custom-snapshot
 #  location: "./custom-snapshot.yaml"
-resolver: lts-7.19
+resolver: nightly-2018-04-21
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -41,7 +41,11 @@ packages:
   extra-dep: true
 - location: '/Users/louis/repo/js/javascript-extras'
   extra-dep: true
+- location: '/Users/louis/repo/js/ghcjs-base-stub'
+  extra-dep: true
 - location: '/Users/louis/repo/hs/lens-misc'
+  extra-dep: true
+- location: '/Users/louis/repo/hs/data-diverse-lens'
   extra-dep: true
 - location: '/Users/louis/repo/hs/alternators'
   extra-dep: true
@@ -51,14 +55,13 @@ packages:
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
 extra-deps:
-- async-2.2.1
+# - async-2.2.1
 - data-diverse-4.1.0.0
-- data-diverse-lens-4.1.0.0
-- data-has-0.3.0.0
-- ghcjs-base-stub-0.1.0.4
-- newtype-generics-0.5.2.1
-- unliftio-0.2.7.0
-- unliftio-core-0.1.1.0
+# - data-has-0.3.0.0
+# - ghcjs-base-stub-0.1.0.4
+# - newtype-generics-0.5.2.1
+# - unliftio-0.2.7.0
+# - unliftio-core-0.1.1.0
 
 # Override default flag values for local packages and extra-deps
 flags: {}

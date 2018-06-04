@@ -3,32 +3,32 @@
 
 module Glazier.React.Gadget where
 
-import Control.Monad.Trans.ACont
-import Control.Monad.Trans.AReader
-import Control.Monad.Trans.AState.Strict
+import Control.Monad.Trans.Cont
+import Control.Monad.Trans.Reader
+import Control.Monad.Trans.State.Strict
 import qualified Data.DList as DL
 import Glazier.React.Entity
 import Glazier.React.Subject
 
 -- | The @s@ state can be magnified with 'enlargeEntity'
-type Gadget cmd p s = AReaderT (Entity p s) (AContT () (AState (DL.DList cmd)))
+type Gadget cmd p s = ReaderT (Entity p s) (ContT () (State (DL.DList cmd)))
 
 toGadget ::
     (Entity p s
-        -> (a -> AState (DL.DList cmd) ())
-        -> AState (DL.DList cmd) ())
+        -> (a -> State (DL.DList cmd) ())
+        -> State (DL.DList cmd) ())
     -> Gadget cmd p s a
-toGadget f = areaderT (\r -> acontT (f r))
+toGadget f = ReaderT (\r -> ContT (f r))
 
 runGadget ::
     Gadget cmd p s a
     -> Entity p s
-    -> (a -> AState (DL.DList cmd) ())
-    -> AState (DL.DList cmd) ()
-runGadget x l = runAContT (runAReaderT x l)
+    -> (a -> State (DL.DList cmd) ())
+    -> State (DL.DList cmd) ()
+runGadget x l = runContT (runReaderT x l)
 
-gadgetWith :: Subject s -> Gadget cmd s s a -> AContT () (AState (DL.DList cmd)) a
-gadgetWith sbj = (`runAReaderT` (Entity sbj id))
+gadgetWith :: Subject s -> Gadget cmd s s a -> ContT () (State (DL.DList cmd)) a
+gadgetWith sbj = (`runReaderT` (Entity sbj id))
 
-evalGadget :: Gadget cmd p s () -> Entity p s -> AState (DL.DList cmd) ()
-evalGadget gad ent = evalAContT . (`runAReaderT` ent) $ gad
+evalGadget :: Gadget cmd p s () -> Entity p s -> State (DL.DList cmd) ()
+evalGadget gad ent = evalContT . (`runReaderT` ent) $ gad

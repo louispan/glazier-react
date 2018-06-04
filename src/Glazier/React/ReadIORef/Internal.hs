@@ -4,7 +4,6 @@ module Glazier.React.ReadIORef.Internal where
 
 import Control.Applicative
 import Data.IORef
-import Data.Semigroup
 
 -- | NB. Don't export ReadSubject constructor to guarantee
 -- that that it only contains non-blocking 'readIORef' IO.
@@ -19,7 +18,6 @@ instance Semigroup a => Semigroup (ReadIORef a) where
 
 instance Monoid a => Monoid (ReadIORef a) where
     mempty = ReadIORef $ pure mempty
-    ReadIORef f `mappend` ReadIORef g = ReadIORef $ f *> g
 
 unReadIORef :: ReadIORef a -> IO a
 unReadIORef (ReadIORef m) = m

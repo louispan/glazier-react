@@ -13,6 +13,7 @@ category:            Web, GUI
 build-type:          Simple
 extra-source-files:  README.md
 cabal-version:       >=1.10
+tested-with:         GHC == 8.4.1
 
 library
   hs-source-dirs:      src
