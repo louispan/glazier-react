@@ -14,6 +14,7 @@ module Glazier.React.Element
     ) where
 
 import Control.DeepSeq
+import Control.Newtype.Generics
 import Data.String
 import qualified GHC.Generics as G
 import qualified GHCJS.Marshal.Pure as J
@@ -25,6 +26,8 @@ import qualified JavaScript.Object as JO
 -- | NB. No FromJS provided. See 'unsafeCoerceElement' below.
 newtype ReactElement = ReactElement JE.JSRep
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
+
+instance Newtype ReactElement
 
 -- | Unfortunately, ReactJS did not export an easy way to check if something is a ReactElement,
 -- although they do so in the internal code with REACT_ELEMENT_TYPE.

@@ -61,6 +61,7 @@ library
                      , lens >= 4
                      , lens-misc >= 0.0.1
                      , mtl >= 2
+                     , newtype-generics >= 0.5
                      , tagged >= 0.8
                      , transformers >= 0.4
                      , unliftio >= 0.2
