@@ -1,14 +1,18 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Glazier.React.Widget where
 
 import Control.Lens
 import Control.Monad.Except
 import Data.Bifunctor
+import Data.Diverse.Lens
+import Data.Diverse.Profunctor
 import Glazier.React.Entity
 import Glazier.React.Gadget
 import Glazier.React.Window
@@ -34,3 +38,9 @@ overWindow = withExceptT
 
 display :: Window s () -> Widget cmd p s a
 display = throwError
+
+withWindow :: Widget cmd p s a -> (Window s () -> Widget cmd p s a) -> Widget cmd p s a
+withWindow = catchError
+
+withWindow' :: (ChooseBoth xs ys zs) => Widget cmd p s (Which xs) -> (Window s () -> Widget cmd p s (Which ys)) -> Widget cmd p s (Which zs)
+withWindow' m f = catchError (diversify <$> m) (fmap diversify . f)
