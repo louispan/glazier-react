@@ -19,6 +19,7 @@ module Glazier.React.Reactor
     , setRender
     , mkSubject
     , mkSubject'
+    , withMkSubject
     -- , addSubject
     , cleanupSubject
     , rerender
@@ -130,6 +131,15 @@ mkSubject' :: (AsReactor cmd, MonadCommand cmd m)
 mkSubject' gad s = delegate $ \fire -> do
     f <- codify fire
     postCmd' $ MkSubject gad s f
+
+-- | Make an initialized 'Subject' for a given model using the given 'Widget'.
+withMkSubject :: (AsReactor cmd, MonadCommand cmd m)
+    => Widget cmd s s a -> s -> (Subject s -> m ()) -> m a
+withMkSubject wid s k = delegate $ \fire -> do
+    f <- codify fire
+    k' <- codify k
+    let wid' = wid >>= (post . f)
+    postCmd' $ MkSubject wid' s k'
 
 -- -- | Add a constructed subject to a parent widget
 -- addSubject :: (MonadReactor p ss cmd m)

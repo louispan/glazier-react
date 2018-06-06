@@ -4,7 +4,6 @@
 module Glazier.React.Entity where
 
 import Control.Lens
-import Glazier.React.Scene
 import Glazier.React.Subject
 
 ----------------------------------------------------------------------------------
@@ -17,18 +16,11 @@ _subject = lens (\(Entity p _) -> p) (\(Entity _ s) p -> Entity p s)
 _self :: Lens (Entity p s) (Entity p s') (ReifiedLens' p s) (ReifiedLens' p s')
 _self = lens (\(Entity _ s) -> Lens s) (\(Entity p _) (Lens t) -> Entity p t)
 
-enlargeEntity ::
+magnifiedEntity ::
     ( Magnify m n (Entity p a) (Entity p b)
     , Contravariant (Magnified m r)
     )
     => Lens' b a -> m r -> n r
-enlargeEntity l = magnify (to go)
+magnifiedEntity l = magnify (to go)
   where
     go (Entity sbj slf) = Entity sbj (slf.l)
-
-enlargeScene ::
-    ( Magnify m n (Scene a) (Scene b)
-    , Functor (Magnified m r)
-    )
-    => LensLike' (Magnified m r) b a -> m r -> n r
-enlargeScene l = magnify (editSceneModel l)

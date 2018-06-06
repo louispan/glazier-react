@@ -115,6 +115,20 @@ editSceneModel l safa s = (\s' -> s & _model .~ s' ) <$> l afa' (s ^. _model)
   where
     afa' a = (view _model) <$> safa (s & _model .~ a)
 
+magnifiedScene ::
+    ( Magnify m n (Scene a) (Scene b)
+    , Functor (Magnified m r)
+    )
+    => LensLike' (Magnified m r) b a -> m r -> n r
+magnifiedScene l = magnify (editSceneModel l)
+
+zoomedScene ::
+    ( Zoom m n (Scene a) (Scene b)
+    , Functor (Zoomed m r)
+    )
+    => LensLike' (Zoomed m r) b a -> m r -> n r
+zoomedScene l = zoom (editSceneModel l)
+
 ----------------------------------------------------------------------------------
 
 elementTarget :: ReactId -> Traversal' (Scene s) EventTarget

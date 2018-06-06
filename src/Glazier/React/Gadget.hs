@@ -10,7 +10,7 @@ import qualified Data.DList as DL
 import Glazier.React.Entity
 import Glazier.React.Subject
 
--- | The @s@ state can be magnified with 'enlargeEntity'
+-- | The @s@ state can be magnified with 'magnifiedEntity'
 type Gadget cmd p s = ReaderT (Entity p s) (ContT () (State (DL.DList cmd)))
 
 toGadget ::

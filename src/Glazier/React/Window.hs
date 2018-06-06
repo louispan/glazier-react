@@ -27,7 +27,7 @@ import Glazier.React.Subject
 import qualified JavaScript.Array as JA
 import qualified JavaScript.Extras as JE
 
--- The @s@ can be magnified with 'enlargeScene'
+-- The @s@ can be magnified with 'magnifiedScene'
 type Window s = RWST (Scene s) () (DL.DList ReactMarkup) ReadIORef
 
 -- type SceneDisplay x s r = Display (Scene x s) r
