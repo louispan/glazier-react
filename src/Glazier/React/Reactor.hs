@@ -199,7 +199,7 @@ trigger ::
     , MonadReactor p s cmd m
     )
     => ReactId
-    -> Lens' (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Always" (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
+    -> Lens' (Once (JE.JSRep -> IO ()), Always (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
     -> J.JSString
     -> (JE.JSRep -> MaybeT IO a)
     -> m a
@@ -219,7 +219,7 @@ trigger' ::
     , MonadReactor p s cmd m
     )
     => ReactId
-    -> Lens' (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Always" (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
+    -> Lens' (Once (JE.JSRep -> IO ()), Always (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
     -> J.JSString
     -> (Notice -> MaybeT IO a)
     -> m a
@@ -233,7 +233,7 @@ trigger_ ::
     ( MonadReactor p s cmd m
     )
     => ReactId
-    -> Lens' (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Always" (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
+    -> Lens' (Once (JE.JSRep -> IO ()), Always (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
     -> J.JSString
     -> a
     -> m a
@@ -251,7 +251,7 @@ trigger_ ri l n a = do
 -- See https://reactjs.org/docs/refs-and-the-dom.html.
 onRendered ::
     MonadReactor p s cmd m
-    => Lens' (Tagged "Once" (IO ()), Tagged "Always" (IO ())) (IO ())
+    => Lens' (Once (IO ()), Always (IO ())) (IO ())
     -> m ()
     -> m ()
 onRendered l m = do

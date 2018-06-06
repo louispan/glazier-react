@@ -33,17 +33,20 @@ import qualified JavaScript.Extras as JE
 
 ----------------------------------------------------------------------------------
 
-_once :: Lens' (Tagged "Once" a, Tagged "Always" a) a
+type Always = Tagged "Always"
+type Once = Tagged "Once"
+
+_once :: Lens' (Once a, Always a) a
 _once = (_1._Tagged' @"Once")
 
-_always :: Lens' (Tagged "Once" a, Tagged "Always" a) a
+_always :: Lens' (Once a, Always a) a
 _always = (_2._Tagged' @"Always")
 
 -- | Interactivity for a particular DOM element.
 data Elemental = Elemental
     { elementalRef :: Maybe EventTarget
     -- (name of event, context of event)
-    , listeners :: M.Map J.JSString (Tagged "Once" (JE.JSRep -> IO ()), Tagged "Always" (JE.JSRep -> IO ()))
+    , listeners :: M.Map J.JSString (Once (JE.JSRep -> IO ()), Always (JE.JSRep -> IO ()))
     } deriving (G.Generic)
 
 makeLenses_ ''Elemental
@@ -78,7 +81,7 @@ data Plan = Plan
     -- so that react "componentRef.setState()" can be called.
     { componentRef :: Maybe ComponentRef
     , shimCallbacks :: ShimCallbacks
-    , doOnRendered :: (Tagged "Once" (IO ()), Tagged "Always" (IO ()))
+    , doOnRendered :: (Once (IO ()), Always (IO ()))
     -- interactivity data for child DOM elements
     , elementals :: M.Map ReactId Elemental
     } deriving (G.Generic)
