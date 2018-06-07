@@ -21,7 +21,7 @@ import Glazier.React.Window
 -- | A 'Widget' is a 'Gadget' that fires 'Either' a 'Window' or a value.
 type Widget cmd p s a = ExceptT (Window s ()) (Gadget cmd p s) a
 
-magnifyWidget :: Lens' t s -> ExceptT (Window s ()) (Gadget cmd p s) a -> ExceptT (Window t ()) (Gadget cmd p t) a
+magnifyWidget :: Traversal' t s -> ExceptT (Window s ()) (Gadget cmd p s) a -> ExceptT (Window t ()) (Gadget cmd p t) a
 magnifyWidget l wid = ExceptT $ (first (magnifiedScene l)) <$> (magnifiedEntity l (runExceptT wid))
 
 -- | Convert a 'Gadget' into a 'Widget'

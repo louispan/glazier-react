@@ -33,6 +33,7 @@ module Glazier.React.Reactor
     , hdlElementalRef
     ) where
 
+import Control.Also
 import Control.DeepSeq
 import Control.Lens
 import Control.Monad.Delegate
@@ -167,7 +168,10 @@ rerender = do
 getScene :: (MonadReactor p s cmd m) => m (Scene s)
 getScene = delegate $ \k -> do
     Entity sbj slf <- ask
-    c <- codify (k . view (editSceneModel slf))
+    let k' s = case preview (editSceneModel slf) s of
+            Nothing -> pure ()
+            Just s' -> k s'
+    c <- codify k'
     postCmd' $ GetScene sbj c
 
 doTickScene :: (AsFacet [cmd] cmd) => Subject s -> SceneState s () -> ReactorCmd cmd
@@ -182,11 +186,11 @@ tickScene m = do
 
 -- | Update the 'Scene' using the current @Entity@ context,
 -- and also return the next action to execute.
-tickSceneThen :: (MonadReactor p s cmd m) => SceneState s (m a) -> m a
+tickSceneThen :: (Also m a, MonadReactor p s cmd m) => SceneState s (m a) -> m a
 tickSceneThen m = do
     Entity sbj slf <- ask
     delegate $ \fire -> do
-        let m' = zoom (editSceneModel slf) m
+        let m' = getAls <$> zoom (editSceneModel slf) (Als <$> m)
             f n = n >>= fire
         f' <- codify f
         postCmd' $ TickScene sbj (f' <$> m')
