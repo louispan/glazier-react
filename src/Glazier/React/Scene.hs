@@ -17,7 +17,6 @@
 
 module Glazier.React.Scene where
 
-import qualified Control.Disposable as CD
 import Control.Lens
 import Control.Lens.Misc
 import qualified Data.Map.Strict as M
@@ -65,13 +64,11 @@ data ShimCallbacks = ShimCallbacks
     , shimRef :: J.Callback (J.JSVal -> IO ())
     -- all listeners use the same entry function, just a different
     -- first arg context.
-    , shimListen :: J.Callback (J.JSVal -> J.JSVal -> IO ())
+    , shimReactListener :: J.Callback (J.JSVal -> J.JSVal -> IO ())
+    , shimDomListener :: J.Callback (J.JSVal -> J.JSVal -> IO ())
     } deriving (G.Generic)
 
 makeLenses_ ''ShimCallbacks
-
-instance CD.Dispose ShimCallbacks where
-    dispose (ShimCallbacks a b c d) = CD.dispose a <> CD.dispose b <> CD.dispose c <> CD.dispose d
 
 ----------------------------------------------------------------------------------
 
@@ -84,6 +81,10 @@ data Plan = Plan
     , doOnRendered :: (Once (IO ()), Always (IO ()))
     -- interactivity data for child DOM elements
     , elementals :: M.Map ReactId Elemental
+    -- interactivity for explicit domNode.addEventListener() callbacks
+    , domlListeners :: M.Map ReactId (Once (JE.JSRep -> IO ()), Always (JE.JSRep -> IO ()))
+    -- cleanup for externally added event listeners
+    , domCleanup :: IO ()
     } deriving (G.Generic)
 
 makeLenses_ ''Plan

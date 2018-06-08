@@ -35,7 +35,7 @@ type Window s = RWST (Scene s) () (DL.DList ReactMarkup) ReadIORef
 
 getListeners :: MonadReader (Scene s) m => ReactId -> m [JE.Property]
 getListeners ri = do
-    cb <- view (_plan._shimCallbacks._shimListen)
+    cb <- view (_plan._shimCallbacks._shimReactListener)
     ks <- view (_plan._elementals.ix ri._listeners.to M.keys)
     let go k = (k, bindListenerContext (context k) cb)
     pure (go <$> ks)
@@ -69,7 +69,7 @@ bindListenerContext = js_bindListenerContext
 displaySubject :: Subject s -> Window s' ()
 displaySubject sbj = do
     scn <- lift (doReadIORef (sceneRef sbj))
-    let ShimCallbacks renderCb renderedCb refCb _ = scn ^. _plan._shimCallbacks
+    let ShimCallbacks renderCb renderedCb refCb _ _ = scn ^. _plan._shimCallbacks
     -- These are the callbacks on the 'ShimComponent'
     -- See jsbits/react.js
     lf (JE.toJSR shimComponent)

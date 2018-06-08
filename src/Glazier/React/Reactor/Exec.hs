@@ -20,7 +20,6 @@ module Glazier.React.Reactor.Exec
 import Control.Applicative
 import Control.Concurrent
 import Control.DeepSeq
-import qualified Control.Disposable as CD
 import Control.Lens
 import Control.Monad.Delegate
 import Control.Monad.IO.Unlift
@@ -56,45 +55,6 @@ import Glazier.React.Widget
 import Glazier.React.Window
 import qualified JavaScript.Array as JA
 import qualified JavaScript.Extras as JE
-
--- -- | Given an initializing state action, and an executor (eg. 'reactorExecutor'),
--- -- initialize and exec the resulting commands generated, then
--- -- return the 'CD.Disposable' to dispose the handlers created,
--- -- as well as an action to read the current state.
--- -- It is the responsiblity of the caller run the 'CD.Disposable' when the app finishes.
--- initialize' ::
---     ( MonadIO m
---     , AsFacet [c] c
---     , CD.Dispose (Scene s)
---     )
---     => (c -> m ())
---     -> s
---     -> AState (GetScene c s) ()
---     -> m (CD.Disposable, IO s)
--- initialize' exec s ini = do
---     scnRef <- liftIO $ newIORef (Scene newPlan s)
---     scnVar <- liftIO $ newMVar (Scene newPlan s)
---     -- run through the app initialization, and execute any produced commands
---     cs <- liftIO $ _tickState (Subject scnRef scnVar) ini
---     exec (cmd' $ DL.toList cs)
---     pure (CD.dispose scnVar, view _model <$> readMVar scnVar)
-
--- initialize ::
---     ( MonadIO m
---     , AsFacet [c] c
---     , CD.Dispose (Scene s)
---     )
---     => (c -> m ())
---     -> Widget c p s a
---     -> s
---     -> m (CD.Disposable, IO s)
--- initialize exec s ini = do
---     scnRef <- liftIO $ newIORef (Scene newPlan s)
---     scnVar <- liftIO $ newMVar (Scene newPlan s)
---     -- run through the app initialization, and execute any produced commands
---     cs <- liftIO $ _tickState (Subject scnRef scnVar) ini
---     exec (cmd' $ DL.toList cs)
---     pure (CD.dispose scnVar, view _model <$> readMVar scnVar)
 
 -- | Create a executor for all the core commands required by the framework
 maybeExecReactor ::
@@ -175,8 +135,8 @@ doRendered scnRef scnVar = join $ do
     pure (x *> y)
 
 -- Refer to 'Glazier.React.Window.getListeners'
-doListen :: IORef (Scene s) -> MVar (Scene s) -> J.JSVal -> J.JSVal -> IO ()
-doListen scnRef scnVar ctx j = void $ runMaybeT $ do
+doReactListen :: IORef (Scene s) -> MVar (Scene s) -> J.JSVal -> J.JSVal -> IO ()
+doReactListen scnRef scnVar ctx j = void $ runMaybeT $ do
     -- ctx is [ ReactId, event name (eg OnClick) ]
     -- Javascript doesn't have tuples, only list
     (ri, n) <- MaybeT $ pure $ do
@@ -199,8 +159,8 @@ doListen scnRef scnVar ctx j = void $ runMaybeT $ do
                     go mg = case mg of
                             Nothing -> (Nothing, Nothing)
                             -- found elemental, check listeners for event name
-                            Just g -> let (ret, l) = at n go' (g ^. _listeners)
-                                        in (ret, Just (g & _listeners .~ l))
+                            Just g -> let (ret, ls) = at n go' (g ^. _listeners)
+                                        in (ret, Just (g & _listeners .~ ls))
                     go' ml = case ml of
                             Nothing -> (Nothing, Nothing)
                             -- Found listener with event name, reset "Once" actions
@@ -218,15 +178,44 @@ doListen scnRef scnVar ctx j = void $ runMaybeT $ do
             Nothing -> pure ()
             Just hdl -> hdl (JE.JSRep j)
 
+-- Refer to 'Glazier.React.Window.getListeners'
+doDomListen :: IORef (Scene s) -> MVar (Scene s) -> J.JSVal -> J.JSVal -> IO ()
+doDomListen scnRef scnVar ctx j = void $ runMaybeT $ do
+    -- ctx is ReactId
+    ri <- MaybeT $ pure $ ReactId <$> JE.fromJS ctx
+    lift $ do
+        mhdl <- do
+                Scene pln mdl <- takeMVar scnVar
+                -- get the handler for the reactId.
+                -- also get the updated elemental as the "Once" handler may be reset.
+                -- returns (Maybe handler, Maybe newListener)
+                -- First, look in externalListener:
+                let (mhdl, gs') = at ri go (pln ^. _domlListeners)
+                    go mg = case mg of
+                            Nothing -> (Nothing, Nothing)
+                            -- Found listener with event name, reset "Once" actions
+                            Just ((untag @"Once") -> x, y) ->
+                                ( Just (x *> (untag @"Always" y))
+                                , Just (Tagged @"Once" mempty, y))
+                    -- update the map with resetted "Once" listeners
+                    -- and return the combined handler
+                    scn' = Scene (pln & _domlListeners .~ gs') mdl
+                atomicWriteIORef scnRef scn'
+                putMVar scnVar scn'
+                pure mhdl
+        -- pass the javascript event arg into the combined handler
+        case mhdl of
+            Nothing -> pure ()
+            Just hdl -> hdl (JE.JSRep j)
 
 execSetRender :: MonadIO m => Subject s -> Window s () -> m ()
-execSetRender (Subject scnRef scnVar _ renderLeaseRef) win = liftIO $ do
+execSetRender (Subject scnRef scnVar renderLeaseRef _) win = liftIO $ do
     -- create the callbacks
     renderCb <- J.syncCallback' (doRender scnRef win)
     -- Create automatic garbage collection of the callbacks
     -- that will run when the Subject lease members are garbage collected.
     renderLease <- liftIO $ newEmptyMVar
-    void $ mkWeakMVar renderLease (CD.runDisposable $ CD.dispose renderCb)
+    void $ mkWeakMVar renderLease $ J.releaseCallback renderCb
     -- Replace the existing ShimCallbacks (was fake version)
     scn <- takeMVar scnVar
     -- replace the rendering function
@@ -263,14 +252,21 @@ execMkSubject exec wid s = do
     renderCb <- liftIO $ J.syncCallback' (pure J.nullRef) -- dummy render for now
     refCb <- liftIO $ J.syncCallback1 J.ContinueAsync (doRef scnRef scnVar)
     renderedCb <- liftIO $ J.syncCallback J.ContinueAsync (doRendered scnRef scnVar)
-    listenCb <- liftIO $ J.syncCallback2 J.ContinueAsync (doListen scnRef scnVar)
+    reactListenCb <- liftIO $ J.syncCallback2 J.ContinueAsync (doReactListen scnRef scnVar)
+    externalListenCb <- liftIO $ J.syncCallback2 J.ContinueAsync (doDomListen scnRef scnVar)
     -- Create automatic garbage collection of the callbacks
     -- that will run when the Subject lease members are garbage collected.
-    liftIO $ void $ mkWeakMVar otherCallbackLease (CD.runDisposable $
-        CD.dispose refCb <> CD.dispose renderedCb <> CD.dispose listenCb)
-    liftIO $ void $ mkWeakMVar renderLease (CD.runDisposable $ CD.dispose renderCb)
+    liftIO $ void $ mkWeakMVar otherCallbackLease $ do
+        scn' <- readIORef scnRef
+        scn' ^. _plan._domCleanup
+        J.releaseCallback refCb
+        J.releaseCallback renderedCb
+        J.releaseCallback reactListenCb
+        J.releaseCallback externalListenCb
+    liftIO $ void $ mkWeakMVar renderLease $ J.releaseCallback renderCb
+
     -- Now we have enough to make a subject
-    let sbj = Subject scnRef scnVar otherCallbackLease renderLeaseRef
+    let sbj = Subject scnRef scnVar renderLeaseRef otherCallbackLease
         -- initalize the subject using the Gadget
         gad = runExceptT wid
         gad' = gad `bindLeft` (postCmd' . SetRender sbj)
@@ -278,7 +274,7 @@ execMkSubject exec wid s = do
         tick = runGadget gad'' (Entity sbj id) pure
         cs = execState tick mempty
         -- update the scene to include the real shimcallbacks
-        scn' = scn & _plan._shimCallbacks .~ ShimCallbacks renderCb renderedCb refCb listenCb
+        scn' = scn & _plan._shimCallbacks .~ ShimCallbacks renderCb renderedCb refCb reactListenCb externalListenCb
     liftIO $ do
         -- update the mutable variables with the initialzed scene
         atomicWriteIORef scnRef scn'
@@ -292,9 +288,11 @@ execMkSubject exec wid s = do
   where
     newPlan = Plan
         Nothing
-        (ShimCallbacks (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef))
+        (ShimCallbacks (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef))
         (Tagged mempty, Tagged mempty)
         mempty
+        mempty
+        (pure ())
 
 _rerender :: Scene s -> IO ()
 _rerender scn = fromMaybe mempty $ rerenderShim <$> (scn ^. _plan._componentRef)

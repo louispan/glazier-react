@@ -14,7 +14,7 @@ import Glazier.React.Scene
 -- the prolonging IO action "onceOnRendered" action handler,
 -- so that the 'ShimCallbacks' is garbage collected
 -- only after the child widget is no longer rendered.
-data Subject p = Subject (IORef (Scene p)) (MVar (Scene p)) (MVar ()) (IORef (MVar ()))
+data Subject p = Subject (IORef (Scene p)) (MVar (Scene p)) (IORef (MVar ())) (MVar ())
     deriving Eq
 
 sceneRef :: Subject p -> IORef (Scene p)
@@ -26,7 +26,7 @@ sceneVar (Subject _ x _ _) = x
 -- | Creates an IO action whose existence will keep the lease alive.
 -- Running it has no side effects.
 prolong :: Subject s -> IO ()
-prolong (Subject _ _ otherCallbackLease renderLeaseRef) = do
+prolong (Subject _ _ renderLeaseRef otherCallbackLease) = do
     renderLease <- readIORef renderLeaseRef
     (void $ isEmptyMVar renderLease)
     (void $ isEmptyMVar otherCallbackLease)
