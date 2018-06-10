@@ -12,8 +12,8 @@ module Glazier.React.Reactor.Exec
     , execMkSubject
     , execGetScene
     , execTickScene
-    , execMkReactListener
-    , execMkRenderedListener
+    , execRegisterReactListener
+    , execRegisterRenderedListener
     ) where
 
 import Control.Applicative
@@ -87,9 +87,9 @@ execReactorCmd exec c = case c of
     Rerender sbj -> execRerender sbj
     GetScene sbj k -> execGetScene sbj >>= (exec . k)
     TickScene sbj tick -> execTickScene sbj tick >>= exec
-    MkReactListener sbj ri n goStrict goLazy -> execMkReactListener exec sbj ri n goStrict goLazy
-    MkRenderedListener sbj c' -> execMkRenderedListener exec sbj c'
-    MkDomListener sbj j n goStrict goLazy -> execMkDomListener exec sbj j n goStrict goLazy
+    RegisterReactListener sbj ri n goStrict goLazy -> execRegisterReactListener exec sbj ri n goStrict goLazy
+    RegisterRenderedListener sbj c' -> execRegisterRenderedListener exec sbj c'
+    RegisterDomListener sbj j n goStrict goLazy -> execRegisterDomListener exec sbj j n goStrict goLazy
 
 -----------------------------------------------------------------
 execMkReactId ::
@@ -324,7 +324,7 @@ execGetScene ::
 execGetScene sbj = liftIO . readIORef $ sceneRef sbj
 
 -- | No need to run in a separate thread because it should never block for a significant amount of time.
--- Upate the scene 'MVar' with the given action. Also onReacts a rerender.
+-- Upate the scene 'MVar' with the given action. Also triggers a rerender.
 execTickScene ::
     ( MonadIO m
     )
@@ -392,7 +392,7 @@ mkEventHandler goStrict = do
         postprocess = MaybeT $ atomically $ tryReadTChan c
     pure (preprocess, postprocess)
 
-execMkReactListener :: (NFData a, MonadUnliftIO m)
+execRegisterReactListener :: (NFData a, MonadUnliftIO m)
     => (cmd -> m ())
     -> Subject s
     -> ReactId
@@ -400,7 +400,7 @@ execMkReactListener :: (NFData a, MonadUnliftIO m)
     -> (JE.JSRep -> MaybeT IO a)
     -> (a -> cmd)
     -> m ()
-execMkReactListener exec sbj ri n goStrict goLazy = do
+execRegisterReactListener exec sbj ri n goStrict goLazy = do
     UnliftIO u <- askUnliftIO
     liftIO $ do
         scn <- takeMVar scnVar
@@ -430,12 +430,12 @@ execMkReactListener exec sbj ri n goStrict goLazy = do
     scnRef = sceneRef sbj
     scnVar = sceneVar sbj
 
-execMkRenderedListener :: (MonadUnliftIO m)
+execRegisterRenderedListener :: (MonadUnliftIO m)
     => (cmd -> m ())
     -> Subject s
     -> cmd
     -> m ()
-execMkRenderedListener exec sbj c = do
+execRegisterRenderedListener exec sbj c = do
     UnliftIO u <- askUnliftIO
     let hdl = u $ exec c
     liftIO $ atomicModifyIORef' scnRef $ \scn ->
@@ -443,7 +443,7 @@ execMkRenderedListener exec sbj c = do
   where
     scnRef = sceneRef sbj
 
-execMkDomListener ::
+execRegisterDomListener ::
     ( NFData a
     , MonadUnliftIO m
     , Has (Tagged ReactId (MVar Int)) r
@@ -456,7 +456,7 @@ execMkDomListener ::
     -> (JE.JSRep -> MaybeT IO a)
     -> (a -> cmd)
     -> m ()
-execMkDomListener exec sbj j n goStrict goLazy = do
+execRegisterDomListener exec sbj j n goStrict goLazy = do
     -- Add the handler to the state
     UnliftIO u <- askUnliftIO
     ri <- execMkReactId n

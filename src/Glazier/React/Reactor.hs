@@ -26,11 +26,13 @@ module Glazier.React.Reactor
     , getScene
     , tickScene
     , tickSceneThen
-    , onReact
-    , onReact'
-    , onReact_
+    , domTrigger
+    , domTrigger_
+    , trigger
+    , trigger'
+    , trigger_
     , onRendered
-    , hdlElementalRef
+    , onElementalRef
     ) where
 
 import Control.Also
@@ -69,7 +71,7 @@ type MonadReactor p s cmd m =
 
 type SceneState s = StateT (Scene s) ReadIORef
 
--- | NB. ReactorCmd is not a functor.
+-- | NB. 'ReactorCmd' is not a functor because of the @Widget cmd@ in 'MkSubject'
 data ReactorCmd cmd where
     -- | Make a unique named id
     MkReactId :: J.JSString -> (ReactId -> cmd) -> ReactorCmd cmd
@@ -83,26 +85,26 @@ data ReactorCmd cmd where
     GetScene :: Subject s -> (Scene s -> cmd) -> ReactorCmd cmd
     -- | Update and rerender a scene.
     TickScene :: Subject s -> SceneState s cmd -> ReactorCmd cmd
-    -- | Convert and register a react callback
-    MkReactListener :: NFData a
+    -- | Create and register a dom callback
+    RegisterDomListener :: NFData a
+        => Subject s
+        -> JE.JSRep
+        -> J.JSString
+        -> (JE.JSRep -> MaybeT IO a)
+        -> (a -> cmd)
+        -> ReactorCmd cmd
+    -- | Create and register a react callback
+    RegisterReactListener :: NFData a
         => Subject s
         -> ReactId
         -> J.JSString
         -> (JE.JSRep -> MaybeT IO a)
         -> (a -> cmd)
         -> ReactorCmd cmd
-    -- | Convert and register a callback for the rendered event
-    MkRenderedListener ::
+    -- | Create and register a callback for the rendered event
+    RegisterRenderedListener ::
         Subject s
         -> cmd
-        -> ReactorCmd cmd
-    -- | Convert and register a dom callback
-    MkDomListener :: NFData a
-        => Subject s
-        -> JE.JSRep
-        -> J.JSString
-        -> (JE.JSRep -> MaybeT IO a)
-        -> (a -> cmd)
         -> ReactorCmd cmd
 
 instance Show cmd => Show (ReactorCmd cmd) where
@@ -113,9 +115,9 @@ instance Show cmd => Show (ReactorCmd cmd) where
     showsPrec _ (Rerender _) = showString "Rerender"
     showsPrec _ (GetScene _ _) = showString "GetScene"
     showsPrec _ (TickScene _ _) = showString "TickScene"
-    showsPrec _ (MkReactListener _ _ _ _ _) = showString "MkReactListener"
-    showsPrec _ (MkRenderedListener _ _) = showString "MkRenderedListener"
-    showsPrec _ (MkDomListener _ _ _ _ _) = showString "MkDomListener"
+    showsPrec _ (RegisterDomListener _ _ _ _ _) = showString "RegisterDomListener"
+    showsPrec _ (RegisterReactListener _ _ _ _ _) = showString "RegisterReactListener"
+    showsPrec _ (RegisterRenderedListener _ _) = showString "RegisterRenderedListener"
 
 ------------------------------------------------------
 -- | Make a unique named id
@@ -207,9 +209,35 @@ tickSceneThen m = do
         postCmd' $ TickScene sbj (f' <$> m')
 
 -- | Create a callback for a 'JE.JSRep' and add it to this elementals's dlist of listeners.
--- You probably want to use 'onReact'' since most React callbacks return a 'Notice',
--- except for the "ref" callback, in which case you probably want to use 'trackElemental'.
-onReact ::
+domTrigger ::
+    ( NFData a
+    , MonadReactor p s cmd m
+    )
+    => JE.JSRep
+    -> J.JSString
+    -> (JE.JSRep -> MaybeT IO a)
+    -> m a
+domTrigger j n goStrict = delegate $ \goLazy -> do
+    Entity sbj _ <- ask
+    goLazy' <- codify goLazy
+    postCmd' $ RegisterDomListener sbj j n goStrict goLazy'
+
+-- | A variation of trigger which ignores the event but fires the given arg instead.
+domTrigger_ ::
+    ( MonadReactor p s cmd m
+    )
+    => JE.JSRep
+    -> J.JSString
+    -> a
+    -> m a
+domTrigger_ j n a = do
+    domTrigger j n (const $ pure ())
+    pure a
+
+-- | Create a callback for a 'JE.JSRep' and add it to this elementals's dlist of listeners.
+-- You probably want to use 'trigger'' since most React callbacks return a 'Notice',
+-- except for the "ref" callback, in which case you probably want to use 'onElementalRef'.
+trigger ::
     ( NFData a
     , MonadReactor p s cmd m
     )
@@ -217,13 +245,13 @@ onReact ::
     -> J.JSString
     -> (JE.JSRep -> MaybeT IO a)
     -> m a
-onReact ri n goStrict = delegate $ \goLazy -> do
+trigger ri n goStrict = delegate $ \goLazy -> do
     Entity sbj _ <- ask
     goLazy' <- codify goLazy
-    postCmd' $ MkReactListener sbj ri n goStrict goLazy'
+    postCmd' $ RegisterReactListener sbj ri n goStrict goLazy'
 
 -- | Create a callback for a 'Notice' and add it to this elementals's dlist of listeners.
-onReact' ::
+trigger' ::
     ( NFData a
     , MonadReactor p s cmd m
     )
@@ -231,21 +259,21 @@ onReact' ::
     -> J.JSString
     -> (Notice -> MaybeT IO a)
     -> m a
-onReact' ri n goStrict = onReact ri n $ handlesNotice goStrict
+trigger' ri n goStrict = trigger ri n $ handlesNotice goStrict
   where
     handlesNotice :: (Notice -> MaybeT IO a) -> (JE.JSRep -> MaybeT IO a)
     handlesNotice k j = MaybeT (pure $ JE.fromJSR j) >>= k
 
--- | A varation of onReact which ignores the event but fires the given arg instead.
-onReact_ ::
+-- | A variation of trigger which ignores the event but fires the given arg instead.
+trigger_ ::
     ( MonadReactor p s cmd m
     )
     => ReactId
     -> J.JSString
     -> a
     -> m a
-onReact_ ri n a = do
-    onReact ri n (const $ pure ())
+trigger_ ri n a = do
+    trigger ri n (const $ pure ())
     pure a
 
 -- | Register actions to execute after a render.
@@ -263,12 +291,12 @@ onRendered ::
 onRendered m = do
     sbj <- view _subject
     c <- codify' m
-    postCmd' $ MkRenderedListener sbj c
+    postCmd' $ RegisterRenderedListener sbj c
 
 -- | This adds a ReactJS "ref" callback assign the ref into an 'EventTarget'
 -- for the elemental in the plan, so that the elemental '_targetRef' can be used.
-hdlElementalRef :: MonadReactor p s cmd m => ReactId -> m ()
-hdlElementalRef ri = onReact ri "ref" (pure . JE.fromJSR) >>= hdlRef
+onElementalRef :: MonadReactor p s cmd m => ReactId -> m ()
+onElementalRef ri = trigger ri "ref" (pure . JE.fromJSR) >>= hdlRef
   where
     hdlRef x = do
         sbj <- view _subject

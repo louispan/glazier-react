@@ -116,7 +116,7 @@ It may contain `Gizmo` (see below) of other widgets.
 The `Model` contains enough information to render child widgets, but not this widget.
 
 ### Plan
-The `Plan` contains the callbacks for integrating with React (the verbs). It also contains a javascript reference to the instance of shim component used for the widget. This reference is used to onReact rendering with  [`setState`](https://facebook.github.io/react/docs/react-component.html#setstate).
+The `Plan` contains the callbacks for integrating with React (the verbs). It also contains a javascript reference to the instance of shim component used for the widget. This reference is used to trigger rendering with  [`setState`](https://facebook.github.io/react/docs/react-component.html#setstate).
 
 ### Scene
 `Scene` is basically a tuple of `Model` and `Plan`. It is a separate data type in order to generate convenient lenses to the fields.
