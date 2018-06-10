@@ -22,7 +22,7 @@ function hgr$registry() {
 
     // privileged public
 
-    // This is used from javascript to be called back for named triggers.
+    // This is used from javascript to be called back for named onReacts.
     // returns a unregister function.
     // NB. this['method'] (instead of this.listen) protects against minification.
     this['listen'] = function(name, listener) {

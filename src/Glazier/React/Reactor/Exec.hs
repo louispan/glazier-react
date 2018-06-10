@@ -12,8 +12,8 @@ module Glazier.React.Reactor.Exec
     , execMkSubject
     , execGetScene
     , execTickScene
-    , execMkReactCallback
-    , execMkRenderedCallback
+    , execMkReactListener
+    , execMkRenderedListener
     ) where
 
 import Control.Applicative
@@ -87,8 +87,9 @@ execReactorCmd exec c = case c of
     Rerender sbj -> execRerender sbj
     GetScene sbj k -> execGetScene sbj >>= (exec . k)
     TickScene sbj tick -> execTickScene sbj tick >>= exec
-    MkReactCallback sbj ri n goStrict goLazy -> execMkReactCallback exec sbj ri n goStrict goLazy
-    MkRenderedCallback sbj c' -> execMkRenderedCallback exec sbj c'
+    MkReactListener sbj ri n goStrict goLazy -> execMkReactListener exec sbj ri n goStrict goLazy
+    MkRenderedListener sbj c' -> execMkRenderedListener exec sbj c'
+    MkDomListener sbj j n goStrict goLazy -> execMkDomListener exec sbj j n goStrict goLazy
 
 -----------------------------------------------------------------
 execMkReactId ::
@@ -117,16 +118,20 @@ doRender scnRef win = do
 doRef :: IORef (Scene s) -> MVar (Scene s) -> J.JSVal -> IO ()
 doRef scnRef scnVar j = do
     -- update componentRef held in the Plan
-    Scene pln mdl <- takeMVar scnVar
-    let scn' = Scene (pln & _componentRef .~ JE.fromJS j) mdl
+    scn <- takeMVar scnVar
+    let scn' = scn & _plan._componentRef .~ JE.fromJS j
     atomicWriteIORef scnRef scn'
     putMVar scnVar scn'
 
-doOnRendered ::
-    IORef (Scene s)
-    -> IO ()
-doOnRendered scnRef = do
-    scn <- readIORef scnRef
+doOnRendered :: IORef (Scene s) -> MVar (Scene s) -> IO ()
+doOnRendered scnRef scnVar = do
+    -- update tmpCleanup held in the Plan
+    scn <- takeMVar scnVar
+    let scn' = scn & _plan._tmpCleanup .~ mempty
+        cln = scn ^. _plan._tmpCleanup
+    atomicWriteIORef scnRef scn'
+    putMVar scnVar scn'
+    cln
     scn ^. _plan._renderedListener
 
 -- doRendered :: IORef (Scene s) -> MVar (Scene s) -> IO ()
@@ -251,8 +256,9 @@ execMkSubject exec wid s = do
                 (ShimCallbacks (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef))
                 mempty
                 mempty
-                -- mempty
-                -- (pure ())
+                mempty
+                mempty
+                mempty
             scn = Scene newPlan s
 
         scnRef <- newIORef scn
@@ -266,13 +272,14 @@ execMkSubject exec wid s = do
         -- Create callbacks for now
         renderCb <- J.syncCallback' (pure J.nullRef) -- dummy render for now
         refCb <- J.syncCallback1 J.ContinueAsync (doRef scnRef scnVar)
-        renderedCb <- J.syncCallback J.ContinueAsync (doOnRendered scnRef)
+        renderedCb <- J.syncCallback J.ContinueAsync (doOnRendered scnRef scnVar)
         -- Create automatic garbage collection of the callbacks
         -- that will run when the Subject lease members are garbage collected.
         void $ mkWeakMVar otherCallbackLease $ do
             scn' <- readIORef scnRef
-            -- scn' ^. _plan._domCleanup
-            -- cleanup reactListener
+            scn' ^. _plan._tmpCleanup
+            scn' ^. _plan._finalCleanup
+            -- cleanup callbacks
             traverse (traverse (J.releaseCallback . fst) . reactListener) (scn' ^. _plan._elementals)
             J.releaseCallback refCb
             J.releaseCallback renderedCb
@@ -317,7 +324,7 @@ execGetScene ::
 execGetScene sbj = liftIO . readIORef $ sceneRef sbj
 
 -- | No need to run in a separate thread because it should never block for a significant amount of time.
--- Upate the scene 'MVar' with the given action. Also triggers a rerender.
+-- Upate the scene 'MVar' with the given action. Also onReacts a rerender.
 execTickScene ::
     ( MonadIO m
     )
@@ -385,7 +392,7 @@ mkEventHandler goStrict = do
         postprocess = MaybeT $ atomically $ tryReadTChan c
     pure (preprocess, postprocess)
 
-execMkReactCallback :: (NFData a, MonadUnliftIO m)
+execMkReactListener :: (NFData a, MonadUnliftIO m)
     => (cmd -> m ())
     -> Subject s
     -> ReactId
@@ -393,7 +400,7 @@ execMkReactCallback :: (NFData a, MonadUnliftIO m)
     -> (JE.JSRep -> MaybeT IO a)
     -> (a -> cmd)
     -> m ()
-execMkReactCallback exec sbj ri n goStrict goLazy = do
+execMkReactListener exec sbj ri n goStrict goLazy = do
     UnliftIO u <- askUnliftIO
     liftIO $ do
         scn <- takeMVar scnVar
@@ -423,15 +430,81 @@ execMkReactCallback exec sbj ri n goStrict goLazy = do
     scnRef = sceneRef sbj
     scnVar = sceneVar sbj
 
-execMkRenderedCallback :: (MonadUnliftIO m)
+execMkRenderedListener :: (MonadUnliftIO m)
     => (cmd -> m ())
     -> Subject s
     -> cmd
     -> m ()
-execMkRenderedCallback exec sbj c = do
+execMkRenderedListener exec sbj c = do
     UnliftIO u <- askUnliftIO
     let hdl = u $ exec c
     liftIO $ atomicModifyIORef' scnRef $ \scn ->
         (scn & _plan._renderedListener %~ (<> hdl), ())
   where
     scnRef = sceneRef sbj
+
+execMkDomListener ::
+    ( NFData a
+    , MonadUnliftIO m
+    , Has (Tagged ReactId (MVar Int)) r
+    , MonadReader r m
+    )
+    => (cmd -> m ())
+    -> Subject s
+    -> JE.JSRep
+    -> J.JSString
+    -> (JE.JSRep -> MaybeT IO a)
+    -> (a -> cmd)
+    -> m ()
+execMkDomListener exec sbj j n goStrict goLazy = do
+    -- Add the handler to the state
+    UnliftIO u <- askUnliftIO
+    ri <- execMkReactId n
+    liftIO $ do
+        scn <- takeMVar scnVar
+        -- since ri is unique, it'll always be a new map item
+        -- update the ioref with the new handler
+        (preprocessor, postprocessor) <- mkEventHandler (goStrict . JE.toJSR)
+        let postprocessor' = void $ runMaybeT $ do
+                c <- goLazy <$> postprocessor
+                lift $ u $ exec c
+        listenerRef <- newIORef (preprocessor, postprocessor')
+        cb <- mkEventCallback listenerRef
+        -- prepare the updated state,
+        let scn' = scn & _plan._domlListeners.at ri .~ (Just (cb, listenerRef))
+                & _plan._finalCleanup %~ (<> removeDomListener j n cb)
+        -- Update the subject
+        atomicWriteIORef scnRef scn'
+        putMVar scnVar scn'
+        -- now add the domListener to the javascript target
+        addDomListener j n cb
+  where
+    scnRef = sceneRef sbj
+    scnVar = sceneVar sbj
+
+
+addDomListener :: JE.JSRep -> J.JSString -> J.Callback (J.JSVal -> IO ()) -> IO ()
+addDomListener j n cb = js_addDomListener (JE.toJS j) n (JE.toJS cb)
+
+removeDomListener :: JE.JSRep -> J.JSString -> J.Callback (J.JSVal -> IO ()) -> IO ()
+removeDomListener j n cb = js_removeDomListener (JE.toJS j) n (JE.toJS cb)
+
+#ifdef __GHCJS__
+
+foreign import javascript unsafe
+    "if (j && j['addEventListener']) { j['addEventListener'](n, l); }"
+    js_addDomListener :: J.JSVal -> J.JSString -> J.JSVal -> IO ()
+
+foreign import javascript unsafe
+    "if (j && j['removeEventListener']) { j['removeEventListener'](n, l); }"
+    js_removeDomListener :: J.JSVal -> J.JSString -> J.JSVal -> IO ()
+
+#else
+
+js_addDomListener :: J.JSVal -> J.JSString -> J.JSVal -> IO ()
+js_addDomListener _ _ _ = pure mempty
+
+js_removeDomListener :: J.JSVal -> J.JSString -> J.JSVal -> IO ()
+js_removeDomListener _ _ _ = pure mempty
+
+#endif

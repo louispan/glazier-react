@@ -71,10 +71,16 @@ data Plan = Plan
     , renderedListener :: IO ()
     -- interactivity data for child DOM elements
     , elementals :: M.Map ReactId Elemental
-    -- interactivity for explicit domNode.addEventListener() callbacks
-    -- , domlListeners :: M.Map ReactId (Once (JE.JSRep -> IO ()), Always (JE.JSRep -> IO ()))
-    -- -- cleanup for externally added event listeners
-    -- , domCleanup :: IO ()
+    -- interactivity for explicit eventTarget.addEventListener() callbacks
+    , domlListeners :: M.Map ReactId
+        ( J.Callback (J.JSVal -> IO ())
+        , IORef (J.JSVal -> IO (), IO ())
+        )
+    -- cleanup either on next rerender or when the subject is garbage collected
+    -- this gets reset after every rerender
+    , tmpCleanup :: IO ()
+    -- cleanup to call eventTarget.removeEventListener()
+    , finalCleanup :: IO ()
     } deriving (G.Generic)
 
 makeLenses_ ''Plan
