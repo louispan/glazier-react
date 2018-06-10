@@ -24,7 +24,6 @@ import Glazier.React.ReactId
 import Glazier.React.ReadIORef
 import Glazier.React.Scene
 import Glazier.React.Subject
-import qualified JavaScript.Array as JA
 import qualified JavaScript.Extras as JE
 
 -- The @s@ can be magnified with 'magnifiedScene'
@@ -35,12 +34,8 @@ type Window s = RWST (Scene s) () (DL.DList ReactMarkup) ReadIORef
 
 getListeners :: MonadReader (Scene s) m => ReactId -> m [JE.Property]
 getListeners ri = do
-    cb <- view (_plan._shimCallbacks._shimReactListener)
-    ks <- view (_plan._elementals.ix ri._listeners.to M.keys)
-    let go k = (k, bindListenerContext (context k) cb)
-    pure (go <$> ks)
-  where
-    context k = JE.toJSR $ JA.fromList [JE.toJS ri, JE.toJS k]
+    ls <- view (_plan._elementals.ix ri._reactListener.to M.toList)
+    pure $ (\(n, (cb, _)) -> (n, JE.toJSR cb)) <$> ls
 
 -- | Interactive version of 'lf' using listeners obtained from the 'Plan' for a 'ElementalId'.
 lf' :: (MonadReader (Scene s) m, MonadState (DL.DList ReactMarkup) m)
@@ -69,7 +64,7 @@ bindListenerContext = js_bindListenerContext
 displaySubject :: Subject s -> Window s' ()
 displaySubject sbj = do
     scn <- lift (doReadIORef (sceneRef sbj))
-    let ShimCallbacks renderCb renderedCb refCb _ _ = scn ^. _plan._shimCallbacks
+    let ShimCallbacks renderCb renderedCb refCb = scn ^. _plan._shimCallbacks
     -- These are the callbacks on the 'ShimComponent'
     -- See jsbits/react.js
     lf (JE.toJSR shimComponent)

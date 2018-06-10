@@ -30,7 +30,6 @@ library
                        Glazier.React.EventTarget
                        Glazier.React.EventTarget.Internal
                        Glazier.React.Gadget
-                       Glazier.React.HandleEvent
                        Glazier.React.Markup
                        Glazier.React.NativeEvent
                        Glazier.React.NativeEvent.Internal
@@ -61,6 +60,7 @@ library
                      , lens-misc >= 0.0.1
                      , mtl >= 2
                      , newtype-generics >= 0.5
+                     , stm >= 2.4
                      , tagged >= 0.8
                      , transformers >= 0.4
                      , unliftio >= 0.2

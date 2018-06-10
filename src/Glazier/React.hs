@@ -8,7 +8,6 @@ module Glazier.React
     , module Glazier.React.EventTarget
     , module Glazier.React.Gadget
     , module Glazier.React.Entity
-    , module Glazier.React.HandleEvent
     , module Glazier.React.ReadIORef
     , module Glazier.React.Markup
     , module Glazier.React.NativeEvent
@@ -50,7 +49,6 @@ import Glazier.React.Element
 import Glazier.React.Entity
 import Glazier.React.EventTarget
 import Glazier.React.Gadget
-import Glazier.React.HandleEvent
 import Glazier.React.Markup
 import Glazier.React.NativeEvent
 import Glazier.React.Notice

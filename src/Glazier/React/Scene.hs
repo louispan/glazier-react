@@ -19,53 +19,43 @@ module Glazier.React.Scene where
 
 import Control.Lens
 import Control.Lens.Misc
+import Data.IORef
 import qualified Data.Map.Strict as M
 import Data.Maybe
-import Data.Tagged
 import qualified GHC.Generics as G
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
 import Glazier.React.Component
 import Glazier.React.EventTarget
 import Glazier.React.ReactId
-import qualified JavaScript.Extras as JE
 
 ----------------------------------------------------------------------------------
-
-type Always = Tagged "Always"
-type Once = Tagged "Once"
-
-_once :: Lens' (Once a, Always a) a
-_once = (_1._Tagged' @"Once")
-
-_always :: Lens' (Once a, Always a) a
-_always = (_2._Tagged' @"Always")
 
 -- | Interactivity for a particular DOM element.
 data Elemental = Elemental
     { elementalRef :: Maybe EventTarget
     -- (name of event, context of event)
-    , listeners :: M.Map J.JSString (Once (JE.JSRep -> IO ()), Always (JE.JSRep -> IO ()))
+    , reactListener :: M.Map J.JSString
+        ( J.Callback (J.JSVal -> IO ())
+        , IORef (J.JSVal -> IO (), IO ())
+        )
     } deriving (G.Generic)
 
 makeLenses_ ''Elemental
-
-newElemental :: Elemental
-newElemental = Elemental Nothing mempty
 
 ----------------------------------------------------------------------------------
 
 data ShimCallbacks = ShimCallbacks
     -- render function of the ReactComponent
     { shimRender :: J.Callback (IO J.JSVal)
-    -- Run the doOnRendered in the plan
-    , shimRendered :: J.Callback (IO ())
     -- updates the componenRef
     , shimRef :: J.Callback (J.JSVal -> IO ())
+    -- Run the doOnRendered in the plan
+    , shimRendered :: J.Callback (IO ())
     -- all listeners use the same entry function, just a different
     -- first arg context.
-    , shimReactListener :: J.Callback (J.JSVal -> J.JSVal -> IO ())
-    , shimDomListener :: J.Callback (J.JSVal -> J.JSVal -> IO ())
+    -- , shimReactListener :: J.Callback (J.JSVal -> J.JSVal -> IO ())
+    -- , shimDomListener :: J.Callback (J.JSVal -> J.JSVal -> IO ())
     } deriving (G.Generic)
 
 makeLenses_ ''ShimCallbacks
@@ -78,13 +68,13 @@ data Plan = Plan
     -- so that react "componentRef.setState()" can be called.
     { componentRef :: Maybe ComponentRef
     , shimCallbacks :: ShimCallbacks
-    , doOnRendered :: (Once (IO ()), Always (IO ()))
+    , renderedListener :: IO ()
     -- interactivity data for child DOM elements
     , elementals :: M.Map ReactId Elemental
     -- interactivity for explicit domNode.addEventListener() callbacks
-    , domlListeners :: M.Map ReactId (Once (JE.JSRep -> IO ()), Always (JE.JSRep -> IO ()))
-    -- cleanup for externally added event listeners
-    , domCleanup :: IO ()
+    -- , domlListeners :: M.Map ReactId (Once (JE.JSRep -> IO ()), Always (JE.JSRep -> IO ()))
+    -- -- cleanup for externally added event listeners
+    -- , domCleanup :: IO ()
     } deriving (G.Generic)
 
 makeLenses_ ''Plan

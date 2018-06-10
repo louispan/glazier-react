@@ -41,8 +41,6 @@ import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Maybe
 import Data.Diverse.Lens
-import Data.Maybe
-import Data.Tagged
 import qualified GHCJS.Types as J
 import Glazier.Command
 import Glazier.React.Entity
@@ -85,13 +83,18 @@ data ReactorCmd cmd where
     GetScene :: Subject s -> (Scene s -> cmd) -> ReactorCmd cmd
     -- | Update and rerender a scene.
     TickScene :: Subject s -> SceneState s cmd -> ReactorCmd cmd
-    -- | DoReadIORef :: IORef a -> (a -> cmd) -> ReactorCmd
-    MkHandler :: cmd -> (IO () -> cmd) -> ReactorCmd cmd
-    -- | Convert a callback to a @JE.JSRep -> IO ()@
-    MkHandler1 :: NFData a
-        => (JE.JSRep -> MaybeT IO a)
+    -- | Convert and register a react callback
+    MkReactCallback :: NFData a
+        => Subject s
+        -> ReactId
+        -> J.JSString
+        -> (JE.JSRep -> MaybeT IO a)
         -> (a -> cmd)
-        -> ((JE.JSRep -> IO ()) -> cmd)
+        -> ReactorCmd cmd
+    -- | Convert and register a callback for the rendered event
+    MkRenderedCallback ::
+        Subject s
+        -> cmd
         -> ReactorCmd cmd
 
 instance Show cmd => Show (ReactorCmd cmd) where
@@ -102,9 +105,8 @@ instance Show cmd => Show (ReactorCmd cmd) where
     showsPrec _ (Rerender _) = showString "Rerender"
     showsPrec _ (GetScene _ _) = showString "GetScene"
     showsPrec _ (TickScene _ _) = showString "TickScene"
-    showsPrec p (MkHandler c _) = showParen (p >= 11) $
-        showString "MkHandler " . shows c
-    showsPrec _ (MkHandler1 _ _ _) = showString "MkHandler1"
+    showsPrec _ (MkReactCallback _ _ _ _ _) = showString "MkReactCallback"
+    showsPrec _ (MkRenderedCallback _ _) = showString "MkRenderedCallback"
 
 ------------------------------------------------------
 -- | Make a unique named id
@@ -152,11 +154,11 @@ withMkSubject wid s k = delegate $ \fire -> do
 
 -- | Schedule cleanup of the callbacks when the parent widget is rerendered.
 cleanupSubject ::
-    (MonadState (Scene ss) m)
+    (MonadState (Scene t) m)
     => Subject s -> m ()
 cleanupSubject sbj =
     let cleanup = prolong sbj
-    in _plan._doOnRendered._once %= (*> cleanup)
+    in _plan._renderedListener %= (*> cleanup)
 
 -- | Rerender the ShimComponent using the current @Entity@ context
 rerender :: MonadReactor p s cmd m => m ()
@@ -203,19 +205,13 @@ trigger ::
     , MonadReactor p s cmd m
     )
     => ReactId
-    -> Lens' (Once (JE.JSRep -> IO ()), Always (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
     -> J.JSString
     -> (JE.JSRep -> MaybeT IO a)
     -> m a
-trigger ri l n goStrict = delegate $ \goLazy -> do
+trigger ri n goStrict = delegate $ \goLazy -> do
     Entity sbj _ <- ask
     goLazy' <- codify goLazy
-    postCmd' $ MkHandler1 goStrict goLazy' $ \act ->
-        -- save the created action handler in the elemental
-        let updateElemental = _plan._elementals.at ri %= (Just . addListener . fromMaybe newElemental)
-            addListener = _listeners.at n %~ (Just . addAction . fromMaybe (Tagged mempty, Tagged mempty))
-            addAction acts = acts & l %~ (*> act)
-        in command' $ doTickScene sbj updateElemental
+    postCmd' $ MkReactCallback sbj ri n goStrict goLazy'
 
 -- | Create a callback for a 'Notice' and add it to this elementals's dlist of listeners.
 trigger' ::
@@ -223,11 +219,10 @@ trigger' ::
     , MonadReactor p s cmd m
     )
     => ReactId
-    -> Lens' (Once (JE.JSRep -> IO ()), Always (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
     -> J.JSString
     -> (Notice -> MaybeT IO a)
     -> m a
-trigger' ri l n goStrict = trigger ri l n $ handlesNotice goStrict
+trigger' ri n goStrict = trigger ri n $ handlesNotice goStrict
   where
     handlesNotice :: (Notice -> MaybeT IO a) -> (JE.JSRep -> MaybeT IO a)
     handlesNotice k j = MaybeT (pure $ JE.fromJSR j) >>= k
@@ -237,12 +232,11 @@ trigger_ ::
     ( MonadReactor p s cmd m
     )
     => ReactId
-    -> Lens' (Once (JE.JSRep -> IO ()), Always (JE.JSRep -> IO ())) (JE.JSRep -> IO ())
     -> J.JSString
     -> a
     -> m a
-trigger_ ri l n a = do
-    trigger ri l n (const $ pure ())
+trigger_ ri n a = do
+    trigger ri n (const $ pure ())
     pure a
 
 -- | Register actions to execute after a render.
@@ -255,21 +249,17 @@ trigger_ ri l n a = do
 -- See https://reactjs.org/docs/refs-and-the-dom.html.
 onRendered ::
     MonadReactor p s cmd m
-    => Lens' (Once (IO ()), Always (IO ())) (IO ())
+    => m ()
     -> m ()
-    -> m ()
-onRendered l m = do
+onRendered m = do
     sbj <- view _subject
     c <- codify' m
-    postCmd' $ MkHandler c $ \act ->
-            -- save the rendered action handler in the plan
-            let addListener = _plan._doOnRendered.l %= (*> act)
-            in command' $ doTickScene sbj addListener
+    postCmd' $ MkRenderedCallback sbj c
 
 -- | This adds a ReactJS "ref" callback assign the ref into an 'EventTarget'
 -- for the elemental in the plan, so that the elemental '_targetRef' can be used.
 hdlElementalRef :: MonadReactor p s cmd m => ReactId -> m ()
-hdlElementalRef ri = trigger ri _always "ref" (pure . JE.fromJSR) >>= hdlRef
+hdlElementalRef ri = trigger ri "ref" (pure . JE.fromJSR) >>= hdlRef
   where
     hdlRef x = do
         sbj <- view _subject
