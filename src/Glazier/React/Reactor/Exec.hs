@@ -14,6 +14,7 @@ module Glazier.React.Reactor.Exec
     , execTickScene
     , execRegisterReactListener
     , execRegisterRenderedListener
+    , execRegisterDomListener
     ) where
 
 import Control.Applicative
@@ -26,6 +27,7 @@ import Control.Monad.IO.Unlift
 import Control.Monad.Reader
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.Maybe.Extras
 import Control.Monad.Trans.RWS.Strict
 import Control.Monad.Trans.State.Strict
 import Data.Diverse.Lens
@@ -133,91 +135,6 @@ doOnRendered scnRef scnVar = do
     putMVar scnVar scn'
     cln
     scn ^. _plan._renderedListener
-
--- doRendered :: IORef (Scene s) -> MVar (Scene s) -> IO ()
--- doRendered scnRef scnVar = join $ do
---     -- Get the IO actions doOnRendered and reset the "Once" actions
---     Scene pln mdl <- takeMVar scnVar
---     let ((untag @"Once") -> x, (untag @"Always") -> y) = doOnRendered pln
---         scn' = Scene (pln & _doOnRendered._1 .~ (Tagged @"Once" mempty)) mdl
---     atomicWriteIORef scnRef scn'
---     putMVar scnVar scn'
---     -- runs the "Once" actions before "Always".
---     pure (x *> y)
-
--- -- Refer to 'Glazier.React.Window.getListeners'
--- doReactListen :: IORef (Scene s) -> MVar (Scene s) -> J.JSVal -> J.JSVal -> IO ()
--- doReactListen scnRef scnVar ctx j = void $ runMaybeT $ do
---     -- ctx is [ ReactId, event name (eg OnClick) ]
---     -- Javascript doesn't have tuples, only list
---     (ri, n) <- MaybeT $ pure $ do
---         ctx' <- JE.fromJS ctx
---         case JA.toList ctx' of
---                 [ri', n'] -> do
---                     ri'' <- ReactId <$> JE.fromJS ri'
---                     n'' <- JE.fromJS n'
---                     Just (ri'', n'')
---                 -- malformed ctx, ignore
---                 _ -> Nothing
---     lift $ do
---         mhdl <- do
---                 Scene pln mdl <- takeMVar scnVar
---                 -- get the handler for the elemental and event name.
---                 -- also get the updated elemental as the "Once" handler may be reset.
---                 -- returns (Maybe handler, Maybe newElemental)
---                 -- First, look for elemental:
---                 let (mhdl, gs') = at ri go (pln ^. _elementals)
---                     go mg = case mg of
---                             Nothing -> (Nothing, Nothing)
---                             -- found elemental, check listeners for event name
---                             Just g -> let (ret, ls) = at n go' (g ^. _listeners)
---                                         in (ret, Just (g & _listeners .~ ls))
---                     go' ml = case ml of
---                             Nothing -> (Nothing, Nothing)
---                             -- Found listener with event name, reset "Once" actions
---                             Just ((untag @"Once") -> x, y) ->
---                                 ( Just (x *> (untag @"Always" y))
---                                 , Just (Tagged @"Once" mempty, y))
---                     -- update the elemental with resetted "Once" listeners
---                     -- and return the combined handler
---                     scn' = Scene (pln & _elementals .~ gs') mdl
---                 atomicWriteIORef scnRef scn'
---                 putMVar scnVar scn'
---                 pure mhdl
---         -- pass the javascript event arg into the combined handler
---         case mhdl of
---             Nothing -> pure ()
---             Just hdl -> hdl (JE.JSRep j)
-
--- -- Refer to 'Glazier.React.Window.getListeners'
--- doDomListen :: IORef (Scene s) -> MVar (Scene s) -> J.JSVal -> J.JSVal -> IO ()
--- doDomListen scnRef scnVar ctx j = void $ runMaybeT $ do
---     -- ctx is ReactId
---     ri <- MaybeT $ pure $ ReactId <$> JE.fromJS ctx
---     lift $ do
---         mhdl <- do
---                 Scene pln mdl <- takeMVar scnVar
---                 -- get the handler for the reactId.
---                 -- also get the updated elemental as the "Once" handler may be reset.
---                 -- returns (Maybe handler, Maybe newListener)
---                 -- First, look in externalListener:
---                 let (mhdl, gs') = at ri go (pln ^. _domlListeners)
---                     go mg = case mg of
---                             Nothing -> (Nothing, Nothing)
---                             -- Found listener with event name, reset "Once" actions
---                             Just ((untag @"Once") -> x, y) ->
---                                 ( Just (x *> (untag @"Always" y))
---                                 , Just (Tagged @"Once" mempty, y))
---                     -- update the map with resetted "Once" listeners
---                     -- and return the combined handler
---                     scn' = Scene (pln & _domlListeners .~ gs') mdl
---                 atomicWriteIORef scnRef scn'
---                 putMVar scnVar scn'
---                 pure mhdl
---         -- pass the javascript event arg into the combined handler
---         case mhdl of
---             Nothing -> pure ()
---             Just hdl -> hdl (JE.JSRep j)
 
 execSetRender :: MonadIO m => Subject s -> Window s () -> m ()
 execSetRender (Subject scnRef scnVar renderLeaseRef _) win = liftIO $ do
@@ -383,7 +300,7 @@ mkEventHandler goStrict = do
     -- 'Chan' guarantees that the writer is never blocked by the reader.
     -- There is only one reader/writer per channel.
     c <- newTChanIO
-    let preprocess evt = void . runMaybeT $ do
+    let preprocess evt = (`evalMaybeT` ()) $ do
             r <- goStrict evt
             -- This is guaranteed never to block
             lift $ atomically $ writeTChan c $!! r
@@ -419,7 +336,7 @@ execRegisterReactListener exec sbj ri n goStrict goLazy = do
             addListener = Just . maybe eventHdl (const eventHdl)
         -- update the ioref with the new handler
         (preprocessor, postprocessor) <- mkEventHandler (goStrict . JE.toJSR)
-        let postprocessor' = void $ runMaybeT $ do
+        let postprocessor' = (`evalMaybeT` ()) $ do
                 c <- goLazy <$> postprocessor
                 lift $ u $ exec c
         atomicModifyIORef' listenerRef $ \hdl -> (hdl <> (preprocessor, postprocessor'), ())
@@ -465,7 +382,7 @@ execRegisterDomListener exec sbj j n goStrict goLazy = do
         -- since ri is unique, it'll always be a new map item
         -- update the ioref with the new handler
         (preprocessor, postprocessor) <- mkEventHandler (goStrict . JE.toJSR)
-        let postprocessor' = void $ runMaybeT $ do
+        let postprocessor' = (`evalMaybeT` ()) $ do
                 c <- goLazy <$> postprocessor
                 lift $ u $ exec c
         listenerRef <- newIORef (preprocessor, postprocessor')
