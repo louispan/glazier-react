@@ -61,7 +61,7 @@ bh' ri n props childs = do
 bindListenerContext :: JE.JSRep -> J.Callback (J.JSVal -> J.JSVal -> IO ()) -> JE.JSRep
 bindListenerContext = js_bindListenerContext
 
-displaySubject :: Subject s -> Window s' ()
+displaySubject :: (MonadTrans t, MonadState (DL.DList ReactMarkup) (t ReadIORef)) => Subject s -> t ReadIORef ()
 displaySubject sbj = do
     scn <- lift (doReadIORef (sceneRef sbj))
     let ShimCallbacks renderCb renderedCb refCb = scn ^. _plan._shimCallbacks

@@ -5,8 +5,7 @@
 {-# LANGUAGE TypeApplications #-}
 
 module Glazier.React.Reactor.Exec
-    ( maybeExecReactor
-    , execReactorCmd
+    ( execReactorCmd
     , execRerender
     , execMkSubject
     , execGetScene
@@ -16,7 +15,6 @@ module Glazier.React.Reactor.Exec
     , execRegisterDOMListener
     ) where
 
-import Control.Applicative
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.DeepSeq
@@ -31,7 +29,6 @@ import Control.Monad.Trans.RWS.Strict
 import Control.Monad.Trans.State.Strict
 import Data.Diverse.Lens
 import qualified Data.DList as DL
-import Data.Foldable
 import Data.IORef
 import qualified Data.JSString as J
 import qualified Data.Map.Strict as M
@@ -41,7 +38,6 @@ import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Foreign.Callback.Internal as J
 import qualified GHCJS.Types as J
 import Glazier.Command
-import Glazier.Command.Exec
 import Glazier.React.Component
 import Glazier.React.Entity
 import Glazier.React.Gadget
@@ -56,23 +52,23 @@ import Glazier.React.Widget
 import Glazier.React.Window
 import qualified JavaScript.Extras as JE
 
--- | Create a executor for all the core commands required by the framework
-maybeExecReactor ::
-    ( MonadUnliftIO m
-    , AsReactor cmd
-    , Has (Tagged ReactId (MVar Int)) r
-    , MonadReader r m
-    )
-    => (cmd -> m ()) -> cmd -> MaybeT m ()
-maybeExecReactor exec c =
-    -- execute a list of commands in serial, not in parallel because
-    -- Some commands may have effect dependencies.
-    -- Javascript is single threaded anyway, so it is more
-    -- efficient to execuute "quick" commands single threaded.
-    -- We'll let the individual executors of the commands decide if
-    -- "slow" commands should be forked in a thread.
-    maybeExec (traverse_ @[] exec) c
-    <|> maybeExec (execReactorCmd exec) c
+-- -- | Create a executor for all the core commands required by the framework
+-- maybeExecReactor ::
+--     ( MonadUnliftIO m
+--     , AsReactor cmd
+--     , Has (Tagged ReactId (MVar Int)) r
+--     , MonadReader r m
+--     )
+--     => (cmd -> m ()) -> cmd -> MaybeT m ()
+-- maybeExecReactor exec c =
+--     -- execute a list of commands in serial, not in parallel because
+--     -- Some commands may have effect dependencies.
+--     -- Javascript is single threaded anyway, so it is more
+--     -- efficient to execuute "quick" commands single threaded.
+--     -- We'll let the individual executors of the commands decide if
+--     -- "slow" commands should be forked in a thread.
+--     maybeExec (traverse_ @[] exec) c
+--     <|> maybeExec (execReactorCmd exec) c
 
 execReactorCmd ::
     ( MonadUnliftIO m
