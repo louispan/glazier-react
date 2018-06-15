@@ -86,7 +86,7 @@ data ReactorCmd cmd where
     -- | Update and rerender a scene.
     TickScene :: Subject s -> SceneState s cmd -> ReactorCmd cmd
     -- | Create and register a dom callback
-    RegisterDomListener :: NFData a
+    RegisterDOMListener :: NFData a
         => Subject s
         -> JE.JSRep
         -> J.JSString
@@ -115,7 +115,7 @@ instance Show cmd => Show (ReactorCmd cmd) where
     showsPrec _ (Rerender _) = showString "Rerender"
     showsPrec _ (GetScene _ _) = showString "GetScene"
     showsPrec _ (TickScene _ _) = showString "TickScene"
-    showsPrec _ (RegisterDomListener _ _ _ _ _) = showString "RegisterDomListener"
+    showsPrec _ (RegisterDOMListener _ _ _ _ _) = showString "RegisterDOMListener"
     showsPrec _ (RegisterReactListener _ _ _ _ _) = showString "RegisterReactListener"
     showsPrec _ (RegisterRenderedListener _ _) = showString "RegisterRenderedListener"
 
@@ -220,7 +220,7 @@ domTrigger ::
 domTrigger j n goStrict = delegate $ \goLazy -> do
     Entity sbj _ <- ask
     goLazy' <- codify goLazy
-    postCmd' $ RegisterDomListener sbj j n goStrict goLazy'
+    postCmd' $ RegisterDOMListener sbj j n goStrict goLazy'
 
 -- | A variation of trigger which ignores the event but fires the given arg instead.
 domTrigger_ ::

@@ -5,8 +5,7 @@
 {-# LANGUAGE TypeApplications #-}
 
 module Glazier.React.Reactor.Exec
-    ( maybeExec
-    , maybeExecReactor
+    ( maybeExecReactor
     , execReactorCmd
     , execRerender
     , execMkSubject
@@ -14,7 +13,7 @@ module Glazier.React.Reactor.Exec
     , execTickScene
     , execRegisterReactListener
     , execRegisterRenderedListener
-    , execRegisterDomListener
+    , execRegisterDOMListener
     ) where
 
 import Control.Applicative
@@ -91,7 +90,7 @@ execReactorCmd exec c = case c of
     TickScene sbj tick -> execTickScene sbj tick >>= exec
     RegisterReactListener sbj ri n goStrict goLazy -> execRegisterReactListener exec sbj ri n goStrict goLazy
     RegisterRenderedListener sbj c' -> execRegisterRenderedListener exec sbj c'
-    RegisterDomListener sbj j n goStrict goLazy -> execRegisterDomListener exec sbj j n goStrict goLazy
+    RegisterDOMListener sbj j n goStrict goLazy -> execRegisterDOMListener exec sbj j n goStrict goLazy
 
 -----------------------------------------------------------------
 execMkReactId ::
@@ -360,7 +359,7 @@ execRegisterRenderedListener exec sbj c = do
   where
     scnRef = sceneRef sbj
 
-execRegisterDomListener ::
+execRegisterDOMListener ::
     ( NFData a
     , MonadUnliftIO m
     , Has (Tagged ReactId (MVar Int)) r
@@ -373,7 +372,7 @@ execRegisterDomListener ::
     -> (JE.JSRep -> MaybeT IO a)
     -> (a -> cmd)
     -> m ()
-execRegisterDomListener exec sbj j n goStrict goLazy = do
+execRegisterDOMListener exec sbj j n goStrict goLazy = do
     -- Add the handler to the state
     UnliftIO u <- askUnliftIO
     ri <- execMkReactId n
