@@ -51,7 +51,7 @@ foreign import javascript unsafe
 
 foreign import javascript unsafe
   "if ($1 && $1['rerender']) { $1['rerender']() };"
-  js_rerenderShim :: ComponentRef -> Int -> IO ()
+  js_rerenderShim :: ComponentRef -> IO ()
 
 #else
 
