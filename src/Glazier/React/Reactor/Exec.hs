@@ -404,11 +404,11 @@ removeDomListener j n cb = js_removeDomListener (JE.toJS j) n (JE.toJS cb)
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
-    "if (j && j['addEventListener']) { j['addEventListener'](n, l); }"
+    "if ($1 && $1['addEventListener']) { $1['addEventListener']($2, $3); }"
     js_addDomListener :: J.JSVal -> J.JSString -> J.JSVal -> IO ()
 
 foreign import javascript unsafe
-    "if (j && j['removeEventListener']) { j['removeEventListener'](n, l); }"
+    "if ($1 && $1['removeEventListener']) { $1['removeEventListener']($2, $3); }"
     js_removeDomListener :: J.JSVal -> J.JSString -> J.JSVal -> IO ()
 
 #else

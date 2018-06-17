@@ -18,6 +18,7 @@ module Glazier.React.Markup
     , lf
     , bh
     , withMarkup
+    , modifyMarkup
     , overSurfaceProperties
     , overAllProperties
     ) where
@@ -126,11 +127,11 @@ bh :: (MonadState (DL.DList ReactMarkup) m)
     -> m a
 bh n props = withMarkup (\childs' ms -> ms `DL.snoc` BranchMarkup (BranchParam n props childs'))
 
--- -- Given a mapping function, apply it to children of the markup
--- modifyMarkup :: MonadState (DL.DList ReactMarkup) m
---     => (DL.DList ReactMarkup -> DL.DList ReactMarkup)
---     -> m a -> m a
--- modifyMarkup f = withMarkup (\childs' ms -> ms `DL.append` f childs')
+-- Given a mapping function, apply it to children of the markup
+modifyMarkup :: MonadState (DL.DList ReactMarkup) m
+    => (DL.DList ReactMarkup -> DL.DList ReactMarkup)
+    -> m a -> m a
+modifyMarkup f = withMarkup (\childs' ms -> ms `DL.append` f childs')
 
 -- Given a mapping function, apply it to all child BranchMarkup or LeafMarkup (if possible)
 -- Does not recurse into decendants.
