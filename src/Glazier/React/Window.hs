@@ -26,6 +26,10 @@ import Glazier.React.Scene
 import Glazier.React.Subject
 import qualified JavaScript.Extras as JE
 
+#if MIN_VERSION_base(4,9,0) && !MIN_VERSION_base(4,10,0)
+import Data.Semigroup
+#endif
+
 -- The @s@ can be magnified with 'magnifiedScene'
 type Window s = RWST (Scene s) () (DL.DList ReactMarkup) ReadIORef
 

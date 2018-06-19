@@ -29,6 +29,7 @@ import Control.Monad.Trans.RWS.Strict
 import Control.Monad.Trans.State.Strict
 import Data.Diverse.Lens
 import qualified Data.DList as DL
+import Data.Foldable
 import Data.IORef
 import qualified Data.JSString as J
 import qualified Data.Map.Strict as M
@@ -192,7 +193,7 @@ execMkSubject exec wid s = do
             scn' ^. _plan._tmpCleanup
             scn' ^. _plan._finalCleanup
             -- cleanup callbacks
-            traverse (traverse (J.releaseCallback . fst) . reactListener) (scn' ^. _plan._elementals)
+            traverse_ (traverse (J.releaseCallback . fst) . reactListener) (scn' ^. _plan._elementals)
             J.releaseCallback refCb
             J.releaseCallback renderedCb
         void $ mkWeakMVar renderLease $ J.releaseCallback renderCb
@@ -334,13 +335,16 @@ execRegisterReactListener exec sbj ri n goStrict goLazy = do
         let postprocessor' = (`evalMaybeT` ()) $ do
                 c <- goLazy <$> postprocessor
                 lift $ u $ exec c
-        atomicModifyIORef' listenerRef $ \hdl -> (hdl <> (preprocessor, postprocessor'), ())
+        atomicModifyIORef' listenerRef $ \hdl -> (hdl `mappendListener` (preprocessor, postprocessor'), ())
         -- Update the subject
         atomicWriteIORef scnRef scn'
         putMVar scnVar scn'
   where
     scnRef = sceneRef sbj
     scnVar = sceneVar sbj
+
+mappendListener :: (J.JSVal -> IO (), IO ()) -> (J.JSVal -> IO (), IO ()) -> (J.JSVal -> IO (), IO ())
+mappendListener (f1, g1) (f2, g2) = (\x -> f1 x *> f2 x, g1 *> g2)
 
 execRegisterRenderedListener :: (MonadUnliftIO m)
     => (cmd -> m ())
@@ -351,7 +355,7 @@ execRegisterRenderedListener exec sbj c = do
     UnliftIO u <- askUnliftIO
     let hdl = u $ exec c
     liftIO $ atomicModifyIORef' scnRef $ \scn ->
-        (scn & _plan._renderedListener %~ (<> hdl), ())
+        (scn & _plan._renderedListener %~ (*> hdl), ())
   where
     scnRef = sceneRef sbj
 
@@ -384,7 +388,7 @@ execRegisterDOMListener exec sbj j n goStrict goLazy = do
         cb <- mkEventCallback listenerRef
         -- prepare the updated state,
         let scn' = scn & _plan._domlListeners.at ri .~ (Just (cb, listenerRef))
-                & _plan._finalCleanup %~ (<> removeDomListener j n cb)
+                & _plan._finalCleanup %~ (*> removeDomListener j n cb)
         -- Update the subject
         atomicWriteIORef scnRef scn'
         putMVar scnVar scn'

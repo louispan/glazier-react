@@ -67,7 +67,7 @@ library
                      , unliftio-core >= 0.1
   default-language:    Haskell2010
   default-extensions:  ApplicativeDo
-  ghc-options:         -Wall
+  ghc-options:         -Wall -Wredundant-constraints
   if impl(ghcjs)
     build-depends: ghcjs-base
   if !impl(ghcjs)
