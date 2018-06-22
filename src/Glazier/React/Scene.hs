@@ -17,6 +17,7 @@
 
 module Glazier.React.Scene where
 
+import Control.Concurrent.STM
 import Control.Lens
 import Control.Lens.Misc
 import Data.IORef
@@ -35,7 +36,7 @@ import Glazier.React.ReactId
 data Elemental = Elemental
     { elementalRef :: Maybe EventTarget
     -- (name of event, context of event)
-    , reactListener :: M.Map J.JSString
+    , reactListeners :: M.Map J.JSString
         ( J.Callback (J.JSVal -> IO ())
         , IORef (J.JSVal -> IO (), IO ())
         )
@@ -48,14 +49,12 @@ makeLenses_ ''Elemental
 data ShimCallbacks = ShimCallbacks
     -- render function of the ReactComponent
     { shimRender :: J.Callback (IO J.JSVal)
+    -- Run the mountedListener in the plan
+    , shimMounted :: J.Callback (IO ())
+    -- Run the renderedListener in the plan
+    , shimRendered :: J.Callback (IO ())
     -- updates the componenRef
     , shimRef :: J.Callback (J.JSVal -> IO ())
-    -- Run the doOnRendered in the plan
-    , shimRendered :: J.Callback (IO ())
-    -- all listeners use the same entry function, just a different
-    -- first arg context.
-    -- , shimReactListener :: J.Callback (J.JSVal -> J.JSVal -> IO ())
-    -- , shimDomListener :: J.Callback (J.JSVal -> J.JSVal -> IO ())
     } deriving (G.Generic)
 
 makeLenses_ ''ShimCallbacks
@@ -66,9 +65,15 @@ makeLenses_ ''ShimCallbacks
 data Plan = Plan
     -- a react "ref" to the javascript instance of ReactComponent
     -- so that react "componentRef.setState()" can be called.
-    { componentRef :: Maybe ComponentRef
+    { planId :: ReactId
+    , componentRef :: Maybe ComponentRef
     , shimCallbacks :: ShimCallbacks
-    , renderedListener :: IO ()
+    -- called after state was just updated
+    , tickedListener :: (TMVar (), IO ())
+    -- called after first rendering only
+    , mountedListener :: (TMVar (), IO ())
+    -- called after every rendering
+    , renderedListener :: (TMVar (), IO ())
     -- interactivity data for child DOM elements
     , elementals :: M.Map ReactId Elemental
     -- interactivity for explicit eventTarget.addEventListener() callbacks
@@ -78,7 +83,7 @@ data Plan = Plan
         )
     -- cleanup either on next rerender or when the subject is garbage collected
     -- this gets reset after every rerender
-    , tmpCleanup :: IO ()
+    , nextRenderedListener :: IO ()
     -- cleanup to call eventTarget.removeEventListener()
     , finalCleanup :: IO ()
     } deriving (G.Generic)

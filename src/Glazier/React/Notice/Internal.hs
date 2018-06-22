@@ -64,7 +64,7 @@ unsafeGetModifierState obj k = J.fromJSBool $ js_unsafeGetModifierState obj k
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
-    "($1 && $1['nativeEvent'] && $1['nativeEvent'] instanceof Event)"
+    "$1 && $1['nativeEvent'] && $1['nativeEvent'] instanceof Event"
     js_isNotice :: J.JSVal -> Bool
 
 foreign import javascript unsafe

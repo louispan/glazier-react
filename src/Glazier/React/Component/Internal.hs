@@ -35,19 +35,21 @@ newtype ComponentRef = ComponentRef JE.JSRep
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
 instance JE.FromJS ComponentRef where
-    fromJS a | js_isComponent a = Just $ ComponentRef $ JE.JSRep a
+    fromJS a | js_isReactComponent a = Just $ ComponentRef $ JE.JSRep a
     fromJS _ = Nothing
 
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
   "$r = hgr$shimComponent();"
-  js_shimComponent
-      :: JE.JSRep
+  js_shimComponent :: JE.JSRep
 
+-- !!blah is javascript way of converting to bool
+-- using undocumented api to check if something is react component
+-- https://stackoverflow.com/questions/33199959/how-to-detect-a-react-component-vs-a-react-element
 foreign import javascript unsafe
-    "$1 && $1['prototype'] && !(!($1['prototype']['isReactComponent']))"
-    js_isComponent :: J.JSVal -> Bool
+    "!(!($1 && !(!($1['isReactComponent']))))"
+    js_isReactComponent :: J.JSVal -> Bool
 
 foreign import javascript unsafe
   "if ($1 && $1['rerender']) { $1['rerender']() };"
@@ -58,8 +60,8 @@ foreign import javascript unsafe
 js_shimComponent :: JE.JSRep
 js_shimComponent = JE.JSRep J.nullRef
 
-js_isComponent :: J.JSVal -> Bool
-js_isComponent _ = False
+js_isReactComponent :: J.JSVal -> Bool
+js_isReactComponent _ = False
 
 js_rerenderShim :: ComponentRef -> IO ()
 js_rerenderShim _ = pure ()

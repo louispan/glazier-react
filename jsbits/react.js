@@ -37,15 +37,26 @@ function hgr$shimComponent() {
             constructor(props) {
                 super(props);
                 this.state = { frameNum: 0 };
+                this.pendingRerender = false;
             }
 
-            rerender() {
+            doRerender() {
                 this.setState(function(prevState, props) {
                     var newFrameNum = this.safeIncrement(prevState.frameNum);
                     return {
                         frameNum: newFrameNum
                     };
                 });
+                this.pendingRerender = false;
+            }
+
+            rerender() {
+                // batch all rerender requrests in the same callstack.
+                if (!this.pendingRerender) {
+                    this.pendingRerender = true;
+                    var that = this;
+                    window.setTimeout(function(){that.doRerender()}, 1);
+                }
             }
 
             safeIncrement(i) {
@@ -58,14 +69,17 @@ function hgr$shimComponent() {
             }
 
             componentDidUpdate(prevProps, prevState) {
+                // componentDidUpdate is not called on initial render.
                 // ignore prevProps, prevState and forward to a custom callback
-                // NB. Tis is not called on initial render.
                 if (this.props['rendered'])
                     this.props['rendered']();
             }
 
             componentDidMount() {
                 // Also forward to updated so it gets a callback on initial render.
+                console.log("##### componentDidMount ###");
+                if (this.props['mounted'])
+                    this.props['mounted']();
                 if (this.props['rendered'])
                     this.props['rendered']();
             }

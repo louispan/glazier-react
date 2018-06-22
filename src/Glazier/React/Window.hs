@@ -38,7 +38,7 @@ type Window s = RWST (Scene s) () (DL.DList ReactMarkup) ReadIORef
 
 getListeners :: MonadReader (Scene s) m => ReactId -> m [JE.Property]
 getListeners ri = do
-    ls <- view (_plan._elementals.ix ri._reactListener.to M.toList)
+    ls <- view (_plan._elementals.ix ri._reactListeners.to M.toList)
     pure $ (\(n, (cb, _)) -> (n, JE.toJSR cb)) <$> ls
 
 -- | Interactive version of 'lf' using listeners obtained from the 'Plan' for a 'ElementalId'.
@@ -68,13 +68,20 @@ bindListenerContext = js_bindListenerContext
 displaySubject :: (MonadTrans t, MonadState (DL.DList ReactMarkup) (t ReadIORef)) => Subject s -> t ReadIORef ()
 displaySubject sbj = do
     scn <- lift (doReadIORef (sceneRef sbj))
-    let ShimCallbacks renderCb renderedCb refCb = scn ^. _plan._shimCallbacks
+    let scb = scn ^. _plan._shimCallbacks
+        renderCb = shimRender scb
+        mountedCb = shimMounted scb
+        renderedCb = shimRendered scb
+        refCb = shimRef scb
+        ri = scn ^. _plan._planId
     -- These are the callbacks on the 'ShimComponent'
     -- See jsbits/react.js
     lf (JE.toJSR shimComponent)
         [ ("render", JE.toJSR renderCb)
+        , ("mounted", JE.toJSR mountedCb)
         , ("rendered", JE.toJSR renderedCb)
         , ("ref", JE.toJSR refCb)
+        , ("key", JE.toJSR ri)
         ]
 
 #ifdef __GHCJS__
