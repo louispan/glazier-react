@@ -70,10 +70,12 @@ data Plan = Plan
     , shimCallbacks :: ShimCallbacks
     -- called after state was just updated
     , tickedListener :: (TMVar (), IO ())
-    -- called after first rendering only
-    , mountedListener :: (TMVar (), IO ())
     -- called after every rendering
     , renderedListener :: (TMVar (), IO ())
+    -- called after first rendering only
+    , mountedListener :: IO ()
+    -- do on next rerender. This gets reset after every rerender.
+    , nextRenderedListener :: IO ()
     -- interactivity data for child DOM elements
     , elementals :: M.Map ReactId Elemental
     -- interactivity for explicit eventTarget.addEventListener() callbacks
@@ -81,9 +83,6 @@ data Plan = Plan
         ( J.Callback (J.JSVal -> IO ())
         , IORef (J.JSVal -> IO (), IO ())
         )
-    -- cleanup either on next rerender or when the subject is garbage collected
-    -- this gets reset after every rerender
-    , nextRenderedListener :: IO ()
     -- cleanup to call eventTarget.removeEventListener()
     , finalCleanup :: IO ()
     } deriving (G.Generic)

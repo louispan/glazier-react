@@ -155,16 +155,7 @@ doRendered scnRef scnVar = do
 doMounted :: IORef (Scene s) -> IO ()
 doMounted scnRef = do
     scn <- readIORef scnRef
-    let (reentrancyGuard, cb) = scn ^. _plan._mountedListener
-    putStrLn "doMounted start"
-    -- only process _renderedListener if we are not already inside a renderedListener callstack.
-    g <- atomically $ tryTakeTMVar reentrancyGuard
-    case g of
-        Nothing -> pure ()
-        Just _ -> do
-            cb
-            atomically $ putTMVar reentrancyGuard ()
-    putStrLn "doMounted end"
+    scn ^. _plan._mountedListener
 
 execSetRender :: MonadIO m => Subject s -> Window s () -> m ()
 execSetRender sbj win = liftIO $ do
@@ -208,15 +199,14 @@ execMkSubject exec wid s = do
     (sbj, cs) <- liftIO $ do
         -- create shim with fake callbacks for now
         tickedGuard <- newTMVarIO ()
-        mountedGuard <- newTMVarIO ()
         renderedGuard <- newTMVarIO ()
         let newPlan = Plan
                 ri
                 Nothing
                 (ShimCallbacks (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef))
                 (tickedGuard, mempty)
-                (mountedGuard, mempty)
                 (renderedGuard, mempty)
+                mempty
                 mempty
                 mempty
                 mempty
@@ -241,7 +231,7 @@ execMkSubject exec wid s = do
         -- that will run when the Subject lease members are garbage collected.
         void $ mkWeakMVar otherCbLease $ do
             scn' <- readIORef scnRef
-            scn' ^. _plan._nextRenderedListener
+            -- scn' ^. _plan._nextRenderedListener
             scn' ^. _plan._finalCleanup
             -- cleanup callbacks
             traverse_ (traverse (J.releaseCallback . fst) . reactListeners) (scn' ^. _plan._elementals)
@@ -380,6 +370,20 @@ mkEventHandler goStrict = do
         postprocess = MaybeT $ atomically $ tryReadTChan c
     pure (preprocess, postprocess)
 
+addEventListener :: (NFData a)
+    => (cmd -> IO ())
+    -> (JE.JSRep -> MaybeT IO a)
+    -> (a -> cmd)
+    -> IORef (J.JSVal -> IO (), IO ())
+    -> IO ()
+addEventListener execIO goStrict goLazy listenerRef = do
+    -- update the ioref with the new handler
+    (preprocessor, postprocessor) <- mkEventHandler (goStrict . JE.toJSR)
+    let postprocessor' = (`evalMaybeT` ()) $ do
+            c <- goLazy <$> postprocessor
+            lift $ execIO c
+    atomicModifyIORef' listenerRef $ \hdl -> (hdl `mappendListener` (preprocessor, postprocessor'), ())
+
 execRegisterReactListener :: (NFData a, MonadUnliftIO m)
     => (cmd -> m ())
     -> Subject s
@@ -393,11 +397,10 @@ execRegisterReactListener exec sbj ri n goStrict goLazy = do
     liftIO $ do
         scn <- takeMVar scnVar
         -- first get or make the target
-        eventHdl <-
+        eventHdl@(_, listenerRef) <-
             case scn ^. _plan._elementals.at ri.to (fromMaybe (Elemental Nothing mempty))._reactListeners.at n of
                 Nothing -> do
                     listenerRef <- newIORef mempty
-                    addEventListener (u . exec) goStrict goLazy listenerRef
                     cb <- mkEventCallback listenerRef
                     pure (cb, listenerRef)
                 Just eventHdl -> pure eventHdl
@@ -418,6 +421,8 @@ execRegisterReactListener exec sbj ri n goStrict goLazy = do
             initElem = fromMaybe (Elemental Nothing mempty)
             addElem = _reactListeners.at n %~ addListener
             addListener = Just . maybe eventHdl (const eventHdl)
+        -- update listenerRef with new event listener
+        addEventListener (u . exec) goStrict goLazy listenerRef
         -- Update the subject
         atomicWriteIORef scnRef scn'
         putMVar scnVar scn'
@@ -428,20 +433,6 @@ execRegisterReactListener exec sbj ri n goStrict goLazy = do
     -- hdlRef x = do
     --     sbj <- view _subject
     --     postCmd' . doTickScene sbj $ (_plan._elementals.ix ri._elementalRef .= x)
-
-addEventListener :: (NFData a)
-    => (cmd -> IO ())
-    -> (JE.JSRep -> MaybeT IO a)
-    -> (a -> cmd)
-    -> IORef (J.JSVal -> IO (), IO ())
-    -> IO ()
-addEventListener execIO goStrict goLazy listenerRef = do
-    -- update the ioref with the new handler
-    (preprocessor, postprocessor) <- mkEventHandler (goStrict . JE.toJSR)
-    let postprocessor' = (`evalMaybeT` ()) $ do
-            c <- goLazy <$> postprocessor
-            lift $ execIO c
-    atomicModifyIORef' listenerRef $ \hdl -> (hdl `mappendListener` (preprocessor, postprocessor'), ())
 
 mappendListener :: (J.JSVal -> IO (), IO ()) -> (J.JSVal -> IO (), IO ()) -> (J.JSVal -> IO (), IO ())
 mappendListener (f1, g1) (f2, g2) = (\x -> f1 x *> f2 x, g1 *> g2)
@@ -473,7 +464,7 @@ execRegisterMountedListener exec sbj c = do
     let hdl = u $ exec c
     liftIO $ do
         scn <- takeMVar scnVar
-        let scn' = scn & _plan._mountedListener %~ (\(v, a) -> (v, a *> hdl))
+        let scn' = scn & _plan._mountedListener %~ (*> hdl)
         atomicWriteIORef scnRef scn'
         putMVar scnVar scn'
   where
@@ -530,14 +521,15 @@ execRegisterDOMListener ::
 execRegisterDOMListener exec sbj j n goStrict goLazy = do
     -- Add the handler to the state
     UnliftIO u <- askUnliftIO
+    -- generate a unique id
     ri <- execMkReactId n
     liftIO $ do
         scn <- takeMVar scnVar
         -- since ri is unique, it'll always be a new map item
         -- update the ioref with the new handler
         listenerRef <- newIORef mempty
-        addEventListener (u . exec) goStrict goLazy listenerRef
         cb <- mkEventCallback listenerRef
+        addEventListener (u . exec) goStrict goLazy listenerRef
         -- prepare the updated state,
         let scn' = scn & _plan._domlListeners.at ri .~ (Just (cb, listenerRef))
                 & _plan._finalCleanup %~ (*> removeDomListener j n cb)
@@ -549,7 +541,6 @@ execRegisterDOMListener exec sbj j n goStrict goLazy = do
   where
     scnRef = sceneRef sbj
     scnVar = sceneVar sbj
-
 
 addDomListener :: JE.JSRep -> J.JSString -> J.Callback (J.JSVal -> IO ()) -> IO ()
 addDomListener j n cb = js_addDomListener (JE.toJS j) n (JE.toJS cb)
