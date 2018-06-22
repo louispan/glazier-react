@@ -32,11 +32,9 @@ import qualified Data.DList as DL
 import Data.Foldable
 import Data.IORef
 import qualified Data.JSString as J
-import qualified Data.Map.Strict as M
 import Data.Maybe
 import Data.Tagged
 import Data.Typeable
-import Debug.Trace
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Foreign.Callback.Internal as J
 import qualified GHCJS.Types as J
@@ -382,16 +380,6 @@ mkEventHandler goStrict = do
         postprocess = MaybeT $ atomically $ tryReadTChan c
     pure (preprocess, postprocess)
 
--- execRegisterReactListener' :: (NFData a, MonadUnliftIO m)
---     => (cmd -> m ())
---     -> Subject s
---     -> ReactId
---     -> J.JSString
---     -> (JE.JSRep -> MaybeT IO a)
---     -> (a -> cmd)
---     -> m ()
--- execRegisterReactListener' exec sbj ri n goStrict goLazy = do
-
 execRegisterReactListener :: (NFData a, MonadUnliftIO m)
     => (cmd -> m ())
     -> Subject s
@@ -405,31 +393,55 @@ execRegisterReactListener exec sbj ri n goStrict goLazy = do
     liftIO $ do
         scn <- takeMVar scnVar
         -- first get or make the target
-        eventHdl@(_, listenerRef) <-
+        eventHdl <-
             case scn ^. _plan._elementals.at ri.to (fromMaybe (Elemental Nothing mempty))._reactListeners.at n of
                 Nothing -> do
                     listenerRef <- newIORef mempty
+                    addEventListener (u . exec) goStrict goLazy listenerRef
                     cb <- mkEventCallback listenerRef
                     pure (cb, listenerRef)
                 Just eventHdl -> pure eventHdl
+        -- -- also get or make the ref callback
+        -- refHdl <-
+        --     case scn ^. _plan._elementals.at ri.to (fromMaybe (Elemental Nothing mempty))._reactListeners.at refN of
+        --         Nothing -> do
+        --             listenerRef <- newIORef mempty
+        --             addEventListener exec (pure . JE.fromJSR) hdlRef listenerRef
+        --             cb <- mkEventCallback listenerRef
+        --             pure (cb, listenerRef)
+        --         Just refHdl -> pure refHdl
         -- prepare the updated state
-        let scn' = scn & _plan._elementals.at ri %~ addElem
-            addElem = Just . maybe (Elemental Nothing (M.singleton n eventHdl))
-                (_reactListeners.at n %~ addListener)
+        let scn' = scn & _plan._elementals.at ri %~ (Just . addElem . initElem)
+            -- scn' = scn & _plan._elementals.at ri %~ (Just . addElem . addRef . initElem)
+            -- addRef = _reactListeners.at refN %~ addRefListener
+            -- addRefListener = Just . maybe refHdl (const refHdl)
+            initElem = fromMaybe (Elemental Nothing mempty)
+            addElem = _reactListeners.at n %~ addListener
             addListener = Just . maybe eventHdl (const eventHdl)
-            hdls = scn' ^. _plan._elementals.ix ri._reactListeners.to M.keys
-        -- update the ioref with the new handler
-        (preprocessor, postprocessor) <- trace (show ri ++ ":" ++ show hdls) $ mkEventHandler (goStrict . JE.toJSR)
-        let postprocessor' = (`evalMaybeT` ()) $ do
-                c <- goLazy <$> postprocessor
-                lift $ u $ exec c
-        atomicModifyIORef' listenerRef $ \hdl -> (hdl `mappendListener` (preprocessor, postprocessor'), ())
         -- Update the subject
         atomicWriteIORef scnRef scn'
         putMVar scnVar scn'
   where
+    -- refN = J.pack "ref"
     scnRef = sceneRef sbj
     scnVar = sceneVar sbj
+    -- hdlRef x = do
+    --     sbj <- view _subject
+    --     postCmd' . doTickScene sbj $ (_plan._elementals.ix ri._elementalRef .= x)
+
+addEventListener :: (NFData a)
+    => (cmd -> IO ())
+    -> (JE.JSRep -> MaybeT IO a)
+    -> (a -> cmd)
+    -> IORef (J.JSVal -> IO (), IO ())
+    -> IO ()
+addEventListener execIO goStrict goLazy listenerRef = do
+    -- update the ioref with the new handler
+    (preprocessor, postprocessor) <- mkEventHandler (goStrict . JE.toJSR)
+    let postprocessor' = (`evalMaybeT` ()) $ do
+            c <- goLazy <$> postprocessor
+            lift $ execIO c
+    atomicModifyIORef' listenerRef $ \hdl -> (hdl `mappendListener` (preprocessor, postprocessor'), ())
 
 mappendListener :: (J.JSVal -> IO (), IO ()) -> (J.JSVal -> IO (), IO ()) -> (J.JSVal -> IO (), IO ())
 mappendListener (f1, g1) (f2, g2) = (\x -> f1 x *> f2 x, g1 *> g2)
@@ -523,11 +535,8 @@ execRegisterDOMListener exec sbj j n goStrict goLazy = do
         scn <- takeMVar scnVar
         -- since ri is unique, it'll always be a new map item
         -- update the ioref with the new handler
-        (preprocessor, postprocessor) <- mkEventHandler (goStrict . JE.toJSR)
-        let postprocessor' = (`evalMaybeT` ()) $ do
-                c <- goLazy <$> postprocessor
-                lift $ u $ exec c
-        listenerRef <- newIORef (preprocessor, postprocessor')
+        listenerRef <- newIORef mempty
+        addEventListener (u . exec) goStrict goLazy listenerRef
         cb <- mkEventCallback listenerRef
         -- prepare the updated state,
         let scn' = scn & _plan._domlListeners.at ri .~ (Just (cb, listenerRef))

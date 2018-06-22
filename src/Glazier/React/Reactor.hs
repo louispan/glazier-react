@@ -47,7 +47,6 @@ import Control.Monad.State.Strict
 import Control.Monad.Trans.Maybe
 import Data.Diverse.Lens
 import Data.Typeable
-import Debug.Trace
 import qualified GHCJS.Types as J
 import Glazier.Command
 import Glazier.React.Entity
@@ -378,6 +377,4 @@ onElementalRef ri = trigger ri "ref" (pure . JE.fromJSR) >>= hdlRef
   where
     hdlRef x = do
         sbj <- view _subject
-        let x' = trace "elementRef" x
-            ri' = trace ("onELementRef:" ++ show ri) ri
-        postCmd' . doTickScene sbj $ (_plan._elementals.ix ri'._elementalRef .= x')
+        postCmd' . doTickScene sbj $ (_plan._elementals.ix ri._elementalRef .= x)
