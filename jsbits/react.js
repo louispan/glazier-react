@@ -77,7 +77,6 @@ function hgr$shimComponent() {
 
             componentDidMount() {
                 // Also forward to updated so it gets a callback on initial render.
-                console.log("##### componentDidMount ###");
                 if (this.props['mounted'])
                     this.props['mounted']();
                 if (this.props['rendered'])
