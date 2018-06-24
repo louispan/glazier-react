@@ -14,18 +14,23 @@ module Glazier.React.Reactor
     ( AsReactor
     , MonadReactor
     , ReactorCmd(..)
-    , SceneState
+    -- , SceneState
+    , ModelState
     , mkReactId
     , setRender
     , mkSubject
     , mkSubject'
     , withMkSubject
     -- , addSubject
-    , cleanupSubject
-    , rerender
-    , getScene
-    , tickScene
-    , tickSceneThen
+    , bookSubjectCleanup
+    -- , rerender
+    -- , getScene
+    , getModel
+    , getElementalRef
+    -- , tickScene
+    -- , tickSceneThen
+    , tickModel
+    , tickModelThen
     , domTrigger
     , domTrigger_
     , trigger
@@ -35,7 +40,7 @@ module Glazier.React.Reactor
     , onRendered
     , onNextRendered
     , onTicked
-    , onElementalRef
+    -- , onElementalRef
     ) where
 
 import Control.Also
@@ -53,7 +58,6 @@ import Glazier.React.EventTarget
 import Glazier.React.Notice
 import Glazier.React.ReactId
 import Glazier.React.ReadIORef
-import Glazier.React.Scene
 import Glazier.React.Subject
 import Glazier.React.Widget
 import Glazier.React.Window
@@ -73,7 +77,8 @@ type MonadReactor p s cmd m =
     )
 
 -- FIXME: Just State s is enough?
-type SceneState s = StateT (Scene s) ReadIORef
+-- type SceneState s = StateT (Scene s) ReadIORef
+type ModelState s = StateT s ReadIORef
 
 -- | NB. 'ReactorCmd' is not a functor because of the @Widget cmd@ in 'MkSubject'
 data ReactorCmd cmd where
@@ -83,20 +88,25 @@ data ReactorCmd cmd where
     SetRender :: Subject s -> Window s () -> ReactorCmd cmd
     -- | Make a fully initialized subject (with ShimCallbacks) from a widget spec and state
     MkSubject :: Widget cmd s s () -> s -> (Subject s -> cmd) -> ReactorCmd cmd
-    -- | Rerender a ShimComponent using the given state.
-    Rerender :: Subject s -> ReactorCmd cmd
+    -- | Keep subject alive until the next rerender
+    BookSubjectCleanup :: Subject s -> ReactorCmd cmd
+    -- -- | Rerender a ShimComponent using the given state.
+    -- Rerender :: Subject s -> ReactorCmd cmd
+    -- -- | Generate a list of commands from reading a scene.
+    -- GetScene :: Subject s -> (Scene s -> cmd) -> ReactorCmd cmd
     -- | Generate a list of commands from reading a scene.
-    GetScene :: Subject s -> (Scene s -> cmd) -> ReactorCmd cmd
+    GetModel :: Subject s -> (s -> cmd) -> ReactorCmd cmd
     -- Get the event target
     -- If a "ref" callback to update 'elementalRef' has not been added;
     -- then add it, rerender, then return the EventTarget.
-    GetEventTarget ::
+    GetElementalRef ::
         Subject s
         -> ReactId
         -> (EventTarget -> cmd)
         -> ReactorCmd cmd
     -- | Update and rerender a scene.
-    TickScene :: Subject s -> SceneState s cmd -> ReactorCmd cmd
+    -- TickScene :: Subject s -> SceneState s cmd -> ReactorCmd cmd
+    TickModel :: Subject s -> ModelState s cmd -> ReactorCmd cmd
     -- | Create and register a dom callback
     RegisterDOMListener :: NFData a
         => Subject s
@@ -141,16 +151,19 @@ instance Show (ReactorCmd cmd) where
         showString "MkReactId " . shows s
     showsPrec _ (SetRender _ _ ) = showString "SetRender"
     showsPrec _ (MkSubject _ _ _) = showString "MkSubject"
-    showsPrec _ (Rerender _) = showString "Rerender"
-    showsPrec _ (GetScene _ _) = showString "GetScene"
-    showsPrec _ (TickScene _ _) = showString "TickScene"
+    showsPrec _ (BookSubjectCleanup _) = showString "BookSubjectCleanup"
+    -- showsPrec _ (Rerender _) = showString "Rerender"
+    -- showsPrec _ (GetScene _ _) = showString "GetScene"
+    showsPrec _ (GetModel _ _) = showString "GetModel"
+    showsPrec _ (GetElementalRef _ _ _) = showString "GetElementalRef"
+    -- showsPrec _ (TickScene _ _) = showString "TickScene"
+    showsPrec _ (TickModel _ _) = showString "TickModel"
     showsPrec _ (RegisterDOMListener _ _ _ _ _) = showString "RegisterDOMListener"
     showsPrec _ (RegisterReactListener _ _ _ _ _) = showString "RegisterReactListener"
     showsPrec _ (RegisterMountedListener _ _) = showString "RegisterMountedListener"
     showsPrec _ (RegisterRenderedListener _ _) = showString "RegisterRenderedListener"
     showsPrec _ (RegisterNextRenderedListener _ _) = showString "RegisterNextRenderedListener"
     showsPrec _ (RegisterTickedListener _ _) = showString "RegisterTickedListener"
-    showsPrec _ (GetEventTarget _ _ _) = showString "GetEventTarget"
 
 ------------------------------------------------------
 -- | Make a unique named id
@@ -197,49 +210,82 @@ withMkSubject wid s k = delegate $ \fire -> do
 -- addSubject wid s f = mkSubject wid s $ \sbj -> tickScene $ f sbj
 
 -- | Schedule cleanup of the callbacks when the parent widget is rerendered.
-cleanupSubject ::
-    (MonadState (Scene t) m)
+bookSubjectCleanup ::
+    (MonadReactor p allS cmd m)
     => Subject s -> m ()
-cleanupSubject sbj =
-    let cleanup = prolong sbj
-    in _plan._nextRenderedListener %= (*> cleanup)
+bookSubjectCleanup sbj = postCmd' $ BookSubjectCleanup sbj
 
--- | Rerender the ShimComponent using the current @Entity@ context
-rerender :: (MonadReactor p s cmd m) => m ()
-rerender = do
-    sbj <- view _subject
-    postCmd' $ Rerender sbj
+-- -- | Rerender the ShimComponent using the current @Entity@ context
+-- rerender :: (MonadReactor p s cmd m) => m ()
+-- rerender = do
+--     sbj <- view _subject
+--     postCmd' $ Rerender sbj
+
+-- -- | Get the 'Scene' and exec actions, using the current @Entity@ context
+-- getScene :: (MonadReactor p s cmd m) => m (Scene s)
+-- getScene = delegate $ \k -> do
+--     Entity sbj slf <- ask
+--     let k' s = case preview (editSceneModel slf) s of
+--             Nothing -> pure ()
+--             Just s' -> k s'
+--     c <- codify k'
+--     postCmd' $ GetScene sbj c
 
 -- | Get the 'Scene' and exec actions, using the current @Entity@ context
-getScene :: (MonadReactor p s cmd m) => m (Scene s)
-getScene = delegate $ \k -> do
+getModel :: (MonadReactor p s cmd m) => m s
+getModel = delegate $ \k -> do
     Entity sbj slf <- ask
-    let k' s = case preview (editSceneModel slf) s of
+    let k' s = case preview slf s of
             Nothing -> pure ()
             Just s' -> k s'
     c <- codify k'
-    postCmd' $ GetScene sbj c
+    postCmd' $ GetModel sbj c
 
-doTickScene :: (AsFacet [cmd] cmd) => Subject s -> SceneState s () -> ReactorCmd cmd
-doTickScene sbj m = TickScene sbj (command_ <$> m)
+-- | Get the 'Scene' and exec actions, using the current @Entity@ context
+getElementalRef :: (MonadReactor p s cmd m) => ReactId -> m EventTarget
+getElementalRef ri = delegate $ \k -> do
+    sbj <- view _subject
+    c <- codify k
+    postCmd' $ GetElementalRef sbj ri c
 
--- | Update the 'Scene' using the current @Entity@ context
-tickScene :: (MonadReactor p s cmd m) => SceneState s () -> m ()
-tickScene m = do
+-- doTickScene :: (AsFacet [cmd] cmd) => Subject s -> SceneState s () -> ReactorCmd cmd
+-- doTickScene sbj m = TickScene sbj (command_ <$> m)
+
+-- -- | Update the 'Scene' using the current @Entity@ context
+-- tickScene :: (MonadReactor p s cmd m) => SceneState s () -> m ()
+-- tickScene m = do
+--     Entity sbj slf <- ask
+--     let m' = zoom (editSceneModel slf) m
+--     postCmd' $ doTickScene sbj m'
+
+-- | Update the 'Model' using the current @Entity@ context
+tickModel :: (MonadReactor p s cmd m) => ModelState s () -> m ()
+tickModel m = do
     Entity sbj slf <- ask
-    let m' = zoom (editSceneModel slf) m
-    postCmd' $ doTickScene sbj m'
+    let m' = zoom slf m
+    postCmd' $ TickModel sbj (command_ <$> m')
+
+-- -- | Update the 'Scene' using the current @Entity@ context,
+-- -- and also return the next action to execute.
+-- tickSceneThen :: (Also m a, MonadReactor p s cmd m) => SceneState s (m a) -> m a
+-- tickSceneThen m = do
+--     Entity sbj slf <- ask
+--     delegate $ \fire -> do
+--         let m' = getAls <$> zoom (editSceneModel slf) (Als <$> m)
+--             f n = n >>= fire
+--         f' <- codify f
+--         postCmd' $ TickScene sbj (f' <$> m')
 
 -- | Update the 'Scene' using the current @Entity@ context,
 -- and also return the next action to execute.
-tickSceneThen :: (Also m a, MonadReactor p s cmd m) => SceneState s (m a) -> m a
-tickSceneThen m = do
+tickModelThen :: (Also m a, MonadReactor p s cmd m) => ModelState s (m a) -> m a
+tickModelThen m = do
     Entity sbj slf <- ask
     delegate $ \fire -> do
-        let m' = getAls <$> zoom (editSceneModel slf) (Als <$> m)
+        let m' = getAls <$> zoom slf (Als <$> m)
             f n = n >>= fire
         f' <- codify f
-        postCmd' $ TickScene sbj (f' <$> m')
+        postCmd' $ TickModel sbj (f' <$> m')
 
 -- | Create a callback for a 'JE.JSRep' and add it to this elementals's dlist of listeners.
 domTrigger ::
@@ -374,11 +420,11 @@ onTicked m = do
         c <- codify' (m >>= fire)
         postCmd' $ RegisterTickedListener sbj c
 
--- | This adds a ReactJS "ref" callback assign the ref into an 'EventTarget'
--- for the elemental in the plan, so that the elemental '_targetRef' can be used.
-onElementalRef :: (MonadReactor p s cmd m) => ReactId -> m ()
-onElementalRef ri = trigger ri "ref" (pure . JE.fromJSR) >>= hdlRef
-  where
-    hdlRef x = do
-        sbj <- view _subject
-        postCmd' . doTickScene sbj $ (_plan._elementals.ix ri._elementalRef .= x)
+-- -- | This adds a ReactJS "ref" callback assign the ref into an 'EventTarget'
+-- -- for the elemental in the plan, so that the elemental '_targetRef' can be used.
+-- onElementalRef :: (MonadReactor p s cmd m) => ReactId -> m ()
+-- onElementalRef ri = trigger ri "ref" (pure . JE.fromJSR) >>= hdlRef
+--   where
+--     hdlRef x = do
+--         sbj <- view _subject
+--         postCmd' . doTickScene sbj $ (_plan._elementals.ix ri._elementalRef .= x)

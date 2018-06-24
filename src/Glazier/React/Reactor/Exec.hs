@@ -2,17 +2,27 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
 module Glazier.React.Reactor.Exec
     ( execReactorCmd
-    , execRerender
+    , execMkReactId
+    , execSetRender
     , execMkSubject
-    , execGetScene
-    , execTickScene
-    , execRegisterReactListener
-    , execRegisterRenderedListener
+    , execBookSubjectCleanup
+    -- , execRerender
+    -- , execGetScene
+    , execGetModel
+    , execGetElementalRef
+    -- , execTickScene
+    , execTickModel
     , execRegisterDOMListener
+    , execRegisterReactListener
+    , execRegisterMountedListener
+    , execRegisterRenderedListener
+    , execRegisterNextRenderedListener
+    , execRegisterTickedListener
     ) where
 
 import Control.Concurrent
@@ -32,6 +42,7 @@ import qualified Data.DList as DL
 import Data.Foldable
 import Data.IORef
 import qualified Data.JSString as J
+-- import qualified Data.Map.Strict as M
 import Data.Maybe
 import Data.Tagged
 import qualified GHCJS.Foreign.Callback as J
@@ -82,16 +93,45 @@ execReactorCmd exec c = case c of
     MkReactId n k -> execMkReactId n >>= (exec . k)
     SetRender sbj w -> execSetRender sbj w
     MkSubject wid s k -> execMkSubject exec wid s >>= (exec . k)
-    Rerender sbj -> execRerender sbj
-    GetScene sbj k -> execGetScene sbj >>= (exec . k)
-    TickScene sbj tick -> execTickScene sbj tick >>= exec
+    -- Rerender sbj -> execRerender sbj
+    -- GetScene sbj k -> execGetScene sbj >>= (exec . k)
+    GetModel sbj k -> execGetModel sbj >>= (exec . k)
+    GetElementalRef sbj ri k -> execGetElementalRef exec sbj ri k
+    -- TickScene sbj tick -> execTickScene sbj tick >>= exec
+    TickModel sbj tick -> execTickModel sbj tick >>= exec
+    BookSubjectCleanup sbj -> execBookSubjectCleanup sbj
     RegisterDOMListener sbj j n goStrict goLazy -> execRegisterDOMListener exec sbj j n goStrict goLazy
     RegisterReactListener sbj ri n goStrict goLazy -> execRegisterReactListener exec sbj ri n goStrict goLazy
     RegisterMountedListener sbj k -> execRegisterMountedListener exec sbj k
     RegisterRenderedListener sbj k -> execRegisterRenderedListener exec sbj k
     RegisterNextRenderedListener sbj k -> execRegisterNextRenderedListener exec sbj k
     RegisterTickedListener sbj k -> execRegisterTickedListener exec sbj k
-    GetEventTarget sbj ri k -> execGetEventTarget exec sbj ri k
+
+-- data DeferredTicked
+-- data DeferredRerender
+
+-- -- | Execute actions that are deferred to the very last. Eg _rerender
+-- -- This should be scheduled after the list of commands has finished processing.
+-- execDeferred ::
+--     ( MonadIO m
+--     , MonadReader r m
+--     , Has (Tagged DeferredTicked (TMVar (M.Map ReactId (IO ())))) r
+--     , Has (Tagged DeferredRerender (TMVar (M.Map ReactId (IO ())))) r
+--     )
+--     => m ()
+-- execDeferred = do
+--     v1 <- view (pieceTag' @DeferredTicked)
+--     d1 <- liftIO $ atomically $ takeTMVar v1
+--     traverse_ liftIO d
+--     liftIO $ atomically $ putTMVar v1 mempty
+
+--     v1 <- view (pieceTag' @DeferredRerender)
+--     d1 <- liftIO $ atomically $ takeTMVar v1
+--     traverse_ liftIO d
+--     liftIO $ atomically $ putTMVar v1 mempty
+
+
+
 
 -----------------------------------------------------------------
 execMkReactId ::
@@ -257,30 +297,97 @@ _rerender scn = case scn ^. _plan._componentRef of
     Nothing -> pure ()
     Just j -> rerenderShim j
 
-execRerender ::
-    MonadIO m
-    => Subject s -> m ()
-execRerender sbj = liftIO $ do
-    scn <- readIORef $ sceneRef sbj
-    _rerender scn
+execBookSubjectCleanup :: MonadIO m => Subject s -> m ()
+execBookSubjectCleanup sbj = liftIO $ do
+    scn <- takeMVar scnVar
+    let cleanup = prolong sbj
+        scn' = scn & _plan._nextRenderedListener %~ (*> cleanup)
+    -- Update the back buffer
+    atomicWriteIORef scnRef scn'
+    putMVar scnVar scn'
+    -- FIXME: Trigger a rerender
 
-execGetScene ::
+  where
+    scnRef = sceneRef sbj
+    scnVar = sceneVar sbj
+
+-- execRerender ::
+--     MonadIO m
+--     => Subject s -> m ()
+-- execRerender sbj = liftIO $ do
+--     scn <- readIORef $ sceneRef sbj
+--     _rerender scn
+
+-- execRerender2 ::
+--     ( MonadUnliftIO m
+--     , MonadReader r m
+--     , Has (Tagged Deferred (TMVar (M.Map ReactId (IO ())))) r
+--     )
+--     => Subject s -> m ()
+-- execRerender sbj = liftIO $ do
+--     scn <- readIORef $ sceneRef sbj
+--     let ri = scn ^. _plan._planId
+
+--     _rerender scn
+--   where
+--     scnRef = sceneRef sbj
+--     scnVar = sceneVar sbj
+
+-- execGetScene ::
+--     MonadIO m
+--     => Subject s
+--     -> m (Scene s)
+-- execGetScene sbj = liftIO . readIORef $ sceneRef sbj
+
+execGetModel ::
     MonadIO m
     => Subject s
-    -> m (Scene s)
-execGetScene sbj = liftIO . readIORef $ sceneRef sbj
+    -> m s
+execGetModel sbj = liftIO . fmap model . readIORef $ sceneRef sbj
+
+-- -- | No need to run in a separate thread because it should never block for a significant amount of time.
+-- -- Upate the scene 'MVar' with the given action. Also triggers a rerender.
+-- execTickScene ::
+--     MonadIO m
+--     => Subject s
+--     -> StateT (Scene s) ReadIORef cmd
+--     -> m cmd
+-- execTickScene sbj tick = liftIO $ do
+--     scn <- takeMVar scnVar
+--     let (reentrancyGuard, cb) = scn ^. _plan._tickedListener
+--     (c, scn') <- unReadIORef $ runStateT tick scn
+--     -- Update the back buffer
+--     atomicWriteIORef scnRef scn'
+--     putMVar scnVar scn'
+
+--     -- only process _tickedListener if we are not already inside an tickedListener callstack.
+--     g <- atomically $ tryTakeTMVar reentrancyGuard
+--     case g of
+--         Nothing -> pure ()
+--         Just _ -> do
+--             cb
+--             atomically $ putTMVar reentrancyGuard ()
+
+--     -- automatically rerender the scene after state change
+--     _rerender scn'
+--     pure c
+--   where
+--     scnRef = sceneRef sbj
+--     scnVar = sceneVar sbj
 
 -- | No need to run in a separate thread because it should never block for a significant amount of time.
 -- Upate the scene 'MVar' with the given action. Also triggers a rerender.
-execTickScene ::
+execTickModel ::
     MonadIO m
     => Subject s
-    -> StateT (Scene s) ReadIORef cmd
+    -> ModelState s cmd
     -> m cmd
-execTickScene sbj tick = liftIO $ do
+execTickModel sbj tick = liftIO $ do
     scn <- takeMVar scnVar
     let (reentrancyGuard, cb) = scn ^. _plan._tickedListener
-    (c, scn') <- unReadIORef $ runStateT tick scn
+        s = scn ^. _model
+    (c, s') <- unReadIORef $ runStateT tick s
+    let scn' = scn & _model .~ s'
     -- Update the back buffer
     atomicWriteIORef scnRef scn'
     putMVar scnVar scn'
@@ -348,34 +455,45 @@ mkEventHandler goStrict = do
         postprocess = MaybeT $ atomically $ tryReadTChan c
     pure (preprocess, postprocess)
 
-addEventListener :: (NFData a)
-    => (cmd -> IO ())
-    -> (JE.JSRep -> MaybeT IO a)
-    -> (a -> cmd)
+addEventHandler :: (NFData a)
+    => (JE.JSRep -> MaybeT IO a)
+    -> (a -> IO ())
     -> IORef (J.JSVal -> IO (), IO ())
     -> IO ()
-addEventListener execIO goStrict goLazy listenerRef = do
+addEventHandler goStrict goLazy listenerRef = do
     -- update the ioref with the new handler
     (preprocessor, postprocessor) <- mkEventHandler (goStrict . JE.toJSR)
-    let postprocessor' = (`evalMaybeT` ()) $ do
-            c <- goLazy <$> postprocessor
-            lift $ execIO c
+    let postprocessor' = (`evalMaybeT` ()) (postprocessor >>= (lift . goLazy))
     atomicModifyIORef' listenerRef $ \hdl -> (hdl `mappendListener` (preprocessor, postprocessor'), ())
+
+-- addEventListener :: (NFData a)
+--     => (cmd -> IO ())
+--     -> (JE.JSRep -> MaybeT IO a)
+--     -> (a -> cmd)
+--     -> IORef (J.JSVal -> IO (), IO ())
+--     -> IO ()
+-- addEventListener execIO goStrict goLazy listenerRef = do
+--     -- update the ioref with the new handler
+--     (preprocessor, postprocessor) <- mkEventHandler (goStrict . JE.toJSR)
+--     let postprocessor' = (`evalMaybeT` ()) $ do
+--             c <- goLazy <$> postprocessor
+--             lift $ execIO c
+--     atomicModifyIORef' listenerRef $ \hdl -> (hdl `mappendListener` (preprocessor, postprocessor'), ())
 
 -- | Create ref handler to assign 'elementalRef'
 data Freshness = Existing | Fresh
 
-execGetEventTarget ::
-    (AsReactor cmd, MonadUnliftIO m)
+execGetElementalRef ::
+    (MonadUnliftIO m)
     => (cmd -> m ())
     -> Subject s
     -> ReactId
     -> (EventTarget -> cmd)
     -> m ()
-execGetEventTarget exec sbj ri k = do
+execGetElementalRef exec sbj ri k = do
     UnliftIO u <- askUnliftIO
     scn <- liftIO $ takeMVar scnVar
-    (refFreshness, pln) <- registerRefCoreListener exec sbj ri (plan scn)
+    (refFreshness, pln) <- registerRefCoreListener sbj ri (plan scn)
     case refFreshness of
         Existing -> do
             let ret = pln ^? (_elementals.ix ri._elementalRef._Just)
@@ -383,7 +501,7 @@ execGetEventTarget exec sbj ri k = do
             maybe (pure ()) (exec . k) ret
         Fresh -> do
             -- need to try to get EventTarget after a rerender
-            let tryAgain = u $ execGetEventTarget exec sbj ri k
+            let tryAgain = u $ execGetElementalRef exec sbj ri k
                 pln' = pln & _nextRenderedListener %~ (*> tryAgain)
                 scn' = scn & _plan .~ pln'
             liftIO $ do
@@ -393,17 +511,14 @@ execGetEventTarget exec sbj ri k = do
   where
     scnRef = sceneRef sbj
     scnVar = sceneVar sbj
-    -- refN = J.pack "ref"
 
 -- | This one doesn't take the sceneVar
-registerRefCoreListener :: (AsReactor cmd, MonadUnliftIO m)
-    => (cmd -> m ())
-    -> Subject s
+registerRefCoreListener :: (MonadIO m)
+    => Subject s
     -> ReactId
     -> Plan
     -> m (Freshness, Plan)
-registerRefCoreListener exec sbj ri pln = do
-    UnliftIO u <- askUnliftIO
+registerRefCoreListener sbj ri pln = do
     liftIO $ do
         -- first get or make the target
         (freshness, eventHdl) <-
@@ -413,7 +528,7 @@ registerRefCoreListener exec sbj ri pln = do
                     cb <- mkEventCallback listenerRef
                     -- update listenerRef with new event listener
                     -- only do this once (when for first ref listener)
-                    addEventListener (u . exec) (pure . JE.fromJSR) hdlRef listenerRef
+                    addEventHandler (pure . JE.fromJSR) hdlRef listenerRef
                     pure (Fresh, (cb, listenerRef))
                 Just eventHdl -> pure (Existing, eventHdl)
         -- prepare the updated state
@@ -426,9 +541,17 @@ registerRefCoreListener exec sbj ri pln = do
             Existing -> pure (Existing, pln)
   where
     n = J.pack "ref"
-    hdlRef x = command' $ TickScene sbj (command_ <$> (_plan._elementals.ix ri._elementalRef .= x))
+    -- hdlRef x = command' $ TickScene sbj (command_ <$> (_plan._elementals.ix ri._elementalRef .= x))
+    scnRef = sceneRef sbj
+    scnVar = sceneVar sbj
+    hdlRef x = do
+        scn <- takeMVar scnVar
+        let scn' = scn & _plan._elementals.ix ri._elementalRef .~ x
+        -- Update the back buffer
+        atomicWriteIORef scnRef scn'
+        putMVar scnVar scn'
 
-execRegisterReactListener :: (AsReactor cmd, NFData a, MonadUnliftIO m)
+execRegisterReactListener :: (NFData a, MonadUnliftIO m)
     => (cmd -> m ())
     -> Subject s
     -> ReactId
@@ -442,7 +565,7 @@ execRegisterReactListener exec sbj ri n goStrict goLazy = do
     -- special logic for ref, where the first ref handler must be 'registerRefCoreListener'
     scn <- if (n == (J.pack "ref"))
         then do
-            (refFreshness, pln) <- registerRefCoreListener exec sbj ri (plan scn_)
+            (refFreshness, pln) <- registerRefCoreListener sbj ri (plan scn_)
             case refFreshness of
                 Existing -> pure scn_
                 Fresh -> pure (scn_ & _plan .~ pln)
@@ -463,7 +586,7 @@ execRegisterReactListener exec sbj ri n goStrict goLazy = do
             addElem = _reactListeners.at n %~ addListener
             addListener = Just . maybe eventHdl (const eventHdl)
         -- update listenerRef with new event listener
-        addEventListener (u . exec) goStrict goLazy listenerRef
+        addEventHandler goStrict (u . exec . goLazy) listenerRef
         -- Update the subject
         atomicWriteIORef scnRef scn'
         putMVar scnVar scn'
@@ -566,7 +689,7 @@ execRegisterDOMListener exec sbj j n goStrict goLazy = do
         -- update the ioref with the new handler
         listenerRef <- newIORef mempty
         cb <- mkEventCallback listenerRef
-        addEventListener (u . exec) goStrict goLazy listenerRef
+        addEventHandler goStrict (u . exec . goLazy) listenerRef
         -- prepare the updated state,
         let scn' = scn & _plan._domlListeners.at ri .~ (Just (cb, listenerRef))
                 & _plan._finalCleanup %~ (*> removeDomListener j n cb)
