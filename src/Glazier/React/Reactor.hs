@@ -34,7 +34,6 @@ module Glazier.React.Reactor
     , domTrigger
     , domTrigger_
     , trigger
-    , trigger'
     , trigger_
     , onMounted
     , onRendered
@@ -171,26 +170,26 @@ mkReactId :: (AsReactor cmd, MonadCommand cmd m)
     => J.JSString -> m ReactId
 mkReactId n = delegate $ \fire -> do
     f <- codify fire
-    postCmd' $ MkReactId n f
+    exec' $ MkReactId n f
 
 setRender :: (AsReactor cmd, MonadCommand cmd m)
     => Subject s -> Window s () -> m ()
-setRender sbj win = postCmd' $ SetRender sbj win
+setRender sbj win = exec' $ SetRender sbj win
 
 -- | Make an initialized 'Subject' for a given model using the given 'Widget'.
 mkSubject :: (AsReactor cmd, MonadCommand cmd m)
     => Widget cmd s s a -> s -> m (Either a (Subject s))
 mkSubject wid s = delegate $ \fire -> do
     f <- codify fire
-    let wid' = wid >>= (post . f . Left)
-    postCmd' $ MkSubject wid' s (f . Right)
+    let wid' = wid >>= (instruct . f . Left)
+    exec' $ MkSubject wid' s (f . Right)
 
 -- | Make an initialized 'Subject' for a given model using the given 'Widget'.
 mkSubject' :: (AsReactor cmd, MonadCommand cmd m)
     => Widget cmd s s () -> s -> m (Subject s)
 mkSubject' gad s = delegate $ \fire -> do
     f <- codify fire
-    postCmd' $ MkSubject gad s f
+    exec' $ MkSubject gad s f
 
 -- | Make an initialized 'Subject' for a given model using the given 'Widget'.
 withMkSubject :: (AsReactor cmd, MonadCommand cmd m)
@@ -198,8 +197,8 @@ withMkSubject :: (AsReactor cmd, MonadCommand cmd m)
 withMkSubject wid s k = delegate $ \fire -> do
     f <- codify fire
     k' <- codify k
-    let wid' = wid >>= (post . f)
-    postCmd' $ MkSubject wid' s k'
+    let wid' = wid >>= (instruct . f)
+    exec' $ MkSubject wid' s k'
 
 -- -- | Add a constructed subject to a parent widget
 -- addSubject :: (MonadReactor p ss cmd m)
@@ -213,7 +212,7 @@ withMkSubject wid s k = delegate $ \fire -> do
 bookSubjectCleanup ::
     (MonadReactor p allS cmd m)
     => Subject s -> m ()
-bookSubjectCleanup sbj = postCmd' $ BookSubjectCleanup sbj
+bookSubjectCleanup sbj = exec' $ BookSubjectCleanup sbj
 
 -- -- | Rerender the ShimComponent using the current @Entity@ context
 -- rerender :: (MonadReactor p s cmd m) => m ()
@@ -239,14 +238,14 @@ getModel = delegate $ \k -> do
             Nothing -> pure ()
             Just s' -> k s'
     c <- codify k'
-    postCmd' $ GetModel sbj c
+    exec' $ GetModel sbj c
 
 -- | Get the 'Scene' and exec actions, using the current @Entity@ context
 getElementalRef :: (MonadReactor p s cmd m) => ReactId -> m EventTarget
 getElementalRef ri = delegate $ \k -> do
     sbj <- view _subject
     c <- codify k
-    postCmd' $ GetElementalRef sbj ri c
+    exec' $ GetElementalRef sbj ri c
 
 -- doTickScene :: (AsFacet [cmd] cmd) => Subject s -> SceneState s () -> ReactorCmd cmd
 -- doTickScene sbj m = TickScene sbj (command_ <$> m)
@@ -263,7 +262,7 @@ tickModel :: (MonadReactor p s cmd m) => ModelState s () -> m ()
 tickModel m = do
     Entity sbj slf <- ask
     let m' = zoom slf m
-    postCmd' $ TickModel sbj (command_ <$> m')
+    exec' $ TickModel sbj (command_ <$> m')
 
 -- -- | Update the 'Scene' using the current @Entity@ context,
 -- -- and also return the next action to execute.
@@ -285,7 +284,7 @@ tickModelThen m = do
         let m' = getAls <$> zoom slf (Als <$> m)
             f n = n >>= fire
         f' <- codify f
-        postCmd' $ TickModel sbj (f' <$> m')
+        exec' $ TickModel sbj (f' <$> m')
 
 -- | Create a callback for a 'JE.JSRep' and add it to this elementals's dlist of listeners.
 domTrigger ::
@@ -299,7 +298,7 @@ domTrigger ::
 domTrigger j n goStrict = delegate $ \goLazy -> do
     Entity sbj _ <- ask
     goLazy' <- codify goLazy
-    postCmd' $ RegisterDOMListener sbj j n goStrict goLazy'
+    exec' $ RegisterDOMListener sbj j n goStrict goLazy'
 
 -- | A variation of trigger which ignores the event but fires the given arg instead.
 domTrigger_ ::
@@ -316,7 +315,7 @@ domTrigger_ j n a = do
 -- | Create a callback for a 'JE.JSRep' and add it to this elementals's dlist of listeners.
 -- You probably want to use 'trigger'' since most React callbacks return a 'Notice',
 -- except for the "ref" callback, in which case you probably want to use 'onElementalRef'.
-trigger ::
+doTrigger ::
     ( NFData a
     , MonadReactor p s cmd m
     )
@@ -324,13 +323,13 @@ trigger ::
     -> J.JSString
     -> (JE.JSRep -> MaybeT IO a)
     -> m a
-trigger ri n goStrict = delegate $ \goLazy -> do
+doTrigger ri n goStrict = delegate $ \goLazy -> do
     Entity sbj _ <- ask
     goLazy' <- codify goLazy
-    postCmd' $ RegisterReactListener sbj ri n goStrict goLazy'
+    exec' $ RegisterReactListener sbj ri n goStrict goLazy'
 
 -- | Create a callback for a 'Notice' and add it to this elementals's dlist of listeners.
-trigger' ::
+trigger ::
     ( NFData a
     , MonadReactor p s cmd m
     )
@@ -338,7 +337,7 @@ trigger' ::
     -> J.JSString
     -> (Notice -> MaybeT IO a)
     -> m a
-trigger' ri n goStrict = trigger ri n $ handlesNotice goStrict
+trigger ri n goStrict = doTrigger ri n $ handlesNotice goStrict
   where
     handlesNotice :: (Notice -> MaybeT IO a) -> (JE.JSRep -> MaybeT IO a)
     handlesNotice k j = MaybeT (pure $ JE.fromJSR j) >>= k
@@ -352,7 +351,7 @@ trigger_ ::
     -> a
     -> m a
 trigger_ ri n a = do
-    trigger ri n (const $ pure ())
+    doTrigger ri n (const $ pure ())
     pure a
 
 -- | Register actions to execute after a render.
@@ -371,7 +370,7 @@ onMounted m = do
     sbj <- view _subject
     delegate $ \fire -> do
         c <- codify' (m >>= fire)
-        postCmd' $ RegisterMountedListener sbj c
+        exec' $ RegisterMountedListener sbj c
 
 -- | Register actions to execute after a render.
 -- It is safe to 'postCmd'' a 'TickScene' or 'Rerender'. These command will not
@@ -390,7 +389,7 @@ onRendered m = do
     sbj <- view _subject
     delegate $ \fire -> do
         c <- codify' (m >>= fire)
-        postCmd' $ RegisterRenderedListener sbj c
+        exec' $ RegisterRenderedListener sbj c
 
 onNextRendered ::
     MonadReactor p s cmd m
@@ -399,7 +398,7 @@ onNextRendered m = do
     sbj <- view _subject
     delegate $ \fire -> do
         c <- codify' (m >>= fire)
-        postCmd' $ RegisterNextRenderedListener sbj c
+        exec' $ RegisterNextRenderedListener sbj c
 
 -- | Register actions to execute after the state has been updated with TickState.
 -- It is safe to 'postCmd'' another 'TickScene', another onRendered event will
@@ -418,7 +417,7 @@ onTicked m = do
     sbj <- view _subject
     delegate $ \fire -> do
         c <- codify' (m >>= fire)
-        postCmd' $ RegisterTickedListener sbj c
+        exec' $ RegisterTickedListener sbj c
 
 -- -- | This adds a ReactJS "ref" callback assign the ref into an 'EventTarget'
 -- -- for the elemental in the plan, so that the elemental '_targetRef' can be used.
@@ -427,4 +426,4 @@ onTicked m = do
 --   where
 --     hdlRef x = do
 --         sbj <- view _subject
---         postCmd' . doTickScene sbj $ (_plan._elementals.ix ri._elementalRef .= x)
+--         exec' . doTickScene sbj $ (_plan._elementals.ix ri._elementalRef .= x)

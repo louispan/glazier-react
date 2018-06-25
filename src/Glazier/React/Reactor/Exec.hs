@@ -72,15 +72,15 @@ import qualified JavaScript.Extras as JE
 --     , MonadReader r m
 --     )
 --     => (cmd -> m ()) -> cmd -> MaybeT m ()
--- maybeExecReactor exec c =
+-- maybeExecReactor executor c =
 --     -- execute a list of commands in serial, not in parallel because
 --     -- Some commands may have effect dependencies.
 --     -- Javascript is single threaded anyway, so it is more
 --     -- efficient to execuute "quick" commands single threaded.
 --     -- We'll let the individual executors of the commands decide if
 --     -- "slow" commands should be forked in a thread.
---     maybeExec (traverse_ @[] exec) c
---     <|> maybeExec (execReactorCmd exec) c
+--     maybeExec (traverse_ @[] executor) c
+--     <|> maybeExec (execReactorCmd executor) c
 
 execReactorCmd ::
     ( MonadUnliftIO m
@@ -89,23 +89,23 @@ execReactorCmd ::
     , MonadReader r m
     )
     => (cmd -> m ()) -> ReactorCmd cmd -> m ()
-execReactorCmd exec c = case c of
-    MkReactId n k -> execMkReactId n >>= (exec . k)
+execReactorCmd executor c = case c of
+    MkReactId n k -> execMkReactId n >>= (executor . k)
     SetRender sbj w -> execSetRender sbj w
-    MkSubject wid s k -> execMkSubject exec wid s >>= (exec . k)
+    MkSubject wid s k -> execMkSubject executor wid s >>= (executor . k)
     -- Rerender sbj -> execRerender sbj
-    -- GetScene sbj k -> execGetScene sbj >>= (exec . k)
-    GetModel sbj k -> execGetModel sbj >>= (exec . k)
-    GetElementalRef sbj ri k -> execGetElementalRef exec sbj ri k
-    -- TickScene sbj tick -> execTickScene sbj tick >>= exec
-    TickModel sbj tick -> execTickModel sbj tick >>= exec
+    -- GetScene sbj k -> execGetScene sbj >>= (executor . k)
+    GetModel sbj k -> execGetModel sbj >>= (executor . k)
+    GetElementalRef sbj ri k -> execGetElementalRef executor sbj ri k
+    -- TickScene sbj tick -> execTickScene sbj tick >>= executor
+    TickModel sbj tick -> execTickModel sbj tick >>= executor
     BookSubjectCleanup sbj -> execBookSubjectCleanup sbj
-    RegisterDOMListener sbj j n goStrict goLazy -> execRegisterDOMListener exec sbj j n goStrict goLazy
-    RegisterReactListener sbj ri n goStrict goLazy -> execRegisterReactListener exec sbj ri n goStrict goLazy
-    RegisterMountedListener sbj k -> execRegisterMountedListener exec sbj k
-    RegisterRenderedListener sbj k -> execRegisterRenderedListener exec sbj k
-    RegisterNextRenderedListener sbj k -> execRegisterNextRenderedListener exec sbj k
-    RegisterTickedListener sbj k -> execRegisterTickedListener exec sbj k
+    RegisterDOMListener sbj j n goStrict goLazy -> execRegisterDOMListener executor sbj j n goStrict goLazy
+    RegisterReactListener sbj ri n goStrict goLazy -> execRegisterReactListener executor sbj ri n goStrict goLazy
+    RegisterMountedListener sbj k -> execRegisterMountedListener executor sbj k
+    RegisterRenderedListener sbj k -> execRegisterRenderedListener executor sbj k
+    RegisterNextRenderedListener sbj k -> execRegisterNextRenderedListener executor sbj k
+    RegisterTickedListener sbj k -> execRegisterTickedListener executor sbj k
 
 -- data DeferredTicked
 -- data DeferredRerender
@@ -225,7 +225,7 @@ execMkSubject ::
     -> Widget cmd s s ()
     -> s
     -> m (Subject s)
-execMkSubject exec wid s = do
+execMkSubject executor wid s = do
     ri <- execMkReactId (J.pack "plan")
     (sbj, cs) <- liftIO $ do
         -- create shim with fake callbacks for now
@@ -275,7 +275,7 @@ execMkSubject exec wid s = do
         let sbj = Subject scnRef scnVar rndrLeaseRef otherCbLease
             -- initalize the subject using the Gadget
             gad = runExceptT wid
-            gad' = gad `bindLeft` (postCmd' . SetRender sbj)
+            gad' = gad `bindLeft` (exec' . SetRender sbj)
             gad'' = (either id id) <$> gad'
             tick = runGadget gad'' (Entity sbj id) pure
             cs = execState tick mempty
@@ -288,7 +288,7 @@ execMkSubject exec wid s = do
     -- execute additional commands
     -- one of these commands will be 'SetRender' which will
     -- update the dummy render with the real render function.
-    exec (command' $ DL.toList cs)
+    executor (command' $ DL.toList cs)
     -- return the subject
     pure sbj
 
@@ -490,7 +490,7 @@ execGetElementalRef ::
     -> ReactId
     -> (EventTarget -> cmd)
     -> m ()
-execGetElementalRef exec sbj ri k = do
+execGetElementalRef executor sbj ri k = do
     UnliftIO u <- askUnliftIO
     scn <- liftIO $ takeMVar scnVar
     (refFreshness, pln) <- registerRefCoreListener sbj ri (plan scn)
@@ -498,10 +498,10 @@ execGetElementalRef exec sbj ri k = do
         Existing -> do
             let ret = pln ^? (_elementals.ix ri._elementalRef._Just)
             liftIO $ putMVar scnVar scn
-            maybe (pure ()) (exec . k) ret
+            maybe (pure ()) (executor . k) ret
         Fresh -> do
             -- need to try to get EventTarget after a rerender
-            let tryAgain = u $ execGetElementalRef exec sbj ri k
+            let tryAgain = u $ execGetElementalRef executor sbj ri k
                 pln' = pln & _nextRenderedListener %~ (*> tryAgain)
                 scn' = scn & _plan .~ pln'
             liftIO $ do
@@ -559,7 +559,7 @@ execRegisterReactListener :: (NFData a, MonadUnliftIO m)
     -> (JE.JSRep -> MaybeT IO a)
     -> (a -> cmd)
     -> m ()
-execRegisterReactListener exec sbj ri n goStrict goLazy = do
+execRegisterReactListener executor sbj ri n goStrict goLazy = do
     UnliftIO u <- askUnliftIO
     scn_ <- liftIO $ takeMVar scnVar
     -- special logic for ref, where the first ref handler must be 'registerRefCoreListener'
@@ -586,7 +586,7 @@ execRegisterReactListener exec sbj ri n goStrict goLazy = do
             addElem = _reactListeners.at n %~ addListener
             addListener = Just . maybe eventHdl (const eventHdl)
         -- update listenerRef with new event listener
-        addEventHandler goStrict (u . exec . goLazy) listenerRef
+        addEventHandler goStrict (u . executor . goLazy) listenerRef
         -- Update the subject
         atomicWriteIORef scnRef scn'
         putMVar scnVar scn'
@@ -602,9 +602,9 @@ execRegisterTickedListener :: (MonadUnliftIO m)
     -> Subject s
     -> cmd
     -> m ()
-execRegisterTickedListener exec sbj c = do
+execRegisterTickedListener executor sbj c = do
     UnliftIO u <- askUnliftIO
-    let hdl = u $ exec c
+    let hdl = u $ executor c
     liftIO $ do
         scn <- takeMVar scnVar
         let scn' = scn & _plan._tickedListener %~ (\(v, a) -> (v, a *> hdl))
@@ -619,9 +619,9 @@ execRegisterMountedListener :: (MonadUnliftIO m)
     -> Subject s
     -> cmd
     -> m ()
-execRegisterMountedListener exec sbj c = do
+execRegisterMountedListener executor sbj c = do
     UnliftIO u <- askUnliftIO
-    let hdl = u $ exec c
+    let hdl = u $ executor c
     liftIO $ do
         scn <- takeMVar scnVar
         let scn' = scn & _plan._mountedListener %~ (*> hdl)
@@ -636,9 +636,9 @@ execRegisterRenderedListener :: (MonadUnliftIO m)
     -> Subject s
     -> cmd
     -> m ()
-execRegisterRenderedListener exec sbj c = do
+execRegisterRenderedListener executor sbj c = do
     UnliftIO u <- askUnliftIO
-    let hdl = u $ exec c
+    let hdl = u $ executor c
     liftIO $ do
         scn <- takeMVar scnVar
         let scn' = scn & _plan._renderedListener %~ (\(v, a) -> (v, a *> hdl))
@@ -653,9 +653,9 @@ execRegisterNextRenderedListener :: (MonadUnliftIO m)
     -> Subject s
     -> cmd
     -> m ()
-execRegisterNextRenderedListener exec sbj c = do
+execRegisterNextRenderedListener executor sbj c = do
     UnliftIO u <- askUnliftIO
-    let hdl = u $ exec c
+    let hdl = u $ executor c
     liftIO $ do
         scn <- takeMVar scnVar
         let scn' = scn & _plan._nextRenderedListener %~ (*> hdl)
@@ -678,7 +678,7 @@ execRegisterDOMListener ::
     -> (JE.JSRep -> MaybeT IO a)
     -> (a -> cmd)
     -> m ()
-execRegisterDOMListener exec sbj j n goStrict goLazy = do
+execRegisterDOMListener executor sbj j n goStrict goLazy = do
     -- Add the handler to the state
     UnliftIO u <- askUnliftIO
     -- generate a unique id
@@ -689,7 +689,7 @@ execRegisterDOMListener exec sbj j n goStrict goLazy = do
         -- update the ioref with the new handler
         listenerRef <- newIORef mempty
         cb <- mkEventCallback listenerRef
-        addEventHandler goStrict (u . exec . goLazy) listenerRef
+        addEventHandler goStrict (u . executor . goLazy) listenerRef
         -- prepare the updated state,
         let scn' = scn & _plan._domlListeners.at ri .~ (Just (cb, listenerRef))
                 & _plan._finalCleanup %~ (*> removeDomListener j n cb)

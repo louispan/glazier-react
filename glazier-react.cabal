@@ -55,7 +55,7 @@ library
                      , deepseq >= 1.4
                      , dlist >= 0.8
                      , glazier >= 1.0
-                     , javascript-extras >= 0.4
+                     , javascript-extras >= 0.5
                      , lens >= 4
                      , lens-misc >= 0.0.1
                      , mtl >= 2
