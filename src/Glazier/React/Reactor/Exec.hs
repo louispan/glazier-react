@@ -311,69 +311,11 @@ execBookSubjectCleanup sbj = liftIO $ do
     scnRef = sceneRef sbj
     scnVar = sceneVar sbj
 
--- execRerender ::
---     MonadIO m
---     => Subject s -> m ()
--- execRerender sbj = liftIO $ do
---     scn <- readIORef $ sceneRef sbj
---     _rerender scn
-
--- execRerender2 ::
---     ( MonadUnliftIO m
---     , MonadReader r m
---     , Has (Tagged Deferred (TMVar (M.Map ReactId (IO ())))) r
---     )
---     => Subject s -> m ()
--- execRerender sbj = liftIO $ do
---     scn <- readIORef $ sceneRef sbj
---     let ri = scn ^. _plan._planId
-
---     _rerender scn
---   where
---     scnRef = sceneRef sbj
---     scnVar = sceneVar sbj
-
--- execGetScene ::
---     MonadIO m
---     => Subject s
---     -> m (Scene s)
--- execGetScene sbj = liftIO . readIORef $ sceneRef sbj
-
 execGetModel ::
     MonadIO m
     => Subject s
     -> m s
 execGetModel sbj = liftIO . fmap model . readIORef $ sceneRef sbj
-
--- -- | No need to run in a separate thread because it should never block for a significant amount of time.
--- -- Upate the scene 'MVar' with the given action. Also triggers a rerender.
--- execTickScene ::
---     MonadIO m
---     => Subject s
---     -> StateT (Scene s) ReadIORef cmd
---     -> m cmd
--- execTickScene sbj tick = liftIO $ do
---     scn <- takeMVar scnVar
---     let (reentrancyGuard, cb) = scn ^. _plan._tickedListener
---     (c, scn') <- unReadIORef $ runStateT tick scn
---     -- Update the back buffer
---     atomicWriteIORef scnRef scn'
---     putMVar scnVar scn'
-
---     -- only process _tickedListener if we are not already inside an tickedListener callstack.
---     g <- atomically $ tryTakeTMVar reentrancyGuard
---     case g of
---         Nothing -> pure ()
---         Just _ -> do
---             cb
---             atomically $ putTMVar reentrancyGuard ()
-
---     -- automatically rerender the scene after state change
---     _rerender scn'
---     pure c
---   where
---     scnRef = sceneRef sbj
---     scnVar = sceneVar sbj
 
 -- | No need to run in a separate thread because it should never block for a significant amount of time.
 -- Upate the scene 'MVar' with the given action. Also triggers a rerender.
@@ -465,20 +407,6 @@ addEventHandler goStrict goLazy listenerRef = do
     (preprocessor, postprocessor) <- mkEventHandler (goStrict . JE.toJSR)
     let postprocessor' = (`evalMaybeT` ()) (postprocessor >>= (lift . goLazy))
     atomicModifyIORef' listenerRef $ \hdl -> (hdl `mappendListener` (preprocessor, postprocessor'), ())
-
--- addEventListener :: (NFData a)
---     => (cmd -> IO ())
---     -> (JE.JSRep -> MaybeT IO a)
---     -> (a -> cmd)
---     -> IORef (J.JSVal -> IO (), IO ())
---     -> IO ()
--- addEventListener execIO goStrict goLazy listenerRef = do
---     -- update the ioref with the new handler
---     (preprocessor, postprocessor) <- mkEventHandler (goStrict . JE.toJSR)
---     let postprocessor' = (`evalMaybeT` ()) $ do
---             c <- goLazy <$> postprocessor
---             lift $ execIO c
---     atomicModifyIORef' listenerRef $ \hdl -> (hdl `mappendListener` (preprocessor, postprocessor'), ())
 
 -- | Create ref handler to assign 'elementalRef'
 data Freshness = Existing | Fresh
