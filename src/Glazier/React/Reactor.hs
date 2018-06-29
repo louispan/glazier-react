@@ -23,6 +23,7 @@ module Glazier.React.Reactor
     , bookSubjectCleanup
     , getModel
     , getElementalRef
+    , rerender
     , tickModel
     , tickModelThen
     , domTrigger
@@ -65,11 +66,8 @@ type MonadReactor p s cmd m =
     ( AsReactor cmd
     , MonadReader (Entity p s) m
     , MonadCommand cmd m
-    -- , Monoid (m ())
     )
 
--- FIXME: Just State s is enough?
--- type SceneState s = StateT (Scene s) ReadIORef
 type ModelState s = StateT s ReadIORef
 
 -- | NB. 'ReactorCmd' is not a functor because of the @Widget cmd@ in 'MkSubject'
@@ -92,6 +90,8 @@ data ReactorCmd cmd where
         -> ReactId
         -> (EventTarget -> cmd)
         -> ReactorCmd cmd
+    -- | Rerender a ShimComponent using the given state.
+    Rerender :: Subject s -> ReactorCmd cmd
     -- | Update and rerender.
     TickModel :: Subject s -> ModelState s cmd -> ReactorCmd cmd
     -- | Create and register a dom callback
@@ -141,6 +141,7 @@ instance Show (ReactorCmd cmd) where
     showsPrec _ (BookSubjectCleanup _) = showString "BookSubjectCleanup"
     showsPrec _ (GetModel _ _) = showString "GetModel"
     showsPrec _ (GetElementalRef _ _ _) = showString "GetElementalRef"
+    showsPrec _ (Rerender _) = showString "Rerender"
     showsPrec _ (TickModel _ _) = showString "TickModel"
     showsPrec _ (RegisterDOMListener _ _ _ _ _) = showString "RegisterDOMListener"
     showsPrec _ (RegisterReactListener _ _ _ _ _) = showString "RegisterReactListener"
@@ -198,6 +199,12 @@ bookSubjectCleanup ::
     (MonadReactor p allS cmd m)
     => Subject s -> m ()
 bookSubjectCleanup sbj = exec' $ BookSubjectCleanup sbj
+
+-- | Rerender the ShimComponent using the current @Entity@ context
+rerender :: (MonadReactor p s cmd m) => m ()
+rerender = do
+    sbj <- view _subject
+    exec' $ Rerender sbj
 
 -- | Get the 'Model' and exec actions, using the current @Entity@ context
 getModel :: (MonadReactor p s cmd m) => m s

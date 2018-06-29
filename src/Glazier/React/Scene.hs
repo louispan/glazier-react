@@ -17,7 +17,6 @@
 
 module Glazier.React.Scene where
 
-import Control.Concurrent.STM
 import Control.Lens
 import Control.Lens.Misc
 import Data.IORef
@@ -69,9 +68,9 @@ data Plan = Plan
     , componentRef :: Maybe ComponentRef
     , shimCallbacks :: ShimCallbacks
     -- called after state was just updated
-    , tickedListener :: (TMVar (), IO ())
+    , tickedListener :: IO ()
     -- called after every rendering
-    , renderedListener :: (TMVar (), IO ())
+    , renderedListener :: IO ()
     -- called after first rendering only
     , mountedListener :: IO ()
     -- do on next rerender. This gets reset after every rerender.
@@ -85,6 +84,11 @@ data Plan = Plan
         )
     -- cleanup to call eventTarget.removeEventListener()
     , finalCleanup :: IO ()
+
+    -- set to True if tickedListener has been processed
+    , tickedNotified :: Bool
+    -- set to True is rerender is required
+    , rerenderRequired :: Bool
     } deriving (G.Generic)
 
 makeLenses_ ''Plan

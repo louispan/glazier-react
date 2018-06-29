@@ -13,6 +13,7 @@ import Control.Monad.Except
 import Data.Bifunctor
 import Data.Diverse.Lens
 import Data.Diverse.Profunctor
+import Glazier.Command.Exec
 import Glazier.React.Entity
 import Glazier.React.Gadget
 import Glazier.React.Scene
@@ -45,3 +46,8 @@ withWindow = catchError
 
 withWindow' :: (ChooseBoth xs ys zs) => Widget cmd p s (Which xs) -> (Window s () -> Widget cmd p s (Which ys)) -> Widget cmd p s (Which zs)
 withWindow' m f = catchError (diversify <$> m) (fmap diversify . f)
+
+-- | Use this function to verify at compile time that the first widget doesn't
+-- require any @AsFacet (IO cmd) cmd@.
+noIOWidget :: Widget (NoIOCmd cmd) s s a -> Widget cmd s s a -> Widget cmd s s a
+noIOWidget _ = id

@@ -19,8 +19,6 @@ data Subject p = Subject
     (MVar (Scene p))
     (IORef (MVar ())) -- garbage collection for rendering callback
     (MVar ()) -- garbage collection for other callbacks
-    -- (TMVar ()) -- reentrant guard for ticked event
-    -- (TMVar ()) -- reentrant guard for rendered event
 
     deriving Eq
 

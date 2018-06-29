@@ -51,7 +51,7 @@ library
                      , alternators >= 1.0
                      , containers >= 0.5
                      , data-diverse >= 4.5
-                     , data-diverse-lens >= 4.2.0.1
+                     , data-diverse-lens >= 4.3
                      , deepseq >= 1.4
                      , dlist >= 0.8
                      , glazier >= 1.0
@@ -60,7 +60,7 @@ library
                      , lens-misc >= 0.0.1
                      , mtl >= 2
                      , newtype-generics >= 0.5
-                     , stm >= 2.4
+                     , stm >= 2.4.5
                      , tagged >= 0.8
                      , transformers >= 0.4
                      , unliftio >= 0.2

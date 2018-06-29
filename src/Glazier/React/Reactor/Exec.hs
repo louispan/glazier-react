@@ -1,21 +1,28 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Glazier.React.Reactor.Exec
-    ( execReactorCmd
+    ( ReactorEnv(..)
+    , mkReactorEnvIO
+    , startApp
+    , reactorBackgroundWork
+    , execReactorCmd
     , execMkReactId
     , execSetRender
     , execMkSubject
     , execBookSubjectCleanup
-    -- , execRerender
-    -- , execGetScene
     , execGetModel
     , execGetElementalRef
-    -- , execTickScene
+    , execRerender
     , execTickModel
     , execRegisterDOMListener
     , execRegisterReactListener
@@ -25,13 +32,16 @@ module Glazier.React.Reactor.Exec
     , execRegisterTickedListener
     ) where
 
+import Control.Applicative
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.DeepSeq
 import Control.Lens
+import Control.Lens.Misc
 import Control.Monad.Delegate
 import Control.Monad.IO.Unlift
 import Control.Monad.Reader
+import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Maybe.Extras
@@ -42,11 +52,11 @@ import qualified Data.DList as DL
 import Data.Foldable
 import Data.IORef
 import qualified Data.JSString as J
--- import qualified Data.Map.Strict as M
 import Data.Maybe
-import Data.Tagged
+import Data.Typeable
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Foreign.Callback.Internal as J
+import qualified GHCJS.Foreign.Export as J
 import qualified GHCJS.Types as J
 import Glazier.Command
 import Glazier.React.Component
@@ -54,6 +64,7 @@ import Glazier.React.Entity
 import Glazier.React.EventTarget
 import Glazier.React.Gadget
 import Glazier.React.Markup
+import Glazier.React.ReactDOM
 import Glazier.React.ReactId.Internal
 import Glazier.React.Reactor
 import Glazier.React.ReadIORef
@@ -64,40 +75,78 @@ import Glazier.React.Widget
 import Glazier.React.Window
 import qualified JavaScript.Extras as JE
 
--- -- | Create a executor for all the core commands required by the framework
--- maybeExecReactor ::
---     ( MonadUnliftIO m
---     , AsReactor cmd
---     , Has (Tagged ReactId (MVar Int)) r
---     , MonadReader r m
---     )
---     => (cmd -> m ()) -> cmd -> MaybeT m ()
--- maybeExecReactor executor c =
---     -- execute a list of commands in serial, not in parallel because
---     -- Some commands may have effect dependencies.
---     -- Javascript is single threaded anyway, so it is more
---     -- efficient to execuute "quick" commands single threaded.
---     -- We'll let the individual executors of the commands decide if
---     -- "slow" commands should be forked in a thread.
---     maybeExec (traverse_ @[] executor) c
---     <|> maybeExec (execReactorCmd executor) c
+data ReactorEnv = ReactorEnv
+    { reactIdEnv :: MVar Int
+    , reactorBackgroundEnv :: TQueue (IO (IO ()))
+    }
+
+makeLenses_ ''ReactorEnv
+
+mkReactorEnvIO :: IO (ReactorEnv)
+mkReactorEnvIO = ReactorEnv <$> (newMVar (0 :: Int)) <*> newTQueueIO
+
+-- | An example of starting an app using the glazier-react framework
+startApp ::
+    ( MonadIO m
+    , MonadReader r m
+    , Has ReactorEnv r
+    , Typeable s -- for J.export
+    , AsReactor cmd
+    , AsFacet (IO cmd) cmd
+    )
+    => (cmd -> m ()) -> Widget cmd s s () -> s -> JE.JSRep -> m ()
+startApp executor wid s root = do
+    -- background worker thread
+    q <- view ((hasLens @ReactorEnv)._reactorBackgroundEnv)
+    liftIO $ void $ forkIO $ forever $ do
+        -- GHCJ does busy waiting in STM
+        -- so free up CPU with an explicit wait
+        threadDelay 15000
+        reactorBackgroundWork q
+
+    -- create a mvar to store the app subject
+    sbjVar <- liftIO $ newEmptyMVar
+    let setup = do
+            sbj <- mkSubject' wid s
+            exec' (command_ <$> (putMVar sbjVar sbj))
+        cs = (`execState` mempty) $ evalContT setup
+
+    -- run the initial commands, this will store the app Subject into sbjVar
+    traverse_ executor cs
+
+    -- Start the App render
+    liftIO $ do
+        sbj <- takeMVar sbjVar
+        markup <- unReadIORef $ (`execStateT` mempty) $ displaySubject sbj
+        e <- toElement markup
+        renderDOM e root
+
+        -- Export sbj to prevent it from being garbage collected
+        void $ J.export sbj
+
+reactorBackgroundWork :: TQueue (IO (IO ())) -> IO ()
+reactorBackgroundWork q = do
+    -- block and read as much data as possible
+    xs <- atomically $ liftA2 (:) (readTQueue q) (flushTQueue q)
+    ys <- traverse id xs
+    fold ys
 
 execReactorCmd ::
     ( MonadUnliftIO m
-    , AsReactor cmd
-    , Has (Tagged ReactId (MVar Int)) r
     , MonadReader r m
+    , AsReactor cmd
+    , Has ReactorEnv r
     )
     => (cmd -> m ()) -> ReactorCmd cmd -> m ()
 execReactorCmd executor c = case c of
     MkReactId n k -> execMkReactId n >>= (executor . k)
     SetRender sbj w -> execSetRender sbj w
     MkSubject wid s k -> execMkSubject executor wid s >>= (executor . k)
-    -- Rerender sbj -> execRerender sbj
     -- GetScene sbj k -> execGetScene sbj >>= (executor . k)
     GetModel sbj k -> execGetModel sbj >>= (executor . k)
     GetElementalRef sbj ri k -> execGetElementalRef executor sbj ri k
     -- TickScene sbj tick -> execTickScene sbj tick >>= executor
+    Rerender sbj -> execRerender sbj
     TickModel sbj tick -> execTickModel sbj tick >>= executor
     BookSubjectCleanup sbj -> execBookSubjectCleanup sbj
     RegisterDOMListener sbj j n goStrict goLazy -> execRegisterDOMListener executor sbj j n goStrict goLazy
@@ -107,42 +156,16 @@ execReactorCmd executor c = case c of
     RegisterNextRenderedListener sbj k -> execRegisterNextRenderedListener executor sbj k
     RegisterTickedListener sbj k -> execRegisterTickedListener executor sbj k
 
--- data DeferredTicked
--- data DeferredRerender
-
--- -- | Execute actions that are deferred to the very last. Eg _rerender
--- -- This should be scheduled after the list of commands has finished processing.
--- execDeferred ::
---     ( MonadIO m
---     , MonadReader r m
---     , Has (Tagged DeferredTicked (TMVar (M.Map ReactId (IO ())))) r
---     , Has (Tagged DeferredRerender (TMVar (M.Map ReactId (IO ())))) r
---     )
---     => m ()
--- execDeferred = do
---     v1 <- view (pieceTag' @DeferredTicked)
---     d1 <- liftIO $ atomically $ takeTMVar v1
---     traverse_ liftIO d
---     liftIO $ atomically $ putTMVar v1 mempty
-
---     v1 <- view (pieceTag' @DeferredRerender)
---     d1 <- liftIO $ atomically $ takeTMVar v1
---     traverse_ liftIO d
---     liftIO $ atomically $ putTMVar v1 mempty
-
-
-
-
 -----------------------------------------------------------------
 execMkReactId ::
     ( MonadIO m
-    , Has (Tagged ReactId (MVar Int)) r
+    , Has ReactorEnv r
     , MonadReader r m
     )
     => J.JSString
     -> m ReactId
 execMkReactId n = do
-    v <- view (pieceTag' @ReactId)
+    v <- view ((hasLens @ReactorEnv)._reactIdEnv)
     liftIO $ do
         i <- takeMVar v
         let i' = JE.safeIncrement i
@@ -172,18 +195,12 @@ doRendered scnRef scnVar = do
     scn <- takeMVar scnVar
     let scn' = scn & _plan._nextRenderedListener .~ mempty
         nxt = scn ^. _plan._nextRenderedListener
-        (reentrancyGuard, cb) = scn ^. _plan._renderedListener
+        cb = scn ^. _plan._renderedListener
 
     atomicWriteIORef scnRef scn'
     putMVar scnVar scn'
     nxt
-    -- only process _renderedListener if we are not already inside a renderedListener callstack.
-    g <- atomically $ tryTakeTMVar reentrancyGuard
-    case g of
-        Nothing -> pure ()
-        Just _ -> do
-            cb
-            atomically $ putTMVar reentrancyGuard ()
+    cb
 
 doMounted :: IORef (Scene s) -> IO ()
 doMounted scnRef = do
@@ -218,7 +235,7 @@ execSetRender sbj win = liftIO $ do
 execMkSubject ::
     ( MonadIO m
     , AsReactor cmd
-    , Has (Tagged ReactId (MVar Int)) r
+    , Has ReactorEnv r
     , MonadReader r m
     )
     => (cmd -> m ())
@@ -229,19 +246,19 @@ execMkSubject executor wid s = do
     ri <- execMkReactId (J.pack "plan")
     (sbj, cs) <- liftIO $ do
         -- create shim with fake callbacks for now
-        tickedGuard <- newTMVarIO ()
-        renderedGuard <- newTMVarIO ()
         let newPlan = Plan
                 ri
                 Nothing
                 (ShimCallbacks (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef))
-                (tickedGuard, mempty)
-                (renderedGuard, mempty)
                 mempty
                 mempty
                 mempty
                 mempty
                 mempty
+                mempty
+                mempty
+                False
+                False
             scn = Scene newPlan s
 
         scnRef <- newIORef scn
@@ -292,21 +309,22 @@ execMkSubject executor wid s = do
     -- return the subject
     pure sbj
 
-_rerender :: Scene s -> IO ()
-_rerender scn = case scn ^. _plan._componentRef of
-    Nothing -> pure ()
-    Just j -> rerenderShim j
-
-execBookSubjectCleanup :: MonadIO m => Subject s -> m ()
-execBookSubjectCleanup sbj = liftIO $ do
-    scn <- takeMVar scnVar
-    let cleanup = prolong sbj
-        scn' = scn & _plan._nextRenderedListener %~ (*> cleanup)
-    -- Update the back buffer
-    atomicWriteIORef scnRef scn'
-    putMVar scnVar scn'
-    -- FIXME: Trigger a rerender
-
+execBookSubjectCleanup ::
+    ( MonadIO m
+    , MonadReader r m
+    , Has ReactorEnv r
+    )
+    => Subject s -> m ()
+execBookSubjectCleanup sbj = do
+    liftIO $ do
+        scn <- takeMVar scnVar
+        let cleanup = prolong sbj
+            scn' = scn & _plan._nextRenderedListener %~ (*> cleanup)
+        -- Update the back buffer
+        atomicWriteIORef scnRef scn'
+        putMVar scnVar scn'
+    -- Trigger a rerender
+    execRerender sbj
   where
     scnRef = sceneRef sbj
     scnVar = sceneVar sbj
@@ -317,37 +335,90 @@ execGetModel ::
     -> m s
 execGetModel sbj = liftIO . fmap model . readIORef $ sceneRef sbj
 
--- | No need to run in a separate thread because it should never block for a significant amount of time.
--- Upate the scene 'MVar' with the given action. Also triggers a rerender.
-execTickModel ::
-    MonadIO m
-    => Subject s
-    -> ModelState s cmd
-    -> m cmd
-execTickModel sbj tick = liftIO $ do
-    scn <- takeMVar scnVar
-    let (reentrancyGuard, cb) = scn ^. _plan._tickedListener
-        s = scn ^. _model
-    (c, s') <- unReadIORef $ runStateT tick s
-    let scn' = scn & _model .~ s'
-    -- Update the back buffer
-    atomicWriteIORef scnRef scn'
-    putMVar scnVar scn'
-
-    -- only process _tickedListener if we are not already inside an tickedListener callstack.
-    g <- atomically $ tryTakeTMVar reentrancyGuard
-    case g of
-        Nothing -> pure ()
-        Just _ -> do
-            cb
-            atomically $ putTMVar reentrancyGuard ()
-
-    -- automatically rerender the scene after state change
-    _rerender scn'
-    pure c
+execRerender ::
+    ( MonadIO m
+    , MonadReader r m
+    , Has ReactorEnv r
+    )
+    => Subject s -> m ()
+execRerender sbj = do
+    q <- view ((hasLens @ReactorEnv)._reactorBackgroundEnv)
+    liftIO $ do
+        scn <- takeMVar scnVar
+        if not (scn ^. _plan._rerenderRequired)
+            then do
+                let scn' = scn & _plan._rerenderRequired .~ True
+                -- Update the back buffer
+                atomicWriteIORef scnRef scn'
+                putMVar scnVar scn'
+                atomically $ writeTQueue q (pure (scheduleRerender sbj))
+            -- rerender has already been scheduled
+            else putMVar scnVar scn
   where
     scnRef = sceneRef sbj
     scnVar = sceneVar sbj
+
+scheduleRerender :: Subject s -> IO ()
+scheduleRerender sbj = do
+    scn <- takeMVar scnVar
+    if scn ^. _plan._rerenderRequired
+        then do
+            let scn' = scn & _plan._rerenderRequired .~ False
+                        & _plan._tickedNotified .~ False
+            -- Update the back buffer
+            atomicWriteIORef scnRef scn'
+            putMVar scnVar scn'
+            case scn ^. _plan._componentRef of
+                Nothing -> pure ()
+                Just j -> rerenderShim j
+        -- rerender not required (eg. already processed)
+        else putMVar scnVar scn
+  where
+    scnRef = sceneRef sbj
+    scnVar = sceneVar sbj
+
+-- | No need to run in a separate thread because it should never block for a significant amount of time.
+-- Upate the scene 'MVar' with the given action. Also triggers a rerender.
+execTickModel ::
+    ( MonadIO m
+    , MonadReader r m
+    , Has ReactorEnv r
+    )
+    => Subject s
+    -> ModelState s cmd
+    -> m cmd
+execTickModel sbj tick = do
+    q <- view ((hasLens @ReactorEnv)._reactorBackgroundEnv)
+    liftIO $ do
+        scn <- takeMVar scnVar
+        let s = scn ^. _model
+        (c, s') <- unReadIORef $ runStateT tick s
+        let scn' = scn & _model .~ s'
+        -- Update the back buffer
+        atomicWriteIORef scnRef scn'
+        putMVar scnVar scn'
+        atomically $ writeTQueue q notifyTicked
+        pure c
+  where
+    scnRef = sceneRef sbj
+    scnVar = sceneVar sbj
+    notifyTicked = do
+        scn <- takeMVar scnVar
+        if not (scn ^. _plan._tickedNotified)
+            then do
+                let scn' = scn & _plan._tickedNotified .~ True
+                        & _plan._rerenderRequired .~ True
+                    cb = scn ^. _plan._tickedListener
+                -- Update the back buffer
+                atomicWriteIORef scnRef scn'
+                putMVar scnVar scn'
+                -- run tickedListeener
+                cb
+                pure (scheduleRerender sbj)
+            -- notify not required (eg. already processed)
+            else do
+                putMVar scnVar scn
+                pure (pure ())
 
 mkEventCallback ::
     (MonadIO m)
@@ -387,14 +458,14 @@ mkEventHandler goStrict = do
     -- create a channel to write preprocessed data for the postprocessor
     -- 'Chan' guarantees that the writer is never blocked by the reader.
     -- There is only one reader/writer per channel.
-    c <- newTChanIO
+    c <- newTQueueIO
     let preprocess evt = (`evalMaybeT` ()) $ do
             r <- goStrict evt
             -- This is guaranteed never to block
-            lift $ atomically $ writeTChan c $!! r
+            lift $ atomically $ writeTQueue c $!! r
         -- there might not be a value in the chan
         -- because the preprocessor might not have produced any values
-        postprocess = MaybeT $ atomically $ tryReadTChan c
+        postprocess = MaybeT $ atomically $ tryReadTQueue c
     pure (preprocess, postprocess)
 
 addEventHandler :: (NFData a)
@@ -412,7 +483,10 @@ addEventHandler goStrict goLazy listenerRef = do
 data Freshness = Existing | Fresh
 
 execGetElementalRef ::
-    (MonadUnliftIO m)
+    ( MonadUnliftIO m
+    , MonadReader r m
+    , Has ReactorEnv r
+    )
     => (cmd -> m ())
     -> Subject s
     -> ReactId
@@ -435,7 +509,8 @@ execGetElementalRef executor sbj ri k = do
             liftIO $ do
                 atomicWriteIORef scnRef scn'
                 putMVar scnVar scn'
-                _rerender scn'
+            -- trigger a rerender
+            execRerender sbj
   where
     scnRef = sceneRef sbj
     scnVar = sceneVar sbj
@@ -535,7 +610,7 @@ execRegisterTickedListener executor sbj c = do
     let hdl = u $ executor c
     liftIO $ do
         scn <- takeMVar scnVar
-        let scn' = scn & _plan._tickedListener %~ (\(v, a) -> (v, a *> hdl))
+        let scn' = scn & _plan._tickedListener %~ (*> hdl)
         atomicWriteIORef scnRef scn'
         putMVar scnVar scn'
   where
@@ -569,7 +644,7 @@ execRegisterRenderedListener executor sbj c = do
     let hdl = u $ executor c
     liftIO $ do
         scn <- takeMVar scnVar
-        let scn' = scn & _plan._renderedListener %~ (\(v, a) -> (v, a *> hdl))
+        let scn' = scn & _plan._renderedListener %~ (*> hdl)
         atomicWriteIORef scnRef scn'
         putMVar scnVar scn'
   where
@@ -596,7 +671,7 @@ execRegisterNextRenderedListener executor sbj c = do
 execRegisterDOMListener ::
     ( NFData a
     , MonadUnliftIO m
-    , Has (Tagged ReactId (MVar Int)) r
+    , Has ReactorEnv r
     , MonadReader r m
     )
     => (cmd -> m ())

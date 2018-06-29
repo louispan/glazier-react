@@ -37,26 +37,15 @@ function hgr$shimComponent() {
             constructor(props) {
                 super(props);
                 this.state = { frameNum: 0 };
-                this.pendingRerender = false;
             }
 
-            doRerender() {
+            rerender() {
                 this.setState(function(prevState, props) {
                     var newFrameNum = this.safeIncrement(prevState.frameNum);
                     return {
                         frameNum: newFrameNum
                     };
                 });
-                this.pendingRerender = false;
-            }
-
-            rerender() {
-                // batch all rerender requrests in the same callstack.
-                if (!this.pendingRerender) {
-                    this.pendingRerender = true;
-                    var that = this;
-                    window.setTimeout(function(){that.doRerender()}, 1);
-                }
             }
 
             safeIncrement(i) {
