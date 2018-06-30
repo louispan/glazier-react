@@ -16,7 +16,6 @@ import Control.Monad.State.Strict
 import Control.Monad.Trans.RWS.Strict
 import qualified Data.DList as DL
 import qualified Data.Map.Strict as M
-import Debug.Trace
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
 import Glazier.React.Component
@@ -83,7 +82,7 @@ displaySubject sbj = do
         , ("mounted", JE.toJSR mountedCb)
         , ("rendered", JE.toJSR renderedCb)
         , ("ref", JE.toJSR refCb)
-        , ("key", JE.toJSR (trace ("reactId=" ++ show ri) ri))
+        , ("key", JE.toJSR ri)
         ]
 
 #ifdef __GHCJS__

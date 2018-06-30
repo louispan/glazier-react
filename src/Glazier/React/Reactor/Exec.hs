@@ -75,6 +75,10 @@ import Glazier.React.Widget
 import Glazier.React.Window
 import qualified JavaScript.Extras as JE
 
+#if MIN_VERSION_base(4,9,0) && !MIN_VERSION_base(4,10,0)
+import Data.Semigroup
+#endif
+
 data ReactorEnv = ReactorEnv
     { reactIdEnv :: MVar Int
     , reactorBackgroundEnv :: TQueue (IO (IO ()))
@@ -98,11 +102,7 @@ startApp ::
 startApp executor wid s root = do
     -- background worker thread
     q <- view ((hasLens @ReactorEnv)._reactorBackgroundEnv)
-    liftIO $ void $ forkIO $ forever $ do
-        -- GHCJ does busy waiting in STM
-        -- so free up CPU with an explicit wait
-        threadDelay 15000
-        reactorBackgroundWork q
+    liftIO $ void $ forkIO $ forever $ reactorBackgroundWork q
 
     -- create a mvar to store the app subject
     sbjVar <- liftIO $ newEmptyMVar
@@ -126,10 +126,23 @@ startApp executor wid s root = do
 
 reactorBackgroundWork :: TQueue (IO (IO ())) -> IO ()
 reactorBackgroundWork q = do
-    -- block and read as much data as possible
-    xs <- atomically $ liftA2 (:) (readTQueue q) (flushTQueue q)
-    ys <- traverse id xs
+    -- wait until there is data
+    x <- atomically $ readTQueue q
+    -- run the action - this might add more data into the queue
+    y <- x
+    -- keep looping until there is no more data in the queue
+    ys <- go (DL.singleton y)
+    -- Run the secondary actions - which should rerender
     fold ys
+  where
+    go zs = do
+        xs <- atomically $ flushTQueue q
+        case xs of
+            [] -> pure zs
+            xs' -> do
+                -- run the action - this might add more data into the queue
+                ys <- sequence xs'
+                go (zs <> DL.fromList ys)
 
 execReactorCmd ::
     ( MonadUnliftIO m
@@ -378,7 +391,7 @@ scheduleRerender sbj = do
     scnVar = sceneVar sbj
 
 -- | No need to run in a separate thread because it should never block for a significant amount of time.
--- Upate the scene 'MVar' with the given action. Also triggers a rerender.
+-- Update the scene 'MVar' with the given action. Also triggers a rerender.
 execTickModel ::
     ( MonadIO m
     , MonadReader r m
@@ -390,6 +403,7 @@ execTickModel ::
 execTickModel sbj tick = do
     q <- view ((hasLens @ReactorEnv)._reactorBackgroundEnv)
     liftIO $ do
+        putStrLn "execTickMode" -- FIXME
         scn <- takeMVar scnVar
         let s = scn ^. _model
         (c, s') <- unReadIORef $ runStateT tick s
@@ -496,21 +510,23 @@ execGetElementalRef executor sbj ri k = do
     UnliftIO u <- askUnliftIO
     scn <- liftIO $ takeMVar scnVar
     (refFreshness, pln) <- registerRefCoreListener sbj ri (plan scn)
-    case refFreshness of
-        Existing -> do
-            let ret = pln ^? (_elementals.ix ri._elementalRef._Just)
-            liftIO $ putMVar scnVar scn
-            maybe (pure ()) (executor . k) ret
-        Fresh -> do
-            -- need to try to get EventTarget after a rerender
-            let tryAgain = u $ execGetElementalRef executor sbj ri k
-                pln' = pln & _nextRenderedListener %~ (*> tryAgain)
-                scn' = scn & _plan .~ pln'
+    let tryAgain = u $ execGetElementalRef executor sbj ri k
+        pln' = pln & _nextRenderedListener %~ (*> tryAgain)
+        scn' = scn & _plan .~ pln'
+        ret = pln ^? (_elementals.ix ri._elementalRef._Just)
+        doTryAgain = do
             liftIO $ do
                 atomicWriteIORef scnRef scn'
                 putMVar scnVar scn'
             -- trigger a rerender
             execRerender sbj
+    case (refFreshness, ret) of
+        (Fresh, _) -> doTryAgain
+        (_, Nothing) -> doTryAgain
+        _ -> pure ()
+    case ret of
+        Nothing -> pure ()
+        Just ret' -> executor . k $ ret'
   where
     scnRef = sceneRef sbj
     scnVar = sceneVar sbj
