@@ -204,7 +204,6 @@ doRef scnRef scnVar j = do
 
 doRendered :: IORef (Scene s) -> MVar (Scene s) -> IO ()
 doRendered scnRef scnVar = do
-    putStrLn "rendered"
     -- update nextRenderedListener held in the Plan
     scn <- takeMVar scnVar
     let scn' = scn & _plan._nextRenderedListener .~ mempty
@@ -377,7 +376,6 @@ scheduleRerender sbj = do
     scn <- takeMVar scnVar
     if scn ^. _plan._rerenderRequired
         then do
-            putStrLn "render required" -- FIXME
             let scn' = scn & _plan._rerenderRequired .~ False
                         & _plan._tickedNotified .~ False
             -- Update the back buffer
@@ -385,13 +383,9 @@ scheduleRerender sbj = do
             putMVar scnVar scn'
             case scn ^. _plan._componentRef of
                 Nothing -> pure ()
-                Just j -> do
-                    putStrLn "rerendering" -- FIXME
-                    rerenderShim j
+                Just j -> rerenderShim j
         -- rerender not required (eg. already processed)
-        else do
-            putStrLn "render not notified" -- FIXME
-            putMVar scnVar scn
+        else putMVar scnVar scn
   where
     scnRef = sceneRef sbj
     scnVar = sceneVar sbj
@@ -409,18 +403,14 @@ execTickModel ::
 execTickModel sbj tick = do
     q <- view ((hasLens @ReactorEnv)._reactorBackgroundEnv)
     liftIO $ do
-        putStrLn "execTickMode1" -- FIXME
         scn <- takeMVar scnVar
         let s = scn ^. _model
         (c, s') <- unReadIORef $ runStateT tick s
         let scn' = scn & _model .~ s'
         -- Update the back buffer
-        putStrLn "execTickMode2" -- FIXME
         atomicWriteIORef scnRef scn'
         putMVar scnVar scn'
-        putStrLn "execTickMode3" -- FIXME
         atomically $ writeTQueue q notifyTicked
-        putStrLn "execTickMode4" -- FIXME
         pure c
   where
     scnRef = sceneRef sbj
@@ -429,7 +419,6 @@ execTickModel sbj tick = do
         scn <- takeMVar scnVar
         if not (scn ^. _plan._tickedNotified)
             then do
-                putStrLn "tick not notified" -- FIXME
                 let scn' = scn & _plan._tickedNotified .~ True
                         & _plan._rerenderRequired .~ True
                     cb = scn ^. _plan._tickedListener
@@ -441,7 +430,6 @@ execTickModel sbj tick = do
                 pure (scheduleRerender sbj)
             -- notify not required (eg. already processed)
             else do
-                putStrLn "tick already notified" -- FIXME
                 putMVar scnVar scn
                 pure (pure ())
 
