@@ -42,23 +42,16 @@ packages:
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
 extra-deps:
-# - async-2.2.1
-# - data-has-0.3.0.0
-# - ghcjs-base-stub-0.1.0.4
-# - newtype-generics-0.5.2.1
-# - unliftio-0.2.7.0
-# - unliftio-core-0.1.1.0
-- git: git@github.com:ghcjs/ghcjs-base.git
-  commit: 4560541fbab5b77ee34d0348ec04bb1dda8e5db3
-- '/Users/louis/repo/hs/disposable'
-- '/Users/louis/repo/js/javascript-extras'
-- '/Users/louis/repo/js/ghcjs-base-stub'
-- '/Users/louis/repo/hs/lens-misc'
-- '/Users/louis/repo/hs/data-diverse-lens'
-- '/Users/louis/repo/hs/alternators'
-- '/Users/louis/repo/hs/glazier'
+# - git: git@github.com:ghcjs/ghcjs-base.git
+#   commit: b4a8d578758613e5c7db88891f444ff5e6f3edb9
+- lens-misc-0.0.2.0
+- javascript-extras-0.5.0.0
+- alternators-1.0.0.0
+- data-diverse-4.6.0.0
+- data-diverse-lens-4.3.0.0
+- ghcjs-base-stub-0.2.0.0
+- glazier-1.0.0.0
 - async-2.2.1
-- data-diverse-4.5.0.0
 - data-has-0.3.0.0
 - newtype-generics-0.5.3
 - unliftio-0.2.7.0

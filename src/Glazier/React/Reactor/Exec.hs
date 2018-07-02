@@ -32,7 +32,6 @@ module Glazier.React.Reactor.Exec
     , execRegisterTickedListener
     ) where
 
-import Control.Applicative
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.DeepSeq
