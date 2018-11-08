@@ -20,6 +20,7 @@ module Glazier.React.Reactor
     , mkSubject
     , mkSubject'
     , withMkSubject
+    -- FIXME: Rename bookSubjectCleanup
     , bookSubjectCleanup
     , getModel
     , getElementalRef
@@ -198,7 +199,8 @@ withMkSubject wid s k = delegate $ \fire -> do
 bookSubjectCleanup ::
     (MonadReactor p allS cmd m)
     => Subject s -> m ()
-bookSubjectCleanup sbj = exec' $ BookSubjectCleanup sbj
+-- LOUISDEBUG
+bookSubjectCleanup sbj = pure () -- exec' $ BookSubjectCleanup sbj
 
 -- | Rerender the ShimComponent using the current @Entity@ context
 rerender :: (MonadReactor p s cmd m) => m ()

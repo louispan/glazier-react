@@ -17,6 +17,7 @@ import Glazier.React.Scene
 data Subject p = Subject
     (IORef (Scene p))
     (MVar (Scene p))
+    -- This is in an IORef because the rendering callback could be replaced
     (IORef (MVar ())) -- garbage collection for rendering callback
     (MVar ()) -- garbage collection for other callbacks
 

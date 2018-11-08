@@ -1,5 +1,5 @@
 name:                glazier-react
-version:             1.0.0.0
+version:             1.0.0.1
 synopsis:            ReactJS binding using Glazier.Command.
 description:         ReactJS binding using Glazier.Commmand. Please see README.md.
 homepage:            https://github.com/louispan/glazier-react#readme

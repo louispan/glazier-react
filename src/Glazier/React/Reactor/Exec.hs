@@ -121,7 +121,8 @@ startApp executor wid s root = do
         renderDOM e root
 
         -- Export sbj to prevent it from being garbage collected
-        void $ J.export sbj
+        -- LOUISDEBUG
+        -- void $ J.export sbj
 
 reactorBackgroundWork :: TQueue (IO (IO ())) -> IO ()
 reactorBackgroundWork q = do
@@ -221,12 +222,15 @@ doMounted scnRef = do
 
 execSetRender :: MonadIO m => Subject s -> Window s () -> m ()
 execSetRender sbj win = liftIO $ do
+    putStrLn "LOUISDEBUG: execSetRender"
     -- create the callbacks
     renderCb <- J.syncCallback' (doRender scnRef win)
     -- Create automatic garbage collection of the callbacks
     -- that will run when the Subject lease members are garbage collected.
     renderLease <- liftIO $ newEmptyMVar
-    void $ mkWeakMVar renderLease $ J.releaseCallback renderCb
+    void $ mkWeakMVar renderLease $ do
+        putStrLn "LOUISDEBUG: release render Cb"
+        J.releaseCallback renderCb
     -- Replace the existing ShimCallbacks (was fake version)
     scn <- takeMVar scnVar
     -- replace the rendering function
@@ -290,6 +294,7 @@ execMkSubject executor wid s = do
         -- Create automatic garbage collection of the callbacks
         -- that will run when the Subject lease members are garbage collected.
         void $ mkWeakMVar otherCbLease $ do
+            putStrLn "LOUISDEBUG: release otherCbLease"
             scn' <- readIORef scnRef
             -- scn' ^. _plan._nextRenderedListener
             scn' ^. _plan._finalCleanup
@@ -304,8 +309,10 @@ execMkSubject executor wid s = do
         let sbj = Subject scnRef scnVar rndrLeaseRef otherCbLease
             -- initalize the subject using the Gadget
             gad = runExceptT wid
-            gad' = gad `bindLeft` (exec' . SetRender sbj)
+            gad' = gad `bindLeft` setRndr
             gad'' = (either id id) <$> gad'
+            -- This must be the only place sbj is reference otherwise
+            -- we will get memory leaks!
             tick = runGadget gad'' (Entity sbj id) pure
             cs = execState tick mempty
             -- update the scene to include the real shimcallbacks
@@ -320,6 +327,11 @@ execMkSubject executor wid s = do
     executor (command' $ DL.toList cs)
     -- return the subject
     pure sbj
+  where
+    -- Use the sbj from the env to avoid keeping sbj alive
+    setRndr win = do
+        sbj <- view _subject
+        exec' $ SetRender sbj win
 
 execBookSubjectCleanup ::
     ( MonadIO m
