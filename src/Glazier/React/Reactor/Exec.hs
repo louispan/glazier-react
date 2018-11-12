@@ -73,6 +73,7 @@ import Glazier.React.Subject.Internal
 import Glazier.React.Widget
 import Glazier.React.Window
 import qualified JavaScript.Extras as JE
+import System.Mem
 
 #if MIN_VERSION_base(4,9,0) && !MIN_VERSION_base(4,10,0)
 import Data.Semigroup
@@ -152,6 +153,7 @@ execReactorCmd ::
     )
     => (cmd -> m ()) -> ReactorCmd cmd -> m ()
 execReactorCmd executor c = case c of
+    EvalIO n -> liftIO n >>= executor
     MkReactId n k -> execMkReactId n >>= (executor . k)
     SetRender sbj w -> execSetRender sbj w
     MkSubject wid s k -> execMkSubject executor wid s >>= (executor . k)
@@ -223,11 +225,13 @@ doMounted scnRef = do
 execSetRender :: MonadIO m => Subject s -> Window s () -> m ()
 execSetRender sbj win = liftIO $ do
     putStrLn "LOUISDEBUG: execSetRender"
+    performGC
     -- create the callbacks
     renderCb <- J.syncCallback' (doRender scnRef win)
     -- Create automatic garbage collection of the callbacks
     -- that will run when the Subject lease members are garbage collected.
     renderLease <- liftIO $ newEmptyMVar
+    J.releaseCallback renderCb
     void $ mkWeakMVar renderLease $ do
         putStrLn "LOUISDEBUG: release render Cb"
         J.releaseCallback renderCb
@@ -293,6 +297,8 @@ execMkSubject executor wid s = do
         renderedCb <- J.syncCallback J.ContinueAsync (doRendered scnRef scnVar)
         -- Create automatic garbage collection of the callbacks
         -- that will run when the Subject lease members are garbage collected.
+        J.releaseCallback refCb
+        J.releaseCallback renderedCb
         void $ mkWeakMVar otherCbLease $ do
             putStrLn "LOUISDEBUG: release otherCbLease"
             scn' <- readIORef scnRef
@@ -339,19 +345,19 @@ execBookSubjectCleanup ::
     , Has ReactorEnv r
     )
     => Subject s -> m ()
-execBookSubjectCleanup sbj = do
-    liftIO $ do
-        scn <- takeMVar scnVar
-        let cleanup = prolong sbj
-            scn' = scn & _plan._nextRenderedListener %~ (*> cleanup)
-        -- Update the back buffer
-        atomicWriteIORef scnRef scn'
-        putMVar scnVar scn'
+execBookSubjectCleanup sbj = pure ()
+    -- liftIO $ do
+    --     scn <- takeMVar scnVar
+    --     let cleanup = prolong sbj
+    --         scn' = scn & _plan._nextRenderedListener %~ (*> cleanup)
+    --     -- Update the back buffer
+    --     atomicWriteIORef scnRef scn'
+    --     putMVar scnVar scn'
     -- Trigger a rerender
-    execRerender sbj
-  where
-    scnRef = sceneRef sbj
-    scnVar = sceneVar sbj
+    -- execRerender sbj
+--   where
+--     scnRef = sceneRef sbj
+--     scnVar = sceneVar sbj
 
 execGetModel ::
     MonadIO m

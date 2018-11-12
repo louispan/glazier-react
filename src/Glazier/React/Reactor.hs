@@ -15,6 +15,8 @@ module Glazier.React.Reactor
     , MonadReactor
     , ReactorCmd(..)
     , ModelState
+    , evalIO
+    , evalIOThen
     , mkReactId
     , setRender
     , mkSubject
@@ -73,6 +75,7 @@ type ModelState s = StateT s ReadIORef
 
 -- | NB. 'ReactorCmd' is not a functor because of the @Widget cmd@ in 'MkSubject'
 data ReactorCmd cmd where
+    EvalIO :: IO cmd -> ReactorCmd cmd
     -- | Make a unique named id
     MkReactId :: J.JSString -> (ReactId -> cmd) -> ReactorCmd cmd
     -- | the the rendering function in a Subject, replace any existing render callback
@@ -135,6 +138,7 @@ data ReactorCmd cmd where
         -> ReactorCmd cmd
 
 instance Show (ReactorCmd cmd) where
+    showsPrec _ (EvalIO _ ) = showString "EvalIO"
     showsPrec p (MkReactId s _) = showParen (p >= 11) $
         showString "MkReactId " . shows s
     showsPrec _ (SetRender _ _ ) = showString "SetRender"
@@ -227,6 +231,19 @@ getElementalRef ri = delegate $ \k -> do
     c <- codify k
     exec' $ GetElementalRef sbj ri c
 
+-- | Run an arbitrary IO. This should only be used for testing
+evalIO :: (MonadReactor p s cmd m) => IO cmd -> m ()
+evalIO m = exec' $ EvalIO m
+
+evalIOThen :: (MonadReactor p s cmd m) => IO (m a) -> m a
+evalIOThen m = do
+    delegate $ \fire -> do
+        -- f :: n a -> m ()
+        let f n = n >>= fire
+        -- f' :: m a -> cmd
+        f' <- codify f
+        exec' $ EvalIO (f' <$> m)
+
 -- | Update the 'Model' using the current @Entity@ context
 tickModel :: (MonadReactor p s cmd m) => ModelState s () -> m ()
 tickModel m = do
@@ -241,7 +258,9 @@ tickModelThen m = do
     Entity sbj slf <- ask
     delegate $ \fire -> do
         let m' = getAls <$> zoom slf (Als <$> m)
+            -- f :: m a -> m ()
             f n = n >>= fire
+        -- f' :: m a -> cmd
         f' <- codify f
         exec' $ TickModel sbj (f' <$> m')
 
