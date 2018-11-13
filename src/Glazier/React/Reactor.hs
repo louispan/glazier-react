@@ -16,12 +16,16 @@ module Glazier.React.Reactor
     , ReactorCmd(..)
     , ModelState
     , evalIO
+    , evalIO_
     , evalIOThen
     , mkReactId
     , setRender
     , mkSubject
     , mkSubject'
     , withMkSubject
+    -- , mkSubject2
+    -- , mkSubject2'
+    -- , withMkSubject2
     -- FIXME: Rename bookSubjectCleanup
     , bookSubjectCleanup
     , getModel
@@ -79,28 +83,30 @@ data ReactorCmd cmd where
     -- | Make a unique named id
     MkReactId :: J.JSString -> (ReactId -> cmd) -> ReactorCmd cmd
     -- | the the rendering function in a Subject, replace any existing render callback
-    SetRender :: Subject s -> Window s () -> ReactorCmd cmd
+    SetRender :: WeakSubject s -> Window s () -> ReactorCmd cmd
     -- | Make a fully initialized subject (with ShimCallbacks) from a widget spec and state
     MkSubject :: Widget cmd s s () -> s -> (Subject s -> cmd) -> ReactorCmd cmd
+    -- MkSubject2 :: Widget cmd s s () -> s -> (Subject s -> cmd) -> ReactorCmd cmd
     -- | Keep subject alive until the next rerender
-    BookSubjectCleanup :: Subject s -> ReactorCmd cmd
+    -- FIXME: rename
+    BookSubjectCleanup :: WeakSubject s -> ReactorCmd cmd
     -- | Generate a list of commands from reading the model.
-    GetModel :: Subject s -> (s -> cmd) -> ReactorCmd cmd
+    GetModel :: WeakSubject s -> (s -> cmd) -> ReactorCmd cmd
     -- Get the event target
     -- If a "ref" callback to update 'elementalRef' has not been added;
     -- then add it, rerender, then return the EventTarget.
     GetElementalRef ::
-        Subject s
+        WeakSubject s
         -> ReactId
         -> (EventTarget -> cmd)
         -> ReactorCmd cmd
     -- | Rerender a ShimComponent using the given state.
-    Rerender :: Subject s -> ReactorCmd cmd
+    Rerender :: WeakSubject s -> ReactorCmd cmd
     -- | Update and rerender.
-    TickModel :: Subject s -> ModelState s cmd -> ReactorCmd cmd
+    TickModel :: WeakSubject s -> ModelState s cmd -> ReactorCmd cmd
     -- | Create and register a dom callback
     RegisterDOMListener :: NFData a
-        => Subject s
+        => WeakSubject s
         -> JE.JSRep
         -> J.JSString
         -> (JE.JSRep -> MaybeT IO a)
@@ -110,7 +116,7 @@ data ReactorCmd cmd where
     -- If the callback is for "ref", then an listener to update 'elementalRef' for 'GetEventTarget'
     -- will automatically be added just before the listener in 'RegisterReactListener'.
     RegisterReactListener :: NFData a
-        => Subject s
+        => WeakSubject s
         -> ReactId
         -> J.JSString
         -> (JE.JSRep -> MaybeT IO a)
@@ -118,22 +124,22 @@ data ReactorCmd cmd where
         -> ReactorCmd cmd
     -- | Create and register a callback for the mounted event
     RegisterMountedListener ::
-        Subject s
+        WeakSubject s
         -> cmd
         -> ReactorCmd cmd
     -- | Create and register a callback for the rendered event
     RegisterRenderedListener ::
-        Subject s
+        WeakSubject s
         -> cmd
         -> ReactorCmd cmd
     -- | Create and register a callback for the rendered event
     RegisterNextRenderedListener ::
-        Subject s
+        WeakSubject s
         -> cmd
         -> ReactorCmd cmd
     -- | Create and register a callback for the state updated event
     RegisterTickedListener ::
-        Subject s
+        WeakSubject s
         -> cmd
         -> ReactorCmd cmd
 
@@ -143,6 +149,7 @@ instance Show (ReactorCmd cmd) where
         showString "MkReactId " . shows s
     showsPrec _ (SetRender _ _ ) = showString "SetRender"
     showsPrec _ (MkSubject _ _ _) = showString "MkSubject"
+    -- showsPrec _ (MkSubject2 _ _ _) = showString "MkSubject2"
     showsPrec _ (BookSubjectCleanup _) = showString "BookSubjectCleanup"
     showsPrec _ (GetModel _ _) = showString "GetModel"
     showsPrec _ (GetElementalRef _ _ _) = showString "GetElementalRef"
@@ -164,7 +171,7 @@ mkReactId n = delegate $ \fire -> do
     exec' $ MkReactId n f
 
 setRender :: (AsReactor cmd, MonadCommand cmd m)
-    => Subject s -> Window s () -> m ()
+    => WeakSubject s -> Window s () -> m ()
 setRender sbj win = exec' $ SetRender sbj win
 
 -- | Make an initialized 'Subject' for a given model using the given 'Widget'.
@@ -191,6 +198,27 @@ withMkSubject wid s k = delegate $ \fire -> do
     let wid' = wid >>= (instruct . f)
     exec' $ MkSubject wid' s k'
 
+-- mkSubject2 :: (AsReactor cmd, MonadCommand cmd m)
+--     => Widget cmd s s a -> s -> m (Either a (Subject s))
+-- mkSubject2 wid s = delegate $ \fire -> do
+--     f <- codify fire
+--     let wid' = wid >>= (instruct . f . Left)
+--     exec' $ MkSubject2 wid' s (f . Right)
+
+-- mkSubject2' :: (AsReactor cmd, MonadCommand cmd m)
+--     => Widget cmd s s () -> s -> m (Subject s)
+-- mkSubject2' gad s = delegate $ \fire -> do
+--     f <- codify fire
+--     exec' $ MkSubject2 gad s f
+
+-- withMkSubject2 :: (AsReactor cmd, MonadCommand cmd m)
+--     => Widget cmd s s a -> s -> (Subject s -> m ()) -> m a
+-- withMkSubject2 wid s k = delegate $ \fire -> do
+--     f <- codify fire
+--     k' <- codify k
+--     let wid' = wid >>= (instruct . f)
+--     exec' $ MkSubject2 wid' s k'
+
 -- -- | Add a constructed subject to a parent widget
 -- addSubject :: (MonadReactor p ss cmd m)
 --     => Widget cmd s s a
@@ -202,14 +230,14 @@ withMkSubject wid s k = delegate $ \fire -> do
 -- | Schedule cleanup of the callbacks when the parent widget is rerendered.
 bookSubjectCleanup ::
     (MonadReactor p allS cmd m)
-    => Subject s -> m ()
+    => WeakSubject s -> m ()
 -- LOUISDEBUG
 bookSubjectCleanup sbj = pure () -- exec' $ BookSubjectCleanup sbj
 
 -- | Rerender the ShimComponent using the current @Entity@ context
 rerender :: (MonadReactor p s cmd m) => m ()
 rerender = do
-    sbj <- view _subject
+    sbj <- view _weakSubject
     exec' $ Rerender sbj
 
 -- | Get the 'Model' and exec actions, using the current @Entity@ context
@@ -227,13 +255,16 @@ getModel = delegate $ \k -> do
 -- then add it, rerender, then return the EventTarget.
 getElementalRef :: (MonadReactor p s cmd m) => ReactId -> m EventTarget
 getElementalRef ri = delegate $ \k -> do
-    sbj <- view _subject
+    sbj <- view _weakSubject
     c <- codify k
     exec' $ GetElementalRef sbj ri c
 
 -- | Run an arbitrary IO. This should only be used for testing
 evalIO :: (MonadReactor p s cmd m) => IO cmd -> m ()
 evalIO m = exec' $ EvalIO m
+
+evalIO_ :: (MonadReactor p s cmd m) => IO () -> m ()
+evalIO_ m = exec' $ EvalIO (command_ <$> m)
 
 evalIOThen :: (MonadReactor p s cmd m) => IO (m a) -> m a
 evalIOThen m = do
@@ -274,7 +305,7 @@ domTrigger ::
     -> (JE.JSRep -> MaybeT IO a)
     -> m a
 domTrigger j n goStrict = delegate $ \goLazy -> do
-    Entity sbj _ <- ask
+    sbj <- view _weakSubject
     goLazy' <- codify goLazy
     exec' $ RegisterDOMListener sbj j n goStrict goLazy'
 
@@ -300,7 +331,7 @@ doTrigger ::
     -> (JE.JSRep -> MaybeT IO a)
     -> m a
 doTrigger ri n goStrict = delegate $ \goLazy -> do
-    Entity sbj _ <- ask
+    sbj <- view _weakSubject
     goLazy' <- codify goLazy
     exec' $ RegisterReactListener sbj ri n goStrict goLazy'
 
@@ -343,7 +374,7 @@ onMounted ::
     => m a
     -> m a
 onMounted m = do
-    sbj <- view _subject
+    sbj <- view _weakSubject
     delegate $ \fire -> do
         c <- codify' (m >>= fire)
         exec' $ RegisterMountedListener sbj c
@@ -362,7 +393,7 @@ onRendered ::
     => m a
     -> m a
 onRendered m = do
-    sbj <- view _subject
+    sbj <- view _weakSubject
     delegate $ \fire -> do
         c <- codify' (m >>= fire)
         exec' $ RegisterRenderedListener sbj c
@@ -371,7 +402,7 @@ onNextRendered ::
     MonadReactor p s cmd m
     => m a -> m a
 onNextRendered m = do
-    sbj <- view _subject
+    sbj <- view _weakSubject
     delegate $ \fire -> do
         c <- codify' (m >>= fire)
         exec' $ RegisterNextRenderedListener sbj c
@@ -390,7 +421,7 @@ onTicked ::
     => m a
     -> m a
 onTicked m = do
-    sbj <- view _subject
+    sbj <- view _weakSubject
     delegate $ \fire -> do
         c <- codify' (m >>= fire)
         exec' $ RegisterTickedListener sbj c

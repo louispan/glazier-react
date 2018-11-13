@@ -8,10 +8,10 @@ import Glazier.React.Subject
 
 ----------------------------------------------------------------------------------
 
-data Entity p s = Entity (Subject p) (Traversal' p s)
+data Entity p s = Entity (WeakSubject p) (Traversal' p s)
 
-_subject :: Lens' (Entity p s) (Subject p)
-_subject = lens (\(Entity p _) -> p) (\(Entity _ s) p -> Entity p s)
+_weakSubject :: Lens' (Entity p s) (WeakSubject p)
+_weakSubject = lens (\(Entity p _) -> p) (\(Entity _ s) p -> Entity p s)
 
 _self :: Lens (Entity p s) (Entity p s') (ReifiedTraversal' p s) (ReifiedTraversal' p s')
 _self = lens (\(Entity _ s) -> Traversal s) (\(Entity p _) (Traversal t) -> Entity p t)

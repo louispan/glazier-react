@@ -58,6 +58,13 @@ data ShimCallbacks = ShimCallbacks
 
 makeLenses_ ''ShimCallbacks
 
+releaseShimCallbacks :: ShimCallbacks -> IO ()
+releaseShimCallbacks (ShimCallbacks a b c d) = do
+    J.releaseCallback a
+    J.releaseCallback b
+    J.releaseCallback c
+    J.releaseCallback d
+
 ----------------------------------------------------------------------------------
 
 -- | Interactivity data for a react component

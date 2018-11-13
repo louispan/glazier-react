@@ -27,7 +27,7 @@ runGadget ::
     -> State (DL.DList cmd) ()
 runGadget x l = runContT (runReaderT x l)
 
-gadgetWith :: Subject s -> Gadget cmd s s a -> ContT () (State (DL.DList cmd)) a
+gadgetWith :: WeakSubject s -> Gadget cmd s s a -> ContT () (State (DL.DList cmd)) a
 gadgetWith sbj = (`runReaderT` (Entity sbj id))
 
 evalGadget :: Gadget cmd p s () -> Entity p s -> State (DL.DList cmd) ()
