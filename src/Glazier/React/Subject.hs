@@ -1,9 +1,11 @@
 module Glazier.React.Subject where
 
 import Control.Concurrent
-import Glazier.React.Scene
+import Control.Monad
 import Data.IORef
+import Glazier.React.Scene
 import System.Mem.Weak
+
 ----------------------------------------------------------------------------------
 
 -- | The IORef is for non-blocking reads.
@@ -18,3 +20,10 @@ data WeakSubject p = WeakSubject
     { sceneWeakRef :: Weak (IORef (Scene p))
     , sceneWeakVar :: Weak (MVar (Scene p))
     }
+
+-- | Creates an IO action whose existence will keep the lease alive.
+-- Running it has no side effects.
+prolong :: Subject s -> IO ()
+prolong (Subject scnRef scnVar) = do
+    void $ readIORef scnRef
+    void $ isEmptyMVar scnVar

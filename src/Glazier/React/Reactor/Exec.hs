@@ -19,7 +19,7 @@ module Glazier.React.Reactor.Exec
     , execMkReactId
     , execSetRender
     , execMkSubject
-    , execBookSubjectCleanup
+    , execKeepSubjectUntilNextRender
     , execGetModel
     , execGetElementalRef
     , execRerender
@@ -158,13 +158,14 @@ execReactorCmd executor c = case c of
     SetRender sbj w -> execSetRender sbj w
     MkSubject wid s k -> execMkSubject executor wid s >>= (executor . k)
     -- MkSubject2 wid s k -> execMkSubject2 executor wid s >>= (executor . k)
+    MkWeakSubject s k -> execMkWeakSubject s >>= (executor . k)
     -- GetScene sbj k -> execGetScene sbj >>= (executor . k)
     GetModel sbj k -> void $ runMaybeT $ execGetModel sbj >>= (lift . executor . k)
     GetElementalRef sbj ri k -> execGetElementalRef executor sbj ri k
     -- TickScene sbj tick -> execTickScene sbj tick >>= executor
     Rerender sbj -> execRerender sbj
     TickModel sbj tick -> void $ runMaybeT $ execTickModel sbj tick >>= (lift . executor)
-    BookSubjectCleanup sbj -> execBookSubjectCleanup sbj
+    KeepSubjectUntilNextRender sbj s -> execKeepSubjectUntilNextRender sbj s
     RegisterDOMListener sbj j n goStrict goLazy -> execRegisterDOMListener executor sbj j n goStrict goLazy
     RegisterReactListener sbj ri n goStrict goLazy -> execRegisterReactListener executor sbj ri n goStrict goLazy
     RegisterMountedListener sbj k -> execRegisterMountedListener executor sbj k
@@ -412,25 +413,34 @@ execMkSubject executor wid s = do
 --     -- Use the sbj from the env to avoid keeping sbj alive
 --     setRndr win = pure ()
 
-execBookSubjectCleanup ::
+execMkWeakSubject ::
+    ( MonadIO m
+    )
+    => Subject s
+    -> m (WeakSubject s)
+execMkWeakSubject (Subject scnRef scnVar) = liftIO $ do
+    scnWkRef <- mkWeakIORef scnRef (pure ())
+    scnWkVar <- mkWeakMVar scnVar (pure ())
+    pure $ WeakSubject scnWkRef scnWkVar
+
+execKeepSubjectUntilNextRender ::
     ( MonadIO m
     , MonadReader r m
     , Has ReactorEnv r
     )
-    => WeakSubject s -> m ()
-execBookSubjectCleanup sbj = pure ()
-    -- liftIO $ do
-    --     scn <- takeMVar scnVar
-    --     let cleanup = prolong sbj
-    --         scn' = scn & _plan._nextRenderedListener %~ (*> cleanup)
-    --     -- Update the back buffer
-    --     atomicWriteIORef scnRef scn'
-    --     putMVar scnVar scn'
-    -- Trigger a rerender
-    -- execRerender sbj
---   where
---     scnRef = sceneRef sbj
---     scnVar = sceneVar sbj
+    => WeakSubject s -> Subject t -> m ()
+execKeepSubjectUntilNextRender sbj s = void $ runMaybeT $ do
+    scnRef <- MaybeT . liftIO . deRefWeak $ sceneWeakRef sbj
+    scnVar <- MaybeT . liftIO . deRefWeak $ sceneWeakVar sbj
+    liftIO $ do
+        scn <- takeMVar scnVar
+        let keepalive = prolong s
+            scn' = scn & _plan._nextRenderedListener %~ (*> keepalive)
+        -- Update the back buffer
+        atomicWriteIORef scnRef scn'
+        putMVar scnVar scn'
+    -- trigger a rerender
+    execRerender sbj
 
 execGetModel ::
     MonadIO m

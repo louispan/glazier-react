@@ -26,8 +26,8 @@ module Glazier.React.Reactor
     -- , mkSubject2
     -- , mkSubject2'
     -- , withMkSubject2
-    -- FIXME: Rename bookSubjectCleanup
-    , bookSubjectCleanup
+    , mkWeakSubject
+    , keepSubjectUntilNextRender
     , getModel
     , getElementalRef
     , rerender
@@ -79,6 +79,7 @@ type ModelState s = StateT s ReadIORef
 
 -- | NB. 'ReactorCmd' is not a functor because of the @Widget cmd@ in 'MkSubject'
 data ReactorCmd cmd where
+    -- run arbitrary IO, should only be used for debugging
     EvalIO :: IO cmd -> ReactorCmd cmd
     -- | Make a unique named id
     MkReactId :: J.JSString -> (ReactId -> cmd) -> ReactorCmd cmd
@@ -87,9 +88,10 @@ data ReactorCmd cmd where
     -- | Make a fully initialized subject (with ShimCallbacks) from a widget spec and state
     MkSubject :: Widget cmd s s () -> s -> (Subject s -> cmd) -> ReactorCmd cmd
     -- MkSubject2 :: Widget cmd s s () -> s -> (Subject s -> cmd) -> ReactorCmd cmd
+    -- make a weak subject from a subject
+    MkWeakSubject :: Subject s -> (WeakSubject s -> cmd) -> ReactorCmd cmd
     -- | Keep subject alive until the next rerender
-    -- FIXME: rename
-    BookSubjectCleanup :: WeakSubject s -> ReactorCmd cmd
+    KeepSubjectUntilNextRender :: WeakSubject s -> Subject t -> ReactorCmd cmd
     -- | Generate a list of commands from reading the model.
     GetModel :: WeakSubject s -> (s -> cmd) -> ReactorCmd cmd
     -- Get the event target
@@ -150,7 +152,8 @@ instance Show (ReactorCmd cmd) where
     showsPrec _ (SetRender _ _ ) = showString "SetRender"
     showsPrec _ (MkSubject _ _ _) = showString "MkSubject"
     -- showsPrec _ (MkSubject2 _ _ _) = showString "MkSubject2"
-    showsPrec _ (BookSubjectCleanup _) = showString "BookSubjectCleanup"
+    showsPrec _ (MkWeakSubject _ _) = showString "MkWeakSubject"
+    showsPrec _ (KeepSubjectUntilNextRender _ _) = showString "KeepSubjectUntilNextRender"
     showsPrec _ (GetModel _ _) = showString "GetModel"
     showsPrec _ (GetElementalRef _ _ _) = showString "GetElementalRef"
     showsPrec _ (Rerender _) = showString "Rerender"
@@ -227,12 +230,20 @@ withMkSubject wid s k = delegate $ \fire -> do
 --     -> m a
 -- addSubject wid s f = mkSubject wid s $ \sbj -> tickScene $ f sbj
 
+-- | Make an initialized 'Subject' for a given model using the given 'Widget'.
+mkWeakSubject :: (AsReactor cmd, MonadCommand cmd m)
+    => Subject s -> m (WeakSubject s)
+mkWeakSubject s = delegate $ \fire -> do
+    f <- codify fire
+    exec' $ MkWeakSubject s f
+
 -- | Schedule cleanup of the callbacks when the parent widget is rerendered.
-bookSubjectCleanup ::
-    (MonadReactor p allS cmd m)
-    => WeakSubject s -> m ()
--- LOUISDEBUG
-bookSubjectCleanup sbj = pure () -- exec' $ BookSubjectCleanup sbj
+keepSubjectUntilNextRender ::
+    (MonadReactor p s cmd m)
+    => Subject t -> m ()
+keepSubjectUntilNextRender s = do
+    sbj <- view _weakSubject
+    exec' $ KeepSubjectUntilNextRender sbj s
 
 -- | Rerender the ShimComponent using the current @Entity@ context
 rerender :: (MonadReactor p s cmd m) => m ()
