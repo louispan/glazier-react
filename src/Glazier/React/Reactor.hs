@@ -27,7 +27,7 @@ module Glazier.React.Reactor
     -- , mkSubject2'
     -- , withMkSubject2
     , mkWeakSubject
-    , keepSubjectUntilNextRender
+    , keepAliveSubjectUntilNextRender
     , getModel
     , getElementalRef
     , rerender
@@ -91,7 +91,7 @@ data ReactorCmd cmd where
     -- make a weak subject from a subject
     MkWeakSubject :: Subject s -> (WeakSubject s -> cmd) -> ReactorCmd cmd
     -- | Keep subject alive until the next rerender
-    KeepSubjectUntilNextRender :: WeakSubject s -> Subject t -> ReactorCmd cmd
+    KeepAliveSubjectUntilNextRender :: WeakSubject s -> Subject a -> ReactorCmd cmd
     -- | Generate a list of commands from reading the model.
     GetModel :: WeakSubject s -> (s -> cmd) -> ReactorCmd cmd
     -- Get the event target
@@ -153,7 +153,7 @@ instance Show (ReactorCmd cmd) where
     showsPrec _ (MkSubject _ _ _) = showString "MkSubject"
     -- showsPrec _ (MkSubject2 _ _ _) = showString "MkSubject2"
     showsPrec _ (MkWeakSubject _ _) = showString "MkWeakSubject"
-    showsPrec _ (KeepSubjectUntilNextRender _ _) = showString "KeepSubjectUntilNextRender"
+    showsPrec _ (KeepAliveSubjectUntilNextRender _ _) = showString "KeepAliveSubjectUntilNextRender"
     showsPrec _ (GetModel _ _) = showString "GetModel"
     showsPrec _ (GetElementalRef _ _ _) = showString "GetElementalRef"
     showsPrec _ (Rerender _) = showString "Rerender"
@@ -238,12 +238,12 @@ mkWeakSubject s = delegate $ \fire -> do
     exec' $ MkWeakSubject s f
 
 -- | Schedule cleanup of the callbacks when the parent widget is rerendered.
-keepSubjectUntilNextRender ::
+keepAliveSubjectUntilNextRender ::
     (MonadReactor p s cmd m)
-    => Subject t -> m ()
-keepSubjectUntilNextRender s = do
+    => Subject a -> m ()
+keepAliveSubjectUntilNextRender s = do
     sbj <- view _weakSubject
-    exec' $ KeepSubjectUntilNextRender sbj s
+    exec' $ KeepAliveSubjectUntilNextRender sbj s
 
 -- | Rerender the ShimComponent using the current @Entity@ context
 rerender :: (MonadReactor p s cmd m) => m ()

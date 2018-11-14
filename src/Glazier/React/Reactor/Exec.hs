@@ -19,7 +19,7 @@ module Glazier.React.Reactor.Exec
     , execMkReactId
     , execSetRender
     , execMkSubject
-    , execKeepSubjectUntilNextRender
+    , execKeepAliveSubjectUntilNextRender
     , execGetModel
     , execGetElementalRef
     , execRerender
@@ -72,7 +72,6 @@ import Glazier.React.Subject
 import Glazier.React.Widget
 import Glazier.React.Window
 import qualified JavaScript.Extras as JE
-import System.Mem
 import System.Mem.Weak
 
 #if MIN_VERSION_base(4,9,0) && !MIN_VERSION_base(4,10,0)
@@ -165,7 +164,7 @@ execReactorCmd executor c = case c of
     -- TickScene sbj tick -> execTickScene sbj tick >>= executor
     Rerender sbj -> execRerender sbj
     TickModel sbj tick -> void $ runMaybeT $ execTickModel sbj tick >>= (lift . executor)
-    KeepSubjectUntilNextRender sbj s -> execKeepSubjectUntilNextRender sbj s
+    KeepAliveSubjectUntilNextRender sbj s -> execKeepAliveSubjectUntilNextRender sbj s
     RegisterDOMListener sbj j n goStrict goLazy -> execRegisterDOMListener executor sbj j n goStrict goLazy
     RegisterReactListener sbj ri n goStrict goLazy -> execRegisterReactListener executor sbj ri n goStrict goLazy
     RegisterMountedListener sbj k -> execRegisterMountedListener executor sbj k
@@ -423,13 +422,13 @@ execMkWeakSubject (Subject scnRef scnVar) = liftIO $ do
     scnWkVar <- mkWeakMVar scnVar (pure ())
     pure $ WeakSubject scnWkRef scnWkVar
 
-execKeepSubjectUntilNextRender ::
+execKeepAliveSubjectUntilNextRender ::
     ( MonadIO m
     , MonadReader r m
     , Has ReactorEnv r
     )
-    => WeakSubject s -> Subject t -> m ()
-execKeepSubjectUntilNextRender sbj s = void $ runMaybeT $ do
+    => WeakSubject s -> Subject a -> m ()
+execKeepAliveSubjectUntilNextRender sbj s = void $ runMaybeT $ do
     scnRef <- MaybeT . liftIO . deRefWeak $ sceneWeakRef sbj
     scnVar <- MaybeT . liftIO . deRefWeak $ sceneWeakVar sbj
     liftIO $ do
