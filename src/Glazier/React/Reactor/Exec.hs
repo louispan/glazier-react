@@ -105,6 +105,8 @@ startApp executor wid s root = do
 
     -- create a mvar to store the app subject
     sbjVar <- liftIO $ newEmptyMVar
+    void $ liftIO $ mkWeakMVar sbjVar $ do
+        putStrLn "LOUISDEBUG: App done"
     let setup = do
             sbj <- mkSubject' wid s
             exec' (command_ <$> (putMVar sbjVar sbj))
@@ -121,9 +123,9 @@ startApp executor wid s root = do
         renderDOM e root
 
         -- Export sbj to prevent it from being garbage collected
-        -- LOUISDEBUG
-        -- void $ J.export sbj
+        void $ J.export sbj
 
+-- LOUISFIXME: Simply
 reactorBackgroundWork :: TQueue (IO (IO ())) -> IO ()
 reactorBackgroundWork q = do
     -- wait until there is data
@@ -529,6 +531,7 @@ execTickModel sbj tick = do
         scn <- takeMVar scnVar
         if not (scn ^. _plan._tickedNotified)
             then do
+                -- LOUISFIXME: Document tickNotified/renderRequired lifecycle
                 let scn' = scn & _plan._tickedNotified .~ True
                         & _plan._rerenderRequired .~ True
                     cb = scn ^. _plan._tickedListener
