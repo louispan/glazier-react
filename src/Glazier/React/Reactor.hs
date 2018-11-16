@@ -23,6 +23,9 @@ module Glazier.React.Reactor
     , mkSubject
     , mkSubject'
     , withMkSubject
+    , mkSubject2
+    , mkSubject2'
+    , withMkSubject2
     , mkWeakSubject
     , keepAliveSubjectUntilNextRender
     , getModel
@@ -84,6 +87,7 @@ data ReactorCmd cmd where
     SetRender :: WeakSubject s -> Window s () -> ReactorCmd cmd
     -- | Make a fully initialized subject (with ShimCallbacks) from a widget spec and state
     MkSubject :: Widget cmd s s () -> s -> (Subject s -> cmd) -> ReactorCmd cmd
+    MkSubject2 :: Widget cmd s s () -> s -> (Subject s -> cmd) -> ReactorCmd cmd
     -- make a weak subject from a subject
     MkWeakSubject :: Subject s -> (WeakSubject s -> cmd) -> ReactorCmd cmd
     -- | Keep subject alive until the next rerender
@@ -147,6 +151,7 @@ instance Show (ReactorCmd cmd) where
         showString "MkReactId " . shows s
     showsPrec _ (SetRender _ _ ) = showString "SetRender"
     showsPrec _ (MkSubject _ _ _) = showString "MkSubject"
+    showsPrec _ (MkSubject2 _ _ _) = showString "MkSubject2"
     showsPrec _ (MkWeakSubject _ _) = showString "MkWeakSubject"
     showsPrec _ (KeepAliveSubjectUntilNextRender _ _) = showString "KeepAliveSubjectUntilNextRender"
     showsPrec _ (GetModel _ _) = showString "GetModel"
@@ -191,6 +196,30 @@ mkSubject' gad s = delegate $ \fire -> do
 withMkSubject :: (AsReactor cmd, MonadCommand cmd m)
     => Widget cmd s s a -> s -> (Subject s -> m ()) -> m a
 withMkSubject wid s k = delegate $ \fire -> do
+    f <- codify fire
+    k' <- codify k
+    let wid' = wid >>= (instruct . f)
+    exec' $ MkSubject wid' s k'
+
+-- | Make an initialized 'Subject' for a given model using the given 'Widget'.
+mkSubject2 :: (AsReactor cmd, MonadCommand cmd m)
+    => Widget cmd s s a -> s -> m (Either a (Subject s))
+mkSubject2 wid s = delegate $ \fire -> do
+    f <- codify fire
+    let wid' = wid >>= (instruct . f . Left)
+    exec' $ MkSubject wid' s (f . Right)
+
+-- | Make an initialized 'Subject' for a given model using the given 'Widget'.
+mkSubject2' :: (AsReactor cmd, MonadCommand cmd m)
+    => Widget cmd s s () -> s -> m (Subject s)
+mkSubject2' gad s = delegate $ \fire -> do
+    f <- codify fire
+    exec' $ MkSubject gad s f
+
+-- | Make an initialized 'Subject' for a given model using the given 'Widget'.
+withMkSubject2 :: (AsReactor cmd, MonadCommand cmd m)
+    => Widget cmd s s a -> s -> (Subject s -> m ()) -> m a
+withMkSubject2 wid s k = delegate $ \fire -> do
     f <- codify fire
     k' <- codify k
     let wid' = wid >>= (instruct . f)

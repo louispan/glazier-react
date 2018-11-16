@@ -156,6 +156,7 @@ execReactorCmd executor c = case c of
     MkReactId n k -> execMkReactId n >>= (executor . k)
     SetRender sbj w -> execSetRender sbj w
     MkSubject wid s k -> execMkSubject executor wid s >>= (executor . k)
+    MkSubject2 wid s k -> execMkSubject2 executor wid s >>= (executor . k)
     MkWeakSubject s k -> execMkWeakSubject s >>= (executor . k)
     -- GetScene sbj k -> execGetScene sbj >>= (executor . k)
     GetModel sbj k -> void $ runMaybeT $ execGetModel sbj >>= (lift . executor . k)
@@ -336,6 +337,90 @@ execMkSubject executor wid s = do
         sbj <- view _weakSubject
         exec' $ SetRender sbj win
 
+
+-- | Make an initialized 'Subject' for a given model using the given
+-- 'Window' rendering function.
+-- The original window should be dropped and the 'Widget' reduced to just a
+-- 'Gadget' to emphasis the fact that the 'Window' was used up.
+-- 'displaySubject' should be used to render the subject.
+execMkSubject2 ::
+    ( MonadIO m
+    , AsReactor cmd
+    , Has ReactorEnv r
+    , MonadReader r m
+    )
+    => (cmd -> m ())
+    -> Widget cmd s s ()
+    -> s
+    -> m (Subject s)
+execMkSubject2 executor wid s = do
+    ri <- execMkReactId (J.pack "plan")
+    (sbj, cs) <- liftIO $ do
+        -- create shim with fake callbacks for now
+        let newPlan = Plan
+                ri
+                Nothing
+                (ShimCallbacks (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef))
+                mempty
+                mempty
+                mempty
+                mempty
+                mempty
+                mempty
+                mempty
+                False
+                False
+            scn = Scene newPlan s
+
+        scnRef <- newIORef scn
+        scnVar <- newEmptyMVar
+
+        scnWkRef <- mkWeakIORef scnRef $
+            putStrLn "LOUISDEBUG: release scnRef"
+
+        -- Create automatic garbage collection of the callbacks
+        -- that will run when the Subject lease members are garbage collected.
+        scnWkVar <- mkWeakMVar scnVar $ do
+            putStrLn "LOUISDEBUG: release scnVar"
+            scn' <- readIORef scnRef
+            -- scn' ^. _plan._nextRenderedListener
+            scn' ^. _plan._finalCleanup
+            let cbs = scn' ^. _plan._shimCallbacks
+            releaseShimCallbacks cbs
+            -- cleanup callbacks
+            traverse_ (traverse (J.releaseCallback . fst) . reactListeners) (scn' ^. _plan._elementals)
+            traverse_ (J.releaseCallback . fst) (scn' ^. _plan._domlListeners)
+
+        -- Create callbacks for now
+        renderCb <- J.syncCallback' (pure J.nullRef) -- dummy render for now
+        refCb <- J.syncCallback1 J.ContinueAsync (doRef scnWkRef scnWkVar)
+        mountedCb <- J.syncCallback J.ContinueAsync (doMounted scnWkRef)
+        renderedCb <- J.syncCallback J.ContinueAsync (doRendered scnWkRef scnWkVar)
+
+        -- Now we have enough to make a subject
+        let gad = runExceptT wid
+            gad' = gad `bindLeft` setRndr
+            gad'' = (either id id) <$> gad'
+            -- This must be the only place sbj is reference otherwise
+            -- we will get memory leaks!
+            tick = runGadget gad'' (Entity (WeakSubject scnWkRef scnWkVar) id) pure
+            cs = execState tick mempty
+            -- update the scene to include the real shimcallbacks
+            scn' = scn & _plan._shimCallbacks .~ ShimCallbacks renderCb mountedCb renderedCb refCb
+        -- update the mutable variables with the initialzed scene
+        atomicWriteIORef scnRef scn'
+        putMVar scnVar scn'
+        pure (Subject scnRef scnVar, cs)
+    -- execute additional commands
+    -- one of these commands will be 'SetRender' which will
+    -- update the dummy render with the real render function.
+    executor (command' $ DL.toList cs)
+    -- return the subject
+    pure sbj
+  where
+    -- Use the sbj from the env to avoid keeping sbj alive
+    setRndr win = pure ()
+
 execMkWeakSubject ::
     ( MonadIO m
     )
@@ -356,8 +441,9 @@ execKeepAliveSubjectUntilNextRender sbj s = void $ runMaybeT $ do
     scnRef <- MaybeT . liftIO . deRefWeak $ sceneWeakRef sbj
     scnVar <- MaybeT . liftIO . deRefWeak $ sceneWeakVar sbj
     liftIO $ do
+        putStrLn "keeping alive"
         scn <- takeMVar scnVar
-        let keepalive = prolong s
+        let keepalive = prolong s *> putStrLn "touch"
             scn' = scn & _plan._nextRenderedListener %~ (*> keepalive)
         -- Update the back buffer
         atomicWriteIORef scnRef scn'
@@ -534,7 +620,7 @@ execGetElementalRef executor sbj ri k = void . runMaybeT $ do
     scnVar <- MaybeT . liftIO . deRefWeak $ sceneWeakVar sbj
     UnliftIO u <- lift askUnliftIO
     scn <- liftIO $ takeMVar scnVar
-    (refFreshness, pln) <- lift $ registerRefCoreListener (Subject scnRef scnVar) ri (plan scn)
+    (refFreshness, pln) <- lift $ getOrRegisterRefCoreListener sbj ri (plan scn)
     let tryAgain = u $ execGetElementalRef executor sbj ri k
         pln' = pln & _nextRenderedListener %~ (*> tryAgain)
         scn' = scn & _plan .~ pln'
@@ -553,13 +639,12 @@ execGetElementalRef executor sbj ri k = void . runMaybeT $ do
                 liftIO $ putMVar scnVar scn
                 lift . executor . k $ ret'
 
--- | This one doesn't take the sceneVar
-registerRefCoreListener :: (MonadIO m)
-    => Subject s
+getOrRegisterRefCoreListener :: (MonadIO m)
+    => WeakSubject s
     -> ReactId
     -> Plan
     -> m (Freshness, Plan)
-registerRefCoreListener sbj ri pln = do
+getOrRegisterRefCoreListener sbj ri pln = do
     liftIO $ do
         -- first get or make the target
         (freshness, eventHdl) <-
@@ -583,14 +668,15 @@ registerRefCoreListener sbj ri pln = do
   where
     n = J.pack "ref"
     -- hdlRef x = command' $ TickScene sbj (command_ <$> (_plan._elementals.ix ri._elementalRef .= x))
-    scnRef = sceneRef sbj
-    scnVar = sceneVar sbj
-    hdlRef x = do
-        scn <- takeMVar scnVar
-        let scn' = scn & _plan._elementals.ix ri._elementalRef .~ x
-        -- Update the back buffer
-        atomicWriteIORef scnRef scn'
-        putMVar scnVar scn'
+    hdlRef x = void . runMaybeT $ do
+        scnRef <- MaybeT . liftIO . deRefWeak $ sceneWeakRef sbj
+        scnVar <- MaybeT . liftIO . deRefWeak $ sceneWeakVar sbj
+        lift $ do
+            scn <- takeMVar scnVar
+            let scn' = scn & _plan._elementals.ix ri._elementalRef .~ x
+            -- Update the back buffer
+            atomicWriteIORef scnRef scn'
+            putMVar scnVar scn'
 
 execRegisterReactListener :: (NFData a, MonadUnliftIO m)
     => (cmd -> m ())
@@ -608,7 +694,7 @@ execRegisterReactListener executor sbj ri n goStrict goLazy = void . runMaybeT $
     -- special logic for ref, where the first ref handler must be 'registerRefCoreListener'
     scn <- if (n == (J.pack "ref"))
         then do
-            (refFreshness, pln) <- registerRefCoreListener (Subject scnRef scnVar) ri (plan scn_)
+            (refFreshness, pln) <- getOrRegisterRefCoreListener sbj ri (plan scn_)
             case refFreshness of
                 Existing -> pure scn_
                 Fresh -> pure (scn_ & _plan .~ pln)
