@@ -18,7 +18,7 @@ import Data.Diverse.Profunctor
 import Glazier.Command.Exec
 import Glazier.React.Entity
 import Glazier.React.Gadget
-import Glazier.React.Scene
+import Glazier.React.Model
 import Glazier.React.Window
 
 -- | A 'Widget' is a 'Gadget' that fires 'Either' a 'Window' or a value.
@@ -30,7 +30,7 @@ noIOWidget :: Widget (NoIOCmd cmd) s s a -> Widget cmd s s a -> Widget cmd s s a
 noIOWidget _ = id
 
 magnifyWidget :: Traversal' t s -> ExceptT (Window s ()) (Gadget cmd p s) a -> ExceptT (Window t ()) (Gadget cmd p t) a
-magnifyWidget l wid = ExceptT $ (first (magnifiedScene l)) <$> (magnifiedEntity l (runExceptT wid))
+magnifyWidget l wid = ExceptT $ (first (magnifiedModel l)) <$> (magnifiedEntity l (runExceptT wid))
 
 -- | Convert a 'Gadget' into a 'Widget'
 widget :: Gadget cmd p s (Either (Window s ()) a) -> Widget cmd p s a

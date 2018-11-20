@@ -118,17 +118,17 @@ The `Model` contains enough information to render child widgets, but not this wi
 ### Plan
 The `Plan` contains the callbacks for integrating with React (the verbs). It also contains a javascript reference to the instance of shim component used for the widget. This reference is used to trigger rendering with  [`setState`](https://facebook.github.io/react/docs/react-component.html#setstate).
 
-### Scene
-`Scene` is basically a tuple of `Model` and `Plan`. It is a separate data type in order to generate convenient lenses to the fields.
-`Scene` is all that a `Window` needs to purely generate rendering instructions.
+### Model
+`Model` is basically a tuple of `Model` and `Plan`. It is a separate data type in order to generate convenient lenses to the fields.
+`Model` is all that a `Window` needs to purely generate rendering instructions.
 
 ### Frame
-`Frame` is a type synonym of `MVar Scene`. It is a mutable holder of a copy of `Scene`. This is so how the official state from Haskell is communicated to the React [`render`](https://facebook.github.io/react/docs/react-component.html#render) callback. The [`render`](https://facebook.github.io/react/docs/react-component.html#render) callback will read the latest copy of `Scene` from the `MVar` and pass it to the widget `Window` for rendering.
+`Frame` is a type synonym of `MVar Model`. It is a mutable holder of a copy of `Model`. This is so how the official state from Haskell is communicated to the React [`render`](https://facebook.github.io/react/docs/react-component.html#render) callback. The [`render`](https://facebook.github.io/react/docs/react-component.html#render) callback will read the latest copy of `Model` from the `MVar` and pass it to the widget `Window` for rendering.
 
 ### Gizmo
-`Gizmo` is basically a tuple of `Scene` and `Frame`. It is a separate data type in order to generate convenient lenses to the fields.
+`Gizmo` is basically a tuple of `Model` and `Frame`. It is a separate data type in order to generate convenient lenses to the fields.
 This contains everything a widget needs for rendering and state processing.
-Most state processing is performed using the pure `Model`. The `Frame` is only used for the `RenderCommand`, to put the latest `Scene` into the `Frame` when re-rendering is required.
+Most state processing is performed using the pure `Model`. The `Frame` is only used for the `RenderCommand`, to put the latest `Model` into the `Frame` when re-rendering is required.
 
 ## Maker
 `MVars` for `Frame`s and `Callback`s for `Plan`s may only be created in IO.  Using Free Monads, [`Glazier.React.Maker`](https://github.com/louispan/glazier-react/blob/master/src/Glazier/React/Maker.hs) provides a safe way to create them without allowing other arbitrary IO.
@@ -140,7 +140,7 @@ The `action` type can be mapped and hoisted to a larger `action` type, allow for
 ## Disposable
 GHCJS `Callback`s has resources that are not automatically collected by the garbage collector. `Callback`s need to be released manually. The [disposable](https://github.com/louispan/disposable) library provides a safe and easy way to convert the `Callback` into a storable `SomeDisposable` that can be queued up to be released after the next rendering frame.
 
-[disposable](https://github.com/louispan/disposable) allows generic instances of `Disposing` to be easily created, which make it easy to create instances of `Disposing` for a `Plan` of `Callback`s,  and therefore for the parent container `Scene`, `Gizmo`, and `Model` (which may contain other widget `Gizmo`s)
+[disposable](https://github.com/louispan/disposable) allows generic instances of `Disposing` to be easily created, which make it easy to create instances of `Disposing` for a `Plan` of `Callback`s,  and therefore for the parent container `Model`, `Gizmo`, and `Model` (which may contain other widget `Gizmo`s)
 
 The [`List` widget](https://github.com/louispan/glazier-react-widget/blob/54a771f492b864ff422e31949284ea4b23aa02c6/src/Glazier/React/Widgets/List.hs#L181) shows how the disposables can be queued for destruction after the next rendered frame.
 
@@ -156,7 +156,7 @@ mkPlan :: Frame Model Plan -> F (Maker Action) Plan
 ```
 The rendering instructions for that widget:
 ```
-window:: WindowT (Scene Model Plan) ReactMl ()
+window:: WindowT (Model Model Plan) ReactMl ()
 ```
 The state changes from `Action` events:
 ```

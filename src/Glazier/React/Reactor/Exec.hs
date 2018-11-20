@@ -18,8 +18,8 @@ module Glazier.React.Reactor.Exec
     , execReactorCmd
     , execMkReactId
     , execSetRender
-    , execMkSubject
-    , execKeepAliveSubjectUntilNextRender
+    , execMkObj
+    , execKeepAliveObjUntilNextRender
     , execGetModel
     , execGetElementalRef
     , execRerender
@@ -67,8 +67,8 @@ import Glazier.React.ReactDOM
 import Glazier.React.ReactId.Internal
 import Glazier.React.Reactor
 import Glazier.React.ReadIORef
-import Glazier.React.Scene
-import Glazier.React.Subject
+import Glazier.React.Model
+import Glazier.React.Obj
 import Glazier.React.Widget
 import Glazier.React.Window
 import qualified JavaScript.Extras as JE
@@ -104,26 +104,26 @@ startApp executor wid s root = do
     liftIO $ void $ forkIO $ forever $ reactorBackgroundWork q
 
     -- create a mvar to store the app subject
-    sbjVar <- liftIO $ newEmptyMVar
-    void $ liftIO $ mkWeakMVar sbjVar $ do
+    objVar <- liftIO $ newEmptyMVar
+    void $ liftIO $ mkWeakMVar objVar $ do
         putStrLn "LOUISDEBUG: App done"
     let setup = do
-            sbj <- mkSubject' wid s
-            exec' (command_ <$> (putMVar sbjVar sbj))
+            obj <- mkObj' wid s
+            exec' (command_ <$> (putMVar objVar obj))
         cs = (`execState` mempty) $ evalContT setup
 
-    -- run the initial commands, this will store the app Subject into sbjVar
+    -- run the initial commands, this will store the app Obj into objVar
     traverse_ executor cs
 
     -- Start the App render
     liftIO $ do
-        sbj <- takeMVar sbjVar
-        markup <- unReadIORef $ (`execStateT` mempty) $ displaySubject sbj
+        obj <- takeMVar objVar
+        markup <- unReadIORef $ (`execStateT` mempty) $ displayObj obj
         e <- toElement markup
         renderDOM e root
 
-        -- Export sbj to prevent it from being garbage collected
-        void $ J.export sbj
+        -- Export obj to prevent it from being garbage collected
+        void $ J.export obj
 
 -- LOUISFIXME: Simply
 reactorBackgroundWork :: TQueue (IO (IO ())) -> IO ()
@@ -156,23 +156,23 @@ execReactorCmd ::
 execReactorCmd executor c = case c of
     EvalIO n -> liftIO n >>= executor
     MkReactId n k -> execMkReactId n >>= (executor . k)
-    SetRender sbj w -> execSetRender sbj w
-    MkSubject wid s k -> execMkSubject executor wid s >>= (executor . k)
-    MkSubject2 wid s k -> execMkSubject2 executor wid s >>= (executor . k)
-    MkWeakSubject s k -> execMkWeakSubject s >>= (executor . k)
-    -- GetScene sbj k -> execGetScene sbj >>= (executor . k)
-    GetModel sbj k -> void $ runMaybeT $ execGetModel sbj >>= (lift . executor . k)
-    GetElementalRef sbj ri k -> execGetElementalRef executor sbj ri k
-    -- TickScene sbj tick -> execTickScene sbj tick >>= executor
-    Rerender sbj -> execRerender sbj
-    TickModel sbj tick -> void $ runMaybeT $ execTickModel sbj tick >>= (lift . executor)
-    KeepAliveSubjectUntilNextRender sbj s -> execKeepAliveSubjectUntilNextRender sbj s
-    RegisterDOMListener sbj j n goStrict goLazy -> execRegisterDOMListener executor sbj j n goStrict goLazy
-    RegisterReactListener sbj ri n goStrict goLazy -> execRegisterReactListener executor sbj ri n goStrict goLazy
-    RegisterMountedListener sbj k -> execRegisterMountedListener executor sbj k
-    RegisterRenderedListener sbj k -> execRegisterRenderedListener executor sbj k
-    RegisterNextRenderedListener sbj k -> execRegisterNextRenderedListener executor sbj k
-    RegisterTickedListener sbj k -> execRegisterTickedListener executor sbj k
+    SetRender obj w -> execSetRender obj w
+    MkObj wid s k -> execMkObj executor wid s >>= (executor . k)
+    MkObj2 wid s k -> execMkObj2 executor wid s >>= (executor . k)
+    MkWeakObj s k -> execMkWeakObj s >>= (executor . k)
+    -- GetModel obj k -> execGetModel obj >>= (executor . k)
+    GetModel obj k -> void $ runMaybeT $ execGetModel obj >>= (lift . executor . k)
+    GetElementalRef obj ri k -> execGetElementalRef executor obj ri k
+    -- TickModel obj tick -> execTickModel obj tick >>= executor
+    Rerender obj -> execRerender obj
+    TickModel obj tick -> void $ runMaybeT $ execTickModel obj tick >>= (lift . executor)
+    KeepAliveObjUntilNextRender obj s -> execKeepAliveObjUntilNextRender obj s
+    RegisterDOMListener obj j n goStrict goLazy -> execRegisterDOMListener executor obj j n goStrict goLazy
+    RegisterReactListener obj ri n goStrict goLazy -> execRegisterReactListener executor obj ri n goStrict goLazy
+    RegisterMountedListener obj k -> execRegisterMountedListener executor obj k
+    RegisterRenderedListener obj k -> execRegisterRenderedListener executor obj k
+    RegisterNextRenderedListener obj k -> execRegisterNextRenderedListener executor obj k
+    RegisterTickedListener obj k -> execRegisterTickedListener executor obj k
 
 -----------------------------------------------------------------
 execMkReactId ::
@@ -190,7 +190,7 @@ execMkReactId n = do
         putMVar v i'
         pure . ReactId . J.append n . J.cons ':' . J.pack $ show i'
 
-doRender :: Weak (IORef (Scene s)) -> Window s () -> IO J.JSVal
+doRender :: Weak (IORef (Model s)) -> Window s () -> IO J.JSVal
 doRender scnWkRef win = (`evalMaybeT` J.nullRef) $ do
     scnRef <- MaybeT $ deRefWeak scnWkRef
     lift $ do
@@ -200,7 +200,7 @@ doRender scnWkRef win = (`evalMaybeT` J.nullRef) $ do
         a <- JE.toJS <$> toElement mrkup
         pure a
 
-doRef :: Weak (IORef (Scene s)) -> Weak (MVar (Scene s)) -> J.JSVal -> IO ()
+doRef :: Weak (IORef (Model s)) -> Weak (MVar (Model s)) -> J.JSVal -> IO ()
 doRef scnWkRef scnWkVar j = (`evalMaybeT` ()) $ do
     scnRef <- MaybeT $ deRefWeak scnWkRef
     scnVar <- MaybeT $ deRefWeak scnWkVar
@@ -211,7 +211,7 @@ doRef scnWkRef scnWkVar j = (`evalMaybeT` ()) $ do
         atomicWriteIORef scnRef scn'
         putMVar scnVar scn'
 
-doRendered :: Weak (IORef (Scene s)) -> Weak (MVar (Scene s)) -> IO ()
+doRendered :: Weak (IORef (Model s)) -> Weak (MVar (Model s)) -> IO ()
 doRendered scnWkRef scnWkVar = (`evalMaybeT` ()) $ do
     scnRef <- MaybeT $ deRefWeak scnWkRef
     scnVar <- MaybeT $ deRefWeak scnWkVar
@@ -227,15 +227,15 @@ doRendered scnWkRef scnWkVar = (`evalMaybeT` ()) $ do
         nxt
         cb
 
-doMounted :: Weak (IORef (Scene s)) -> IO ()
+doMounted :: Weak (IORef (Model s)) -> IO ()
 doMounted scnWkRef = (`evalMaybeT` ()) $ do
     scnRef <- MaybeT $ deRefWeak scnWkRef
     lift $ do
         scn <- readIORef scnRef
         scn ^. _plan._mountedListener
 
-execSetRender :: MonadIO m => WeakSubject s -> Window s () -> m ()
-execSetRender sbj win = void . runMaybeT $ do
+execSetRender :: MonadIO m => WeakObj s -> Window s () -> m ()
+execSetRender obj win = void . runMaybeT $ do
     liftIO $ putStrLn "LOUISDEBUG: execSetRender"
     scnRef <- MaybeT . liftIO . deRefWeak $ scnWkRef
     scnVar <- MaybeT . liftIO . deRefWeak $ scnWkVar
@@ -251,15 +251,15 @@ execSetRender sbj win = void . runMaybeT $ do
         putMVar scnVar scn'
         J.releaseCallback origRenderCb
   where
-    scnWkRef = sceneWeakRef sbj
-    scnWkVar = sceneWeakVar sbj
+    scnWkRef = modelWeakRef obj
+    scnWkVar = modelWeakVar obj
 
--- | Make an initialized 'Subject' for a given model using the given
+-- | Make an initialized 'Obj' for a given model using the given
 -- 'Window' rendering function.
 -- The original window should be dropped and the 'Widget' reduced to just a
 -- 'Gadget' to emphasis the fact that the 'Window' was used up.
--- 'displaySubject' should be used to render the subject.
-execMkSubject ::
+-- 'displayObj' should be used to render the subject.
+execMkObj ::
     ( MonadIO m
     , AsReactor cmd
     , Has ReactorEnv r
@@ -268,10 +268,10 @@ execMkSubject ::
     => (cmd -> m ())
     -> Widget cmd s s ()
     -> s
-    -> m (Subject s)
-execMkSubject executor wid s = do
+    -> m (Obj s)
+execMkObj executor wid s = do
     ri <- execMkReactId (J.pack "plan")
-    (sbj, cs) <- liftIO $ do
+    (obj, cs) <- liftIO $ do
         -- create shim with fake callbacks for now
         let newPlan = Plan
                 ri
@@ -286,7 +286,7 @@ execMkSubject executor wid s = do
                 mempty
                 False
                 False
-            scn = Scene newPlan s
+            scn = Model newPlan s
 
         scnRef <- newIORef scn
         scnVar <- newEmptyMVar
@@ -295,7 +295,7 @@ execMkSubject executor wid s = do
             putStrLn "LOUISDEBUG: release scnRef"
 
         -- Create automatic garbage collection of the callbacks
-        -- that will run when the Subject lease members are garbage collected.
+        -- that will run when the Obj lease members are garbage collected.
         scnWkVar <- mkWeakMVar scnVar $ do
             putStrLn "LOUISDEBUG: release scnVar"
             scn' <- readIORef scnRef
@@ -317,35 +317,35 @@ execMkSubject executor wid s = do
         let gad = runExceptT wid
             gad' = gad `bindLeft` setRndr
             gad'' = (either id id) <$> gad'
-            -- This must be the only place sbj is reference otherwise
+            -- This must be the only place obj is reference otherwise
             -- we will get memory leaks!
-            tick = runGadget gad'' (Entity (WeakSubject scnWkRef scnWkVar) id) pure
+            tick = runGadget gad'' (Entity (WeakObj scnWkRef scnWkVar) id) pure
             cs = execState tick mempty
-            -- update the scene to include the real shimcallbacks
+            -- update the model to include the real shimcallbacks
             scn' = scn & _plan._shimCallbacks .~ ShimCallbacks renderCb mountedCb renderedCb refCb
-        -- update the mutable variables with the initialzed scene
+        -- update the mutable variables with the initialzed model
         atomicWriteIORef scnRef scn'
         putMVar scnVar scn'
-        pure (Subject scnRef scnVar, cs)
+        pure (Obj scnRef scnVar, cs)
     -- execute additional commands
     -- one of these commands will be 'SetRender' which will
     -- update the dummy render with the real render function.
     executor (command' $ DL.toList cs)
     -- return the subject
-    pure sbj
+    pure obj
   where
-    -- Use the sbj from the env to avoid keeping sbj alive
+    -- Use the obj from the env to avoid keeping obj alive
     setRndr win = do
-        sbj <- view _weakSubject
-        exec' $ SetRender sbj win
+        obj <- view _weakObj
+        exec' $ SetRender obj win
 
 
--- | Make an initialized 'Subject' for a given model using the given
+-- | Make an initialized 'Obj' for a given model using the given
 -- 'Window' rendering function.
 -- The original window should be dropped and the 'Widget' reduced to just a
 -- 'Gadget' to emphasis the fact that the 'Window' was used up.
--- 'displaySubject' should be used to render the subject.
-execMkSubject2 ::
+-- 'displayObj' should be used to render the subject.
+execMkObj2 ::
     ( MonadIO m
     , AsReactor cmd
     , Has ReactorEnv r
@@ -354,10 +354,10 @@ execMkSubject2 ::
     => (cmd -> m ())
     -> Widget cmd s s ()
     -> s
-    -> m (Subject s)
-execMkSubject2 executor wid s = do
+    -> m (Obj s)
+execMkObj2 executor wid s = do
     ri <- execMkReactId (J.pack "plan")
-    (sbj, cs) <- liftIO $ do
+    (obj, cs) <- liftIO $ do
         -- create shim with fake callbacks for now
         let newPlan = Plan
                 ri
@@ -372,7 +372,7 @@ execMkSubject2 executor wid s = do
                 mempty
                 False
                 False
-            scn = Scene newPlan s
+            scn = Model newPlan s
 
         scnRef <- newIORef scn
         scnVar <- newEmptyMVar
@@ -381,7 +381,7 @@ execMkSubject2 executor wid s = do
             putStrLn "LOUISDEBUG: release scnRef"
 
         -- Create automatic garbage collection of the callbacks
-        -- that will run when the Subject lease members are garbage collected.
+        -- that will run when the Obj lease members are garbage collected.
         scnWkVar <- mkWeakMVar scnVar $ do
             putStrLn "LOUISDEBUG: release scnVar"
             scn' <- readIORef scnRef
@@ -403,45 +403,45 @@ execMkSubject2 executor wid s = do
         let gad = runExceptT wid
             gad' = gad `bindLeft` setRndr
             gad'' = (either id id) <$> gad'
-            -- This must be the only place sbj is reference otherwise
+            -- This must be the only place obj is reference otherwise
             -- we will get memory leaks!
-            tick = runGadget gad'' (Entity (WeakSubject scnWkRef scnWkVar) id) pure
+            tick = runGadget gad'' (Entity (WeakObj scnWkRef scnWkVar) id) pure
             cs = execState tick mempty
-            -- update the scene to include the real shimcallbacks
+            -- update the model to include the real shimcallbacks
             scn' = scn & _plan._shimCallbacks .~ ShimCallbacks renderCb mountedCb renderedCb refCb
-        -- update the mutable variables with the initialzed scene
+        -- update the mutable variables with the initialzed model
         atomicWriteIORef scnRef scn'
         putMVar scnVar scn'
-        pure (Subject scnRef scnVar, cs)
+        pure (Obj scnRef scnVar, cs)
     -- execute additional commands
     -- one of these commands will be 'SetRender' which will
     -- update the dummy render with the real render function.
     executor (command' $ DL.toList cs)
     -- return the subject
-    pure sbj
+    pure obj
   where
-    -- Use the sbj from the env to avoid keeping sbj alive
+    -- Use the obj from the env to avoid keeping obj alive
     setRndr win = pure ()
 
-execMkWeakSubject ::
+execMkWeakObj ::
     ( MonadIO m
     )
-    => Subject s
-    -> m (WeakSubject s)
-execMkWeakSubject (Subject scnRef scnVar) = liftIO $ do
+    => Obj s
+    -> m (WeakObj s)
+execMkWeakObj (Obj scnRef scnVar) = liftIO $ do
     scnWkRef <- mkWeakIORef scnRef (pure ())
     scnWkVar <- mkWeakMVar scnVar (pure ())
-    pure $ WeakSubject scnWkRef scnWkVar
+    pure $ WeakObj scnWkRef scnWkVar
 
-execKeepAliveSubjectUntilNextRender ::
+execKeepAliveObjUntilNextRender ::
     ( MonadIO m
     , MonadReader r m
     , Has ReactorEnv r
     )
-    => WeakSubject s -> Subject a -> m ()
-execKeepAliveSubjectUntilNextRender sbj s = void $ runMaybeT $ do
-    scnRef <- MaybeT . liftIO . deRefWeak $ sceneWeakRef sbj
-    scnVar <- MaybeT . liftIO . deRefWeak $ sceneWeakVar sbj
+    => WeakObj s -> Obj a -> m ()
+execKeepAliveObjUntilNextRender obj s = void $ runMaybeT $ do
+    scnRef <- MaybeT . liftIO . deRefWeak $ modelWeakRef obj
+    scnVar <- MaybeT . liftIO . deRefWeak $ modelWeakVar obj
     liftIO $ do
         putStrLn "keeping alive"
         scn <- takeMVar scnVar
@@ -451,14 +451,14 @@ execKeepAliveSubjectUntilNextRender sbj s = void $ runMaybeT $ do
         atomicWriteIORef scnRef scn'
         putMVar scnVar scn'
     -- trigger a rerender
-    execRerender sbj
+    execRerender obj
 
 execGetModel ::
     MonadIO m
-    => WeakSubject s
+    => WeakObj s
     -> MaybeT m s
-execGetModel sbj = do
-    scnRef <- MaybeT . liftIO . deRefWeak $ sceneWeakRef sbj
+execGetModel obj = do
+    scnRef <- MaybeT . liftIO . deRefWeak $ modelWeakRef obj
     liftIO $ model <$> readIORef scnRef
 
 execRerender ::
@@ -466,10 +466,10 @@ execRerender ::
     , MonadReader r m
     , Has ReactorEnv r
     )
-    => WeakSubject s -> m ()
-execRerender sbj = void $ runMaybeT $ do
-    scnRef <- MaybeT . liftIO . deRefWeak $ sceneWeakRef sbj
-    scnVar <- MaybeT . liftIO . deRefWeak $ sceneWeakVar sbj
+    => WeakObj s -> m ()
+execRerender obj = void $ runMaybeT $ do
+    scnRef <- MaybeT . liftIO . deRefWeak $ modelWeakRef obj
+    scnVar <- MaybeT . liftIO . deRefWeak $ modelWeakVar obj
     q <- view ((hasLens @ReactorEnv)._reactorBackgroundEnv)
     liftIO $ do
         scn <- takeMVar scnVar
@@ -479,12 +479,12 @@ execRerender sbj = void $ runMaybeT $ do
                 -- Update the back buffer
                 atomicWriteIORef scnRef scn'
                 putMVar scnVar scn'
-                atomically $ writeTQueue q (pure (scheduleRerender (Subject scnRef scnVar)))
+                atomically $ writeTQueue q (pure (scheduleRerender (Obj scnRef scnVar)))
             -- rerender has already been scheduled
             else putMVar scnVar scn
 
-scheduleRerender :: Subject s -> IO ()
-scheduleRerender sbj = do
+scheduleRerender :: Obj s -> IO ()
+scheduleRerender obj = do
     scn <- takeMVar scnVar
     if scn ^. _plan._rerenderRequired
         then do
@@ -499,22 +499,22 @@ scheduleRerender sbj = do
         -- rerender not required (eg. already processed)
         else putMVar scnVar scn
   where
-    scnRef = sceneRef sbj
-    scnVar = sceneVar sbj
+    scnRef = modelRef obj
+    scnVar = modelVar obj
 
 -- | No need to run in a separate thread because it should never block for a significant amount of time.
--- Update the scene 'MVar' with the given action. Also triggers a rerender.
+-- Update the model 'MVar' with the given action. Also triggers a rerender.
 execTickModel ::
     ( MonadIO m
     , MonadReader r m
     , Has ReactorEnv r
     )
-    => WeakSubject s
+    => WeakObj s
     -> ModelState s cmd
     -> MaybeT m cmd
-execTickModel sbj tick = do
-    scnRef <- MaybeT . liftIO . deRefWeak $ sceneWeakRef sbj
-    scnVar <- MaybeT . liftIO . deRefWeak $ sceneWeakVar sbj
+execTickModel obj tick = do
+    scnRef <- MaybeT . liftIO . deRefWeak $ modelWeakRef obj
+    scnVar <- MaybeT . liftIO . deRefWeak $ modelWeakVar obj
     q <- view ((hasLens @ReactorEnv)._reactorBackgroundEnv)
     liftIO $ do
         scn <- takeMVar scnVar
@@ -524,10 +524,10 @@ execTickModel sbj tick = do
         -- Update the back buffer
         atomicWriteIORef scnRef scn'
         putMVar scnVar scn'
-        atomically $ writeTQueue q (notifyTicked (Subject scnRef scnVar))
+        atomically $ writeTQueue q (notifyTicked (Obj scnRef scnVar))
         pure c
   where
-    notifyTicked (Subject scnRef scnVar) = do
+    notifyTicked (Obj scnRef scnVar) = do
         scn <- takeMVar scnVar
         if not (scn ^. _plan._tickedNotified)
             then do
@@ -540,7 +540,7 @@ execTickModel sbj tick = do
                 putMVar scnVar scn'
                 -- run tickedListeener
                 cb
-                pure (scheduleRerender (Subject scnRef scnVar))
+                pure (scheduleRerender (Obj scnRef scnVar))
             -- notify not required (eg. already processed)
             else do
                 putMVar scnVar scn
@@ -614,17 +614,17 @@ execGetElementalRef ::
     , Has ReactorEnv r
     )
     => (cmd -> m ())
-    -> WeakSubject s
+    -> WeakObj s
     -> ReactId
     -> (EventTarget -> cmd)
     -> m ()
-execGetElementalRef executor sbj ri k = void . runMaybeT $ do
-    scnRef <- MaybeT . liftIO . deRefWeak $ sceneWeakRef sbj
-    scnVar <- MaybeT . liftIO . deRefWeak $ sceneWeakVar sbj
+execGetElementalRef executor obj ri k = void . runMaybeT $ do
+    scnRef <- MaybeT . liftIO . deRefWeak $ modelWeakRef obj
+    scnVar <- MaybeT . liftIO . deRefWeak $ modelWeakVar obj
     UnliftIO u <- lift askUnliftIO
     scn <- liftIO $ takeMVar scnVar
-    (refFreshness, pln) <- lift $ getOrRegisterRefCoreListener sbj ri (plan scn)
-    let tryAgain = u $ execGetElementalRef executor sbj ri k
+    (refFreshness, pln) <- lift $ getOrRegisterRefCoreListener obj ri (plan scn)
+    let tryAgain = u $ execGetElementalRef executor obj ri k
         pln' = pln & _nextRenderedListener %~ (*> tryAgain)
         scn' = scn & _plan .~ pln'
         ret = pln ^? (_elementals.ix ri._elementalRef._Just)
@@ -633,7 +633,7 @@ execGetElementalRef executor sbj ri k = void . runMaybeT $ do
                 atomicWriteIORef scnRef scn'
                 putMVar scnVar scn'
             -- trigger a rerender
-            execRerender sbj
+            execRerender obj
     case refFreshness of
         Fresh -> doTryAgain
         Existing -> case ret of
@@ -643,11 +643,11 @@ execGetElementalRef executor sbj ri k = void . runMaybeT $ do
                 lift . executor . k $ ret'
 
 getOrRegisterRefCoreListener :: (MonadIO m)
-    => WeakSubject s
+    => WeakObj s
     -> ReactId
     -> Plan
     -> m (Freshness, Plan)
-getOrRegisterRefCoreListener sbj ri pln = do
+getOrRegisterRefCoreListener obj ri pln = do
     liftIO $ do
         -- first get or make the target
         (freshness, eventHdl) <-
@@ -670,10 +670,10 @@ getOrRegisterRefCoreListener sbj ri pln = do
             Existing -> pure (Existing, pln)
   where
     n = J.pack "ref"
-    -- hdlRef x = command' $ TickScene sbj (command_ <$> (_plan._elementals.ix ri._elementalRef .= x))
+    -- hdlRef x = command' $ TickModel obj (command_ <$> (_plan._elementals.ix ri._elementalRef .= x))
     hdlRef x = void . runMaybeT $ do
-        scnRef <- MaybeT . liftIO . deRefWeak $ sceneWeakRef sbj
-        scnVar <- MaybeT . liftIO . deRefWeak $ sceneWeakVar sbj
+        scnRef <- MaybeT . liftIO . deRefWeak $ modelWeakRef obj
+        scnVar <- MaybeT . liftIO . deRefWeak $ modelWeakVar obj
         lift $ do
             scn <- takeMVar scnVar
             let scn' = scn & _plan._elementals.ix ri._elementalRef .~ x
@@ -683,21 +683,21 @@ getOrRegisterRefCoreListener sbj ri pln = do
 
 execRegisterReactListener :: (NFData a, MonadUnliftIO m)
     => (cmd -> m ())
-    -> WeakSubject s
+    -> WeakObj s
     -> ReactId
     -> J.JSString
     -> (JE.JSRep -> MaybeT IO a)
     -> (a -> cmd)
     -> m ()
-execRegisterReactListener executor sbj ri n goStrict goLazy = void . runMaybeT $ do
-    scnRef <- MaybeT . liftIO . deRefWeak $ sceneWeakRef sbj
-    scnVar <- MaybeT . liftIO . deRefWeak $ sceneWeakVar sbj
+execRegisterReactListener executor obj ri n goStrict goLazy = void . runMaybeT $ do
+    scnRef <- MaybeT . liftIO . deRefWeak $ modelWeakRef obj
+    scnVar <- MaybeT . liftIO . deRefWeak $ modelWeakVar obj
     UnliftIO u <- lift askUnliftIO
     scn_ <- liftIO $ takeMVar scnVar
     -- special logic for ref, where the first ref handler must be 'registerRefCoreListener'
     scn <- if (n == (J.pack "ref"))
         then do
-            (refFreshness, pln) <- getOrRegisterRefCoreListener sbj ri (plan scn_)
+            (refFreshness, pln) <- getOrRegisterRefCoreListener obj ri (plan scn_)
             case refFreshness of
                 Existing -> pure scn_
                 Fresh -> pure (scn_ & _plan .~ pln)
@@ -728,12 +728,12 @@ mappendListener (f1, g1) (f2, g2) = (\x -> f1 x *> f2 x, g1 *> g2)
 
 execRegisterTickedListener :: (MonadUnliftIO m)
     => (cmd -> m ())
-    -> WeakSubject s
+    -> WeakObj s
     -> cmd
     -> m ()
-execRegisterTickedListener executor sbj c = void . runMaybeT $ do
-    scnRef <- MaybeT . liftIO . deRefWeak $ sceneWeakRef sbj
-    scnVar <- MaybeT . liftIO . deRefWeak $ sceneWeakVar sbj
+execRegisterTickedListener executor obj c = void . runMaybeT $ do
+    scnRef <- MaybeT . liftIO . deRefWeak $ modelWeakRef obj
+    scnVar <- MaybeT . liftIO . deRefWeak $ modelWeakVar obj
     UnliftIO u <- lift askUnliftIO
     let hdl = u $ executor c
     liftIO $ do
@@ -744,12 +744,12 @@ execRegisterTickedListener executor sbj c = void . runMaybeT $ do
 
 execRegisterMountedListener :: (MonadUnliftIO m)
     => (cmd -> m ())
-    -> WeakSubject s
+    -> WeakObj s
     -> cmd
     -> m ()
-execRegisterMountedListener executor sbj c = void . runMaybeT $ do
-    scnRef <- MaybeT . liftIO . deRefWeak $ sceneWeakRef sbj
-    scnVar <- MaybeT . liftIO . deRefWeak $ sceneWeakVar sbj
+execRegisterMountedListener executor obj c = void . runMaybeT $ do
+    scnRef <- MaybeT . liftIO . deRefWeak $ modelWeakRef obj
+    scnVar <- MaybeT . liftIO . deRefWeak $ modelWeakVar obj
     UnliftIO u <- lift askUnliftIO
     let hdl = u $ executor c
     liftIO $ do
@@ -760,12 +760,12 @@ execRegisterMountedListener executor sbj c = void . runMaybeT $ do
 
 execRegisterRenderedListener :: (MonadUnliftIO m)
     => (cmd -> m ())
-    -> WeakSubject s
+    -> WeakObj s
     -> cmd
     -> m ()
-execRegisterRenderedListener executor sbj c = void . runMaybeT $ do
-    scnRef <- MaybeT . liftIO . deRefWeak $ sceneWeakRef sbj
-    scnVar <- MaybeT . liftIO . deRefWeak $ sceneWeakVar sbj
+execRegisterRenderedListener executor obj c = void . runMaybeT $ do
+    scnRef <- MaybeT . liftIO . deRefWeak $ modelWeakRef obj
+    scnVar <- MaybeT . liftIO . deRefWeak $ modelWeakVar obj
     UnliftIO u <- lift askUnliftIO
     let hdl = u $ executor c
     liftIO $ do
@@ -776,12 +776,12 @@ execRegisterRenderedListener executor sbj c = void . runMaybeT $ do
 
 execRegisterNextRenderedListener :: (MonadUnliftIO m)
     => (cmd -> m ())
-    -> WeakSubject s
+    -> WeakObj s
     -> cmd
     -> m ()
-execRegisterNextRenderedListener executor sbj c = void . runMaybeT $ do
-    scnRef <- MaybeT . liftIO . deRefWeak $ sceneWeakRef sbj
-    scnVar <- MaybeT . liftIO . deRefWeak $ sceneWeakVar sbj
+execRegisterNextRenderedListener executor obj c = void . runMaybeT $ do
+    scnRef <- MaybeT . liftIO . deRefWeak $ modelWeakRef obj
+    scnVar <- MaybeT . liftIO . deRefWeak $ modelWeakVar obj
     UnliftIO u <- lift askUnliftIO
     let hdl = u $ executor c
     liftIO $ do
@@ -797,15 +797,15 @@ execRegisterDOMListener ::
     , MonadReader r m
     )
     => (cmd -> m ())
-    -> WeakSubject s
+    -> WeakObj s
     -> JE.JSRep
     -> J.JSString
     -> (JE.JSRep -> MaybeT IO a)
     -> (a -> cmd)
     -> m ()
-execRegisterDOMListener executor sbj j n goStrict goLazy = void . runMaybeT $ do
-    scnRef <- MaybeT . liftIO . deRefWeak $ sceneWeakRef sbj
-    scnVar <- MaybeT . liftIO . deRefWeak $ sceneWeakVar sbj
+execRegisterDOMListener executor obj j n goStrict goLazy = void . runMaybeT $ do
+    scnRef <- MaybeT . liftIO . deRefWeak $ modelWeakRef obj
+    scnVar <- MaybeT . liftIO . deRefWeak $ modelWeakVar obj
     -- Add the handler to the state
     UnliftIO u <- lift askUnliftIO
     -- generate a unique id

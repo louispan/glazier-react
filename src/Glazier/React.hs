@@ -16,8 +16,8 @@ module Glazier.React
     , module Glazier.React.ReactId
     , module Glazier.React.Reactor
     , module Glazier.React.Reactor.Exec
-    , module Glazier.React.Scene
-    , module Glazier.React.Subject
+    , module Glazier.React.Model
+    , module Glazier.React.Obj
     , module Glazier.React.Widget
     , module Glazier.React.Window
     , module Control.Also
@@ -57,7 +57,7 @@ import Glazier.React.ReactId
 import Glazier.React.Reactor
 import Glazier.React.Reactor.Exec
 import Glazier.React.ReadIORef
-import Glazier.React.Scene
-import Glazier.React.Subject
+import Glazier.React.Model
+import Glazier.React.Obj
 import Glazier.React.Widget
 import Glazier.React.Window

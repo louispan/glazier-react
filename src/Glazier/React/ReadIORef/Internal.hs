@@ -10,7 +10,7 @@ import Data.IORef
 import Data.Semigroup
 #endif
 
--- | NB. Don't export ReadSubject constructor to guarantee
+-- | NB. Don't export ReadObj constructor to guarantee
 -- that that it only contains non-blocking 'readIORef' IO.
 newtype ReadIORef a = ReadIORef (IO a)
     deriving (Functor, Applicative, Monad)

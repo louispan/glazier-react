@@ -15,7 +15,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 
-module Glazier.React.Scene where
+module Glazier.React.Model where
 
 import Control.Lens
 import Control.Lens.Misc
@@ -111,40 +111,40 @@ instance Show Plan where
 
 ----------------------------------------------------------------------------------
 
--- | A 'Scene' contains interactivity data for all widgets as well as the model data.
-data Scene s = Scene
+-- | A 'Model' contains interactivity data for all widgets as well as the model data.
+data Model s = Model
     -- commands could be in a writer monad, but then you can't get
     -- a MonadWriter with ContT, but you can have a MonadState with ContT.
     { plan :: Plan
     , model :: s
     } deriving (G.Generic, Show, Functor)
 
-_model :: Lens (Scene s) (Scene s') s s'
+_model :: Lens (Model s) (Model s') s s'
 _model = lens model (\s a -> s { model = a})
 
-_plan :: Lens' (Scene s) Plan
+_plan :: Lens' (Model s) Plan
 _plan = lens plan (\s a -> s { plan = a})
 
-editSceneModel :: (Functor f) => LensLike' f s a -> LensLike' f (Scene s) (Scene a)
-editSceneModel l safa s = (\s' -> s & _model .~ s' ) <$> l afa' (s ^. _model)
+editModel :: (Functor f) => LensLike' f s a -> LensLike' f (Model s) (Model a)
+editModel l safa s = (\s' -> s & _model .~ s' ) <$> l afa' (s ^. _model)
   where
     afa' a = (view _model) <$> safa (s & _model .~ a)
 
-magnifiedScene ::
-    ( Magnify m n (Scene a) (Scene b)
+magnifiedModel ::
+    ( Magnify m n (Model a) (Model b)
     , Functor (Magnified m r)
     )
     => LensLike' (Magnified m r) b a -> m r -> n r
-magnifiedScene l = magnify (editSceneModel l)
+magnifiedModel l = magnify (editModel l)
 
-zoomedScene ::
-    ( Zoom m n (Scene a) (Scene b)
+zoomedModel ::
+    ( Zoom m n (Model a) (Model b)
     , Functor (Zoomed m r)
     )
     => LensLike' (Zoomed m r) b a -> m r -> n r
-zoomedScene l = zoom (editSceneModel l)
+zoomedModel l = zoom (editModel l)
 
 ----------------------------------------------------------------------------------
 
-elementTarget :: ReactId -> Traversal' (Scene s) EventTarget
+elementTarget :: ReactId -> Traversal' (Model s) EventTarget
 elementTarget ri = _plan._elementals.ix ri._elementalRef._Just

@@ -8,7 +8,7 @@ import Control.Monad.Trans.Reader
 import Control.Monad.Trans.State.Strict
 import qualified Data.DList as DL
 import Glazier.React.Entity
-import Glazier.React.Subject
+import Glazier.React.Obj
 
 -- | The @s@ state can be magnified with 'magnifiedEntity'
 type Gadget cmd p s = ReaderT (Entity p s) (ContT () (State (DL.DList cmd)))
@@ -27,8 +27,8 @@ runGadget ::
     -> State (DL.DList cmd) ()
 runGadget x l = runContT (runReaderT x l)
 
-gadgetWith :: WeakSubject s -> Gadget cmd s s a -> ContT () (State (DL.DList cmd)) a
-gadgetWith sbj = (`runReaderT` (Entity sbj id))
+gadgetWith :: WeakObj s -> Gadget cmd s s a -> ContT () (State (DL.DList cmd)) a
+gadgetWith obj = (`runReaderT` (Entity obj id))
 
 evalGadget :: Gadget cmd p s () -> Entity p s -> State (DL.DList cmd) ()
 evalGadget gad ent = evalContT . (`runReaderT` ent) $ gad

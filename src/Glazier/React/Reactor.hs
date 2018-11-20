@@ -20,14 +20,14 @@ module Glazier.React.Reactor
     , evalIOThen
     , mkReactId
     , setRender
-    , mkSubject
-    , mkSubject'
-    , withMkSubject
-    , mkSubject2
-    , mkSubject2'
-    , withMkSubject2
-    , mkWeakSubject
-    , keepAliveSubjectUntilNextRender
+    , mkObj
+    , mkObj'
+    , withMkObj
+    , mkObj2
+    , mkObj2'
+    , withMkObj2
+    , mkWeakObj
+    , keepAliveObjUntilNextRender
     , getModel
     , getElementalRef
     , rerender
@@ -58,7 +58,7 @@ import Glazier.React.EventTarget
 import Glazier.React.Notice
 import Glazier.React.ReactId
 import Glazier.React.ReadIORef
-import Glazier.React.Subject
+import Glazier.React.Obj
 import Glazier.React.Widget
 import Glazier.React.Window
 import qualified JavaScript.Extras as JE
@@ -77,38 +77,38 @@ type MonadReactor p s cmd m =
 
 type ModelState s = StateT s ReadIORef
 
--- | NB. 'ReactorCmd' is not a functor because of the @Widget cmd@ in 'MkSubject'
+-- | NB. 'ReactorCmd' is not a functor because of the @Widget cmd@ in 'MkObj'
 data ReactorCmd cmd where
     -- run arbitrary IO, should only be used for debugging
     EvalIO :: IO cmd -> ReactorCmd cmd
     -- | Make a unique named id
     MkReactId :: J.JSString -> (ReactId -> cmd) -> ReactorCmd cmd
-    -- | the the rendering function in a Subject, replace any existing render callback
-    SetRender :: WeakSubject s -> Window s () -> ReactorCmd cmd
+    -- | the the rendering function in a Obj, replace any existing render callback
+    SetRender :: WeakObj s -> Window s () -> ReactorCmd cmd
     -- | Make a fully initialized subject (with ShimCallbacks) from a widget spec and state
-    MkSubject :: Widget cmd s s () -> s -> (Subject s -> cmd) -> ReactorCmd cmd
-    MkSubject2 :: Widget cmd s s () -> s -> (Subject s -> cmd) -> ReactorCmd cmd
+    MkObj :: Widget cmd s s () -> s -> (Obj s -> cmd) -> ReactorCmd cmd
+    MkObj2 :: Widget cmd s s () -> s -> (Obj s -> cmd) -> ReactorCmd cmd
     -- make a weak subject from a subject
-    MkWeakSubject :: Subject s -> (WeakSubject s -> cmd) -> ReactorCmd cmd
+    MkWeakObj :: Obj s -> (WeakObj s -> cmd) -> ReactorCmd cmd
     -- | Keep subject alive until the next rerender
-    KeepAliveSubjectUntilNextRender :: WeakSubject s -> Subject a -> ReactorCmd cmd
+    KeepAliveObjUntilNextRender :: WeakObj s -> Obj a -> ReactorCmd cmd
     -- | Generate a list of commands from reading the model.
-    GetModel :: WeakSubject s -> (s -> cmd) -> ReactorCmd cmd
+    GetModel :: WeakObj s -> (s -> cmd) -> ReactorCmd cmd
     -- Get the event target
     -- If a "ref" callback to update 'elementalRef' has not been added;
     -- then add it, rerender, then return the EventTarget.
     GetElementalRef ::
-        WeakSubject s
+        WeakObj s
         -> ReactId
         -> (EventTarget -> cmd)
         -> ReactorCmd cmd
     -- | Rerender a ShimComponent using the given state.
-    Rerender :: WeakSubject s -> ReactorCmd cmd
+    Rerender :: WeakObj s -> ReactorCmd cmd
     -- | Update and rerender.
-    TickModel :: WeakSubject s -> ModelState s cmd -> ReactorCmd cmd
+    TickModel :: WeakObj s -> ModelState s cmd -> ReactorCmd cmd
     -- | Create and register a dom callback
     RegisterDOMListener :: NFData a
-        => WeakSubject s
+        => WeakObj s
         -> JE.JSRep
         -> J.JSString
         -> (JE.JSRep -> MaybeT IO a)
@@ -118,7 +118,7 @@ data ReactorCmd cmd where
     -- If the callback is for "ref", then an listener to update 'elementalRef' for 'GetEventTarget'
     -- will automatically be added just before the listener in 'RegisterReactListener'.
     RegisterReactListener :: NFData a
-        => WeakSubject s
+        => WeakObj s
         -> ReactId
         -> J.JSString
         -> (JE.JSRep -> MaybeT IO a)
@@ -126,22 +126,22 @@ data ReactorCmd cmd where
         -> ReactorCmd cmd
     -- | Create and register a callback for the mounted event
     RegisterMountedListener ::
-        WeakSubject s
+        WeakObj s
         -> cmd
         -> ReactorCmd cmd
     -- | Create and register a callback for the rendered event
     RegisterRenderedListener ::
-        WeakSubject s
+        WeakObj s
         -> cmd
         -> ReactorCmd cmd
     -- | Create and register a callback for the rendered event
     RegisterNextRenderedListener ::
-        WeakSubject s
+        WeakObj s
         -> cmd
         -> ReactorCmd cmd
     -- | Create and register a callback for the state updated event
     RegisterTickedListener ::
-        WeakSubject s
+        WeakObj s
         -> cmd
         -> ReactorCmd cmd
 
@@ -150,10 +150,10 @@ instance Show (ReactorCmd cmd) where
     showsPrec p (MkReactId s _) = showParen (p >= 11) $
         showString "MkReactId " . shows s
     showsPrec _ (SetRender _ _ ) = showString "SetRender"
-    showsPrec _ (MkSubject _ _ _) = showString "MkSubject"
-    showsPrec _ (MkSubject2 _ _ _) = showString "MkSubject2"
-    showsPrec _ (MkWeakSubject _ _) = showString "MkWeakSubject"
-    showsPrec _ (KeepAliveSubjectUntilNextRender _ _) = showString "KeepAliveSubjectUntilNextRender"
+    showsPrec _ (MkObj _ _ _) = showString "MkObj"
+    showsPrec _ (MkObj2 _ _ _) = showString "MkObj2"
+    showsPrec _ (MkWeakObj _ _) = showString "MkWeakObj"
+    showsPrec _ (KeepAliveObjUntilNextRender _ _) = showString "KeepAliveObjUntilNextRender"
     showsPrec _ (GetModel _ _) = showString "GetModel"
     showsPrec _ (GetElementalRef _ _ _) = showString "GetElementalRef"
     showsPrec _ (Rerender _) = showString "Rerender"
@@ -174,104 +174,104 @@ mkReactId n = delegate $ \fire -> do
     exec' $ MkReactId n f
 
 setRender :: (AsReactor cmd, MonadCommand cmd m)
-    => WeakSubject s -> Window s () -> m ()
-setRender sbj win = exec' $ SetRender sbj win
+    => WeakObj s -> Window s () -> m ()
+setRender obj win = exec' $ SetRender obj win
 
--- | Make an initialized 'Subject' for a given model using the given 'Widget'.
-mkSubject :: (AsReactor cmd, MonadCommand cmd m)
-    => Widget cmd s s a -> s -> m (Either a (Subject s))
-mkSubject wid s = delegate $ \fire -> do
+-- | Make an initialized 'Obj' for a given model using the given 'Widget'.
+mkObj :: (AsReactor cmd, MonadCommand cmd m)
+    => Widget cmd s s a -> s -> m (Either a (Obj s))
+mkObj wid s = delegate $ \fire -> do
     f <- codify fire
     let wid' = wid >>= (instruct . f . Left)
-    exec' $ MkSubject wid' s (f . Right)
+    exec' $ MkObj wid' s (f . Right)
 
--- | Make an initialized 'Subject' for a given model using the given 'Widget'.
-mkSubject' :: (AsReactor cmd, MonadCommand cmd m)
-    => Widget cmd s s () -> s -> m (Subject s)
-mkSubject' gad s = delegate $ \fire -> do
+-- | Make an initialized 'Obj' for a given model using the given 'Widget'.
+mkObj' :: (AsReactor cmd, MonadCommand cmd m)
+    => Widget cmd s s () -> s -> m (Obj s)
+mkObj' gad s = delegate $ \fire -> do
     f <- codify fire
-    exec' $ MkSubject gad s f
+    exec' $ MkObj gad s f
 
--- | Make an initialized 'Subject' for a given model using the given 'Widget'.
-withMkSubject :: (AsReactor cmd, MonadCommand cmd m)
-    => Widget cmd s s a -> s -> (Subject s -> m ()) -> m a
-withMkSubject wid s k = delegate $ \fire -> do
+-- | Make an initialized 'Obj' for a given model using the given 'Widget'.
+withMkObj :: (AsReactor cmd, MonadCommand cmd m)
+    => Widget cmd s s a -> s -> (Obj s -> m ()) -> m a
+withMkObj wid s k = delegate $ \fire -> do
     f <- codify fire
     k' <- codify k
     let wid' = wid >>= (instruct . f)
-    exec' $ MkSubject wid' s k'
+    exec' $ MkObj wid' s k'
 
--- | Make an initialized 'Subject' for a given model using the given 'Widget'.
-mkSubject2 :: (AsReactor cmd, MonadCommand cmd m)
-    => Widget cmd s s a -> s -> m (Either a (Subject s))
-mkSubject2 wid s = delegate $ \fire -> do
+-- | Make an initialized 'Obj' for a given model using the given 'Widget'.
+mkObj2 :: (AsReactor cmd, MonadCommand cmd m)
+    => Widget cmd s s a -> s -> m (Either a (Obj s))
+mkObj2 wid s = delegate $ \fire -> do
     f <- codify fire
     let wid' = wid >>= (instruct . f . Left)
-    exec' $ MkSubject wid' s (f . Right)
+    exec' $ MkObj wid' s (f . Right)
 
--- | Make an initialized 'Subject' for a given model using the given 'Widget'.
-mkSubject2' :: (AsReactor cmd, MonadCommand cmd m)
-    => Widget cmd s s () -> s -> m (Subject s)
-mkSubject2' gad s = delegate $ \fire -> do
+-- | Make an initialized 'Obj' for a given model using the given 'Widget'.
+mkObj2' :: (AsReactor cmd, MonadCommand cmd m)
+    => Widget cmd s s () -> s -> m (Obj s)
+mkObj2' gad s = delegate $ \fire -> do
     f <- codify fire
-    exec' $ MkSubject gad s f
+    exec' $ MkObj gad s f
 
--- | Make an initialized 'Subject' for a given model using the given 'Widget'.
-withMkSubject2 :: (AsReactor cmd, MonadCommand cmd m)
-    => Widget cmd s s a -> s -> (Subject s -> m ()) -> m a
-withMkSubject2 wid s k = delegate $ \fire -> do
+-- | Make an initialized 'Obj' for a given model using the given 'Widget'.
+withMkObj2 :: (AsReactor cmd, MonadCommand cmd m)
+    => Widget cmd s s a -> s -> (Obj s -> m ()) -> m a
+withMkObj2 wid s k = delegate $ \fire -> do
     f <- codify fire
     k' <- codify k
     let wid' = wid >>= (instruct . f)
-    exec' $ MkSubject wid' s k'
+    exec' $ MkObj wid' s k'
 
 -- -- | Add a constructed subject to a parent widget
--- addSubject :: (MonadReactor p ss cmd m)
+-- addObj :: (MonadReactor p ss cmd m)
 --     => Widget cmd s s a
 --     -> s
---     -> (Subject s -> StateT (Scene ss) ReadIORef ())
+--     -> (Obj s -> StateT (Model ss) ReadIORef ())
 --     -> m a
--- addSubject wid s f = mkSubject wid s $ \sbj -> tickScene $ f sbj
+-- addObj wid s f = mkObj wid s $ \obj -> tickModel $ f obj
 
--- | Make an initialized 'Subject' for a given model using the given 'Widget'.
-mkWeakSubject :: (AsReactor cmd, MonadCommand cmd m)
-    => Subject s -> m (WeakSubject s)
-mkWeakSubject s = delegate $ \fire -> do
+-- | Make an initialized 'Obj' for a given model using the given 'Widget'.
+mkWeakObj :: (AsReactor cmd, MonadCommand cmd m)
+    => Obj s -> m (WeakObj s)
+mkWeakObj s = delegate $ \fire -> do
     f <- codify fire
-    exec' $ MkWeakSubject s f
+    exec' $ MkWeakObj s f
 
 -- | Schedule cleanup of the callbacks when the parent widget is rerendered.
-keepAliveSubjectUntilNextRender ::
+keepAliveObjUntilNextRender ::
     (MonadReactor p s cmd m)
-    => Subject a -> m ()
-keepAliveSubjectUntilNextRender s = do
-    sbj <- view _weakSubject
-    exec' $ KeepAliveSubjectUntilNextRender sbj s
+    => Obj a -> m ()
+keepAliveObjUntilNextRender s = do
+    obj <- view _weakObj
+    exec' $ KeepAliveObjUntilNextRender obj s
 
 -- | Rerender the ShimComponent using the current @Entity@ context
 rerender :: (MonadReactor p s cmd m) => m ()
 rerender = do
-    sbj <- view _weakSubject
-    exec' $ Rerender sbj
+    obj <- view _weakObj
+    exec' $ Rerender obj
 
 -- | Get the 'Model' and exec actions, using the current @Entity@ context
 getModel :: (MonadReactor p s cmd m) => m s
 getModel = delegate $ \k -> do
-    Entity sbj slf <- ask
+    Entity obj slf <- ask
     let k' s = case preview slf s of
             Nothing -> pure ()
             Just s' -> k s'
     c <- codify k'
-    exec' $ GetModel sbj c
+    exec' $ GetModel obj c
 
 -- | Get the event target
 -- If a "ref" callback to update 'elementalRef' has not been added;
 -- then add it, rerender, then return the EventTarget.
 getElementalRef :: (MonadReactor p s cmd m) => ReactId -> m EventTarget
 getElementalRef ri = delegate $ \k -> do
-    sbj <- view _weakSubject
+    obj <- view _weakObj
     c <- codify k
-    exec' $ GetElementalRef sbj ri c
+    exec' $ GetElementalRef obj ri c
 
 -- | Run an arbitrary IO. This should only be used for testing
 evalIO :: (MonadReactor p s cmd m) => IO cmd -> m ()
@@ -292,22 +292,22 @@ evalIOThen m = do
 -- | Update the 'Model' using the current @Entity@ context
 tickModel :: (MonadReactor p s cmd m) => ModelState s () -> m ()
 tickModel m = do
-    Entity sbj slf <- ask
+    Entity obj slf <- ask
     let m' = zoom slf m
-    exec' $ TickModel sbj (command_ <$> m')
+    exec' $ TickModel obj (command_ <$> m')
 
--- | Update the 'Scene' using the current @Entity@ context,
+-- | Update the 'Model' using the current @Entity@ context,
 -- and also return the next action to execute.
 tickModelThen :: (Also m a, MonadReactor p s cmd m) => ModelState s (m a) -> m a
 tickModelThen m = do
-    Entity sbj slf <- ask
+    Entity obj slf <- ask
     delegate $ \fire -> do
         let m' = getAls <$> zoom slf (Als <$> m)
             -- f :: m a -> m ()
             f n = n >>= fire
         -- f' :: m a -> cmd
         f' <- codify f
-        exec' $ TickModel sbj (f' <$> m')
+        exec' $ TickModel obj (f' <$> m')
 
 -- | Create a callback for a 'JE.JSRep' and add it to this elementals's dlist of listeners.
 domTrigger ::
@@ -319,9 +319,9 @@ domTrigger ::
     -> (JE.JSRep -> MaybeT IO a)
     -> m a
 domTrigger j n goStrict = delegate $ \goLazy -> do
-    sbj <- view _weakSubject
+    obj <- view _weakObj
     goLazy' <- codify goLazy
-    exec' $ RegisterDOMListener sbj j n goStrict goLazy'
+    exec' $ RegisterDOMListener obj j n goStrict goLazy'
 
 -- | A variation of trigger which ignores the event but fires the given arg instead.
 domTrigger_ ::
@@ -345,9 +345,9 @@ doTrigger ::
     -> (JE.JSRep -> MaybeT IO a)
     -> m a
 doTrigger ri n goStrict = delegate $ \goLazy -> do
-    sbj <- view _weakSubject
+    obj <- view _weakObj
     goLazy' <- codify goLazy
-    exec' $ RegisterReactListener sbj ri n goStrict goLazy'
+    exec' $ RegisterReactListener obj ri n goStrict goLazy'
 
 -- | Create a callback for a 'Notice' and add it to this elementals's dlist of listeners.
 trigger ::
@@ -376,7 +376,7 @@ trigger_ ri n a = do
     pure a
 
 -- | Register actions to execute after a render.
--- It is safe to 'postCmd'' a 'TickScene' or 'Rerender'. These command will not
+-- It is safe to 'postCmd'' a 'TickModel' or 'Rerender'. These command will not
 -- trigger another rendered event.
 --
 -- NB. This is trigged by react 'componentDidMount'
@@ -388,13 +388,13 @@ onMounted ::
     => m a
     -> m a
 onMounted m = do
-    sbj <- view _weakSubject
+    obj <- view _weakObj
     delegate $ \fire -> do
         c <- codify' (m >>= fire)
-        exec' $ RegisterMountedListener sbj c
+        exec' $ RegisterMountedListener obj c
 
 -- | Register actions to execute after a render.
--- It is safe to 'postCmd'' a 'TickScene' or 'Rerender'. These command will not
+-- It is safe to 'postCmd'' a 'TickModel' or 'Rerender'. These command will not
 -- trigger another rendered event.
 --
 -- NB. This is trigged by react 'componentDidUpdate' and 'componentDidMount'
@@ -407,22 +407,22 @@ onRendered ::
     => m a
     -> m a
 onRendered m = do
-    sbj <- view _weakSubject
+    obj <- view _weakObj
     delegate $ \fire -> do
         c <- codify' (m >>= fire)
-        exec' $ RegisterRenderedListener sbj c
+        exec' $ RegisterRenderedListener obj c
 
 onNextRendered ::
     MonadReactor p s cmd m
     => m a -> m a
 onNextRendered m = do
-    sbj <- view _weakSubject
+    obj <- view _weakObj
     delegate $ \fire -> do
         c <- codify' (m >>= fire)
-        exec' $ RegisterNextRenderedListener sbj c
+        exec' $ RegisterNextRenderedListener obj c
 
 -- | Register actions to execute after the state has been updated with TickState.
--- It is safe to 'postCmd'' another 'TickScene', another onRendered event will
+-- It is safe to 'postCmd'' another 'TickModel', another onRendered event will
 -- not be generated.
 --
 -- NB. This is trigged by react 'componentDidUpdate' and 'componentDidMount'
@@ -435,7 +435,7 @@ onTicked ::
     => m a
     -> m a
 onTicked m = do
-    sbj <- view _weakSubject
+    obj <- view _weakObj
     delegate $ \fire -> do
         c <- codify' (m >>= fire)
-        exec' $ RegisterTickedListener sbj c
+        exec' $ RegisterTickedListener obj c

@@ -22,27 +22,27 @@ import Glazier.React.Component
 import Glazier.React.Markup
 import Glazier.React.ReactId
 import Glazier.React.ReadIORef
-import Glazier.React.Scene
-import Glazier.React.Subject
+import Glazier.React.Model
+import Glazier.React.Obj
 import qualified JavaScript.Extras as JE
 
 #if MIN_VERSION_base(4,9,0) && !MIN_VERSION_base(4,10,0)
 import Data.Semigroup
 #endif
 
--- The @s@ can be magnified with 'magnifiedScene'
-type Window s = RWST (Scene s) () (DL.DList ReactMarkup) ReadIORef
+-- The @s@ can be magnified with 'magnifiedModel'
+type Window s = RWST (Model s) () (DL.DList ReactMarkup) ReadIORef
 
--- type SceneDisplay x s r = Display (Scene x s) r
+-- type ModelDisplay x s r = Display (Model x s) r
 ----------------------------------------------------------------------------------
 
-getListeners :: MonadReader (Scene s) m => ReactId -> m [JE.Property]
+getListeners :: MonadReader (Model s) m => ReactId -> m [JE.Property]
 getListeners ri = do
     ls <- view (_plan._elementals.ix ri._reactListeners.to M.toList)
     pure $ (\(n, (cb, _)) -> (n, JE.toJSR cb)) <$> ls
 
 -- | Interactive version of 'lf' using listeners obtained from the 'Plan' for a 'ElementalId'.
-lf' :: (MonadReader (Scene s) m, MonadState (DL.DList ReactMarkup) m)
+lf' :: (MonadReader (Model s) m, MonadState (DL.DList ReactMarkup) m)
     => ReactId
     -> JE.JSRep -- ^ eg "div" or "input"
     -> DL.DList JE.Property
@@ -52,7 +52,7 @@ lf' ri n props = do
     lf n (props <> DL.fromList ls)
 
 -- | Interactive version of 'bh'
-bh' :: (MonadReader (Scene s) m, MonadState (DL.DList ReactMarkup) m)
+bh' :: (MonadReader (Model s) m, MonadState (DL.DList ReactMarkup) m)
     => ReactId
     -> JE.JSRep
     -> DL.DList JE.Property
@@ -65,9 +65,9 @@ bh' ri n props childs = do
 bindListenerContext :: JE.JSRep -> J.Callback (J.JSVal -> J.JSVal -> IO ()) -> JE.JSRep
 bindListenerContext = js_bindListenerContext
 
-displaySubject :: (MonadTrans t, MonadState (DL.DList ReactMarkup) (t ReadIORef)) => Subject s -> t ReadIORef ()
-displaySubject sbj = do
-    scn <- lift (doReadIORef (sceneRef sbj))
+displayObj :: (MonadTrans t, MonadState (DL.DList ReactMarkup) (t ReadIORef)) => Obj s -> t ReadIORef ()
+displayObj obj = do
+    scn <- lift (doReadIORef (modelRef obj))
     let scb = scn ^. _plan._shimCallbacks
         renderCb = shimRender scb
         mountedCb = shimMounted scb
