@@ -19,7 +19,6 @@ module Glazier.React.Reactor.Exec
     , execMkReactId
     , execSetRender
     , execMkObj
-    , execKeepAliveObjUntilNextRender
     , execGetModel
     , execGetElementalRef
     , execRerender
@@ -158,15 +157,10 @@ execReactorCmd executor c = case c of
     MkReactId n k -> execMkReactId n >>= (executor . k)
     SetRender obj w -> execSetRender obj w
     MkObj wid s k -> execMkObj executor wid s >>= (executor . k)
-    MkObj2 wid s k -> execMkObj2 executor wid s >>= (executor . k)
-    MkWeakObj s k -> execMkWeakObj s >>= (executor . k)
-    -- GetModel obj k -> execGetModel obj >>= (executor . k)
     GetModel obj k -> void $ runMaybeT $ execGetModel obj >>= (lift . executor . k)
     GetElementalRef obj ri k -> execGetElementalRef executor obj ri k
-    -- TickModel obj tick -> execTickModel obj tick >>= executor
     Rerender obj -> execRerender obj
     TickModel obj tick -> void $ runMaybeT $ execTickModel obj tick >>= (lift . executor)
-    KeepAliveObjUntilNextRender obj s -> execKeepAliveObjUntilNextRender obj s
     RegisterDOMListener obj j n goStrict goLazy -> execRegisterDOMListener executor obj j n goStrict goLazy
     RegisterReactListener obj ri n goStrict goLazy -> execRegisterReactListener executor obj ri n goStrict goLazy
     RegisterMountedListener obj k -> execRegisterMountedListener executor obj k
@@ -338,120 +332,6 @@ execMkObj executor wid s = do
     setRndr win = do
         obj <- view _weakObj
         exec' $ SetRender obj win
-
-
--- | Make an initialized 'Obj' for a given model using the given
--- 'Window' rendering function.
--- The original window should be dropped and the 'Widget' reduced to just a
--- 'Gadget' to emphasis the fact that the 'Window' was used up.
--- 'displayObj' should be used to render the subject.
-execMkObj2 ::
-    ( MonadIO m
-    , AsReactor cmd
-    , Has ReactorEnv r
-    , MonadReader r m
-    )
-    => (cmd -> m ())
-    -> Widget cmd s s ()
-    -> s
-    -> m (Obj s)
-execMkObj2 executor wid s = do
-    ri <- execMkReactId (J.pack "plan")
-    (obj, cs) <- liftIO $ do
-        -- create shim with fake callbacks for now
-        let newPlan = Plan
-                ri
-                Nothing
-                (ShimCallbacks (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef))
-                mempty
-                mempty
-                mempty
-                mempty
-                mempty
-                mempty
-                mempty
-                False
-                False
-            scn = Model newPlan s
-
-        scnRef <- newIORef scn
-        scnVar <- newEmptyMVar
-
-        scnWkRef <- mkWeakIORef scnRef $
-            putStrLn "LOUISDEBUG: release scnRef"
-
-        -- Create automatic garbage collection of the callbacks
-        -- that will run when the Obj lease members are garbage collected.
-        scnWkVar <- mkWeakMVar scnVar $ do
-            putStrLn "LOUISDEBUG: release scnVar"
-            scn' <- readIORef scnRef
-            -- scn' ^. _plan._nextRenderedListener
-            scn' ^. _plan._finalCleanup
-            let cbs = scn' ^. _plan._shimCallbacks
-            releaseShimCallbacks cbs
-            -- cleanup callbacks
-            traverse_ (traverse (J.releaseCallback . fst) . reactListeners) (scn' ^. _plan._elementals)
-            traverse_ (J.releaseCallback . fst) (scn' ^. _plan._domlListeners)
-
-        -- Create callbacks for now
-        renderCb <- J.syncCallback' (pure J.nullRef) -- dummy render for now
-        refCb <- J.syncCallback1 J.ContinueAsync (doRef scnWkRef scnWkVar)
-        mountedCb <- J.syncCallback J.ContinueAsync (doMounted scnWkRef)
-        renderedCb <- J.syncCallback J.ContinueAsync (doRendered scnWkRef scnWkVar)
-
-        -- Now we have enough to make a subject
-        let gad = runExceptT wid
-            gad' = gad `bindLeft` setRndr
-            gad'' = (either id id) <$> gad'
-            -- This must be the only place obj is reference otherwise
-            -- we will get memory leaks!
-            tick = runGadget gad'' (Entity (WeakObj scnWkRef scnWkVar) id) pure
-            cs = execState tick mempty
-            -- update the model to include the real shimcallbacks
-            scn' = scn & _plan._shimCallbacks .~ ShimCallbacks renderCb mountedCb renderedCb refCb
-        -- update the mutable variables with the initialzed model
-        atomicWriteIORef scnRef scn'
-        putMVar scnVar scn'
-        pure (Obj scnRef scnVar, cs)
-    -- execute additional commands
-    -- one of these commands will be 'SetRender' which will
-    -- update the dummy render with the real render function.
-    executor (command' $ DL.toList cs)
-    -- return the subject
-    pure obj
-  where
-    -- Use the obj from the env to avoid keeping obj alive
-    setRndr win = pure ()
-
-execMkWeakObj ::
-    ( MonadIO m
-    )
-    => Obj s
-    -> m (WeakObj s)
-execMkWeakObj (Obj scnRef scnVar) = liftIO $ do
-    scnWkRef <- mkWeakIORef scnRef (pure ())
-    scnWkVar <- mkWeakMVar scnVar (pure ())
-    pure $ WeakObj scnWkRef scnWkVar
-
-execKeepAliveObjUntilNextRender ::
-    ( MonadIO m
-    , MonadReader r m
-    , Has ReactorEnv r
-    )
-    => WeakObj s -> Obj a -> m ()
-execKeepAliveObjUntilNextRender obj s = void $ runMaybeT $ do
-    scnRef <- MaybeT . liftIO . deRefWeak $ modelWeakRef obj
-    scnVar <- MaybeT . liftIO . deRefWeak $ modelWeakVar obj
-    liftIO $ do
-        putStrLn "keeping alive"
-        scn <- takeMVar scnVar
-        let keepalive = prolong s *> putStrLn "touch"
-            scn' = scn & _plan._nextRenderedListener %~ (*> keepalive)
-        -- Update the back buffer
-        atomicWriteIORef scnRef scn'
-        putMVar scnVar scn'
-    -- trigger a rerender
-    execRerender obj
 
 execGetModel ::
     MonadIO m

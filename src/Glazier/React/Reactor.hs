@@ -23,11 +23,6 @@ module Glazier.React.Reactor
     , mkObj
     , mkObj'
     , withMkObj
-    , mkObj2
-    , mkObj2'
-    , withMkObj2
-    , mkWeakObj
-    , keepAliveObjUntilNextRender
     , getModel
     , getElementalRef
     , rerender
@@ -87,11 +82,6 @@ data ReactorCmd cmd where
     SetRender :: WeakObj s -> Window s () -> ReactorCmd cmd
     -- | Make a fully initialized subject (with ShimCallbacks) from a widget spec and state
     MkObj :: Widget cmd s s () -> s -> (Obj s -> cmd) -> ReactorCmd cmd
-    MkObj2 :: Widget cmd s s () -> s -> (Obj s -> cmd) -> ReactorCmd cmd
-    -- make a weak subject from a subject
-    MkWeakObj :: Obj s -> (WeakObj s -> cmd) -> ReactorCmd cmd
-    -- | Keep subject alive until the next rerender
-    KeepAliveObjUntilNextRender :: WeakObj s -> Obj a -> ReactorCmd cmd
     -- | Generate a list of commands from reading the model.
     GetModel :: WeakObj s -> (s -> cmd) -> ReactorCmd cmd
     -- Get the event target
@@ -151,9 +141,6 @@ instance Show (ReactorCmd cmd) where
         showString "MkReactId " . shows s
     showsPrec _ (SetRender _ _ ) = showString "SetRender"
     showsPrec _ (MkObj _ _ _) = showString "MkObj"
-    showsPrec _ (MkObj2 _ _ _) = showString "MkObj2"
-    showsPrec _ (MkWeakObj _ _) = showString "MkWeakObj"
-    showsPrec _ (KeepAliveObjUntilNextRender _ _) = showString "KeepAliveObjUntilNextRender"
     showsPrec _ (GetModel _ _) = showString "GetModel"
     showsPrec _ (GetElementalRef _ _ _) = showString "GetElementalRef"
     showsPrec _ (Rerender _) = showString "Rerender"
@@ -200,53 +187,6 @@ withMkObj wid s k = delegate $ \fire -> do
     k' <- codify k
     let wid' = wid >>= (instruct . f)
     exec' $ MkObj wid' s k'
-
--- | Make an initialized 'Obj' for a given model using the given 'Widget'.
-mkObj2 :: (AsReactor cmd, MonadCommand cmd m)
-    => Widget cmd s s a -> s -> m (Either a (Obj s))
-mkObj2 wid s = delegate $ \fire -> do
-    f <- codify fire
-    let wid' = wid >>= (instruct . f . Left)
-    exec' $ MkObj wid' s (f . Right)
-
--- | Make an initialized 'Obj' for a given model using the given 'Widget'.
-mkObj2' :: (AsReactor cmd, MonadCommand cmd m)
-    => Widget cmd s s () -> s -> m (Obj s)
-mkObj2' gad s = delegate $ \fire -> do
-    f <- codify fire
-    exec' $ MkObj gad s f
-
--- | Make an initialized 'Obj' for a given model using the given 'Widget'.
-withMkObj2 :: (AsReactor cmd, MonadCommand cmd m)
-    => Widget cmd s s a -> s -> (Obj s -> m ()) -> m a
-withMkObj2 wid s k = delegate $ \fire -> do
-    f <- codify fire
-    k' <- codify k
-    let wid' = wid >>= (instruct . f)
-    exec' $ MkObj wid' s k'
-
--- -- | Add a constructed subject to a parent widget
--- addObj :: (MonadReactor p ss cmd m)
---     => Widget cmd s s a
---     -> s
---     -> (Obj s -> StateT (Model ss) ReadIORef ())
---     -> m a
--- addObj wid s f = mkObj wid s $ \obj -> tickModel $ f obj
-
--- | Make an initialized 'Obj' for a given model using the given 'Widget'.
-mkWeakObj :: (AsReactor cmd, MonadCommand cmd m)
-    => Obj s -> m (WeakObj s)
-mkWeakObj s = delegate $ \fire -> do
-    f <- codify fire
-    exec' $ MkWeakObj s f
-
--- | Schedule cleanup of the callbacks when the parent widget is rerendered.
-keepAliveObjUntilNextRender ::
-    (MonadReactor p s cmd m)
-    => Obj a -> m ()
-keepAliveObjUntilNextRender s = do
-    obj <- view _weakObj
-    exec' $ KeepAliveObjUntilNextRender obj s
 
 -- | Rerender the ShimComponent using the current @Entity@ context
 rerender :: (MonadReactor p s cmd m) => m ()
