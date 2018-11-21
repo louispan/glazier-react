@@ -22,6 +22,8 @@ modelWeakVar (WeakObj _ v) = v
 
 class GetWeakObj c s | c -> s where
     _weakObj :: Getter c (WeakObj s)
+    _weakObj = to weakObj
+    weakObj :: c -> WeakObj s
 
 -- | Something with a ref for nonblocking reads
 -- and a MVar for synchronized updates
@@ -36,9 +38,7 @@ instance Eq (Obj s) where
     (Obj _ _ x) == (Obj _ _ y) = x == y
 
 instance GetWeakObj (Obj s) s where
-    _weakObj = to getWeakObj
-      where
-        getWeakObj (Obj s _ _) = s
+    weakObj (Obj s _ _) = s
 
 modelRef :: Obj s -> IORef (Model s)
 modelRef (Obj _ r _) = r

@@ -13,9 +13,7 @@ import Glazier.React.Obj
 data Entity o s = Entity (WeakObj o) (Traversal' o s)
 
 instance GetWeakObj (Entity o s) o where
-    _weakObj = to getWeakObj
-      where
-        getWeakObj (Entity o _) = o
+    weakObj (Entity o _) = o
 
 _this :: Lens (Entity o s) (Entity o s') (ReifiedTraversal' o s) (ReifiedTraversal' o s')
 _this = lens (\(Entity _ s) -> Traversal s) (\(Entity o _) (Traversal t) -> Entity o t)
