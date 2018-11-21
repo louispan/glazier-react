@@ -1,32 +1,56 @@
-module Glazier.React.ModelPtr.Internal where
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+
+module Glazier.React.Obj.Internal where
 
 import Control.Concurrent
+import Control.Monad.Trans
+import Control.Monad.Trans.Maybe
 import Data.IORef
 import Glazier.React.Model
 import System.Mem.Weak
+import Control.Lens
+
+data WeakObj s = WeakObj (Weak (IORef (Model s))) (Weak (MVar (Model s)))
+
+modelWeakRef :: WeakObj s -> Weak (IORef (Model s))
+modelWeakRef (WeakObj r _) = r
+
+modelWeakVar :: WeakObj s -> Weak (MVar (Model s))
+modelWeakVar (WeakObj _ v) = v
+
+class GetWeakObj c s | c -> s where
+    _weakObj :: Getter c (WeakObj s)
 
 -- | Something with a ref for nonblocking reads
 -- and a MVar for synchronized updates
 -- as well as the corresponding 'Weak' pointer.
 -- This is so that IO is not required to get the weak pointer.
-data ModelPtr a = ModelPtr
-    (Weak (IORef (Model a)))
-    (Weak (MVar (Model a)))
-    (IORef (Model a))
-    (MVar (Model a))
+data Obj s = Obj
+    (WeakObj s)
+    (IORef (Model s))
+    (MVar (Model s))
 
-instance Eq (ModelPtr a) where
-    (ModelPtr _ _ _ x) == (ModelPtr _ _ _ y) = x == y
+instance Eq (Obj s) where
+    (Obj _ _ x) == (Obj _ _ y) = x == y
 
-modelWeakRef :: ModelPtr a -> Weak (IORef (Model a))
-modelWeakRef (ModelPtr wr _ _ _) = wr
+instance GetWeakObj (Obj s) s where
+    _weakObj = to getWeakObj
+      where
+        getWeakObj (Obj s _ _) = s
 
-weakModelVar :: ModelPtr a -> Weak (MVar (Model a))
-weakModelVar (ModelPtr _ wv _ _) = wv
+modelRef :: Obj s -> IORef (Model s)
+modelRef (Obj _ r _) = r
 
-modelRef :: ModelPtr a -> IORef (Model a)
-modelRef (ModelPtr _ _ r _) = r
+modelVar :: Obj s -> MVar (Model s)
+modelVar (Obj _ _ v) = v
 
-modelVar :: ModelPtr a -> MVar (Model a)
-modelVar (ModelPtr _ _ _ v) = v
-
+deRefWeakObj :: MonadIO m => WeakObj s -> MaybeT m (Obj s)
+deRefWeakObj obj = do
+    mdlRef <- MaybeT . liftIO . deRefWeak $ mdlWkRef
+    mdlVar <- MaybeT . liftIO . deRefWeak $ mdlWkVar
+    pure $ Obj obj mdlRef mdlVar
+  where
+    mdlWkRef = modelWeakRef obj
+    mdlWkVar = modelWeakVar obj

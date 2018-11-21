@@ -43,6 +43,7 @@ library
                        Glazier.React.ReadIORef.Internal
                        Glazier.React.Model
                        Glazier.React.Obj
+                       Glazier.React.Obj.Internal
                        Glazier.React.Widget
                        Glazier.React.Window
   build-depends:       base >= 4.7 && < 5

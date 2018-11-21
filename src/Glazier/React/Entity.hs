@@ -1,4 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
 
 module Glazier.React.Entity where
@@ -8,16 +10,18 @@ import Glazier.React.Obj
 
 ----------------------------------------------------------------------------------
 
-data Entity p s = Entity (WeakObj p) (Traversal' p s)
+data Entity o s = Entity (WeakObj o) (Traversal' o s)
 
-_weakObj :: Lens' (Entity p s) (WeakObj p)
-_weakObj = lens (\(Entity p _) -> p) (\(Entity _ s) p -> Entity p s)
+instance GetWeakObj (Entity o s) o where
+    _weakObj = to getWeakObj
+      where
+        getWeakObj (Entity o _) = o
 
-_this :: Lens (Entity p s) (Entity p s') (ReifiedTraversal' p s) (ReifiedTraversal' p s')
-_this = lens (\(Entity _ s) -> Traversal s) (\(Entity p _) (Traversal t) -> Entity p t)
+_this :: Lens (Entity o s) (Entity o s') (ReifiedTraversal' o s) (ReifiedTraversal' o s')
+_this = lens (\(Entity _ s) -> Traversal s) (\(Entity o _) (Traversal t) -> Entity o t)
 
 magnifiedEntity ::
-    ( Magnify m n (Entity p a) (Entity p b)
+    ( Magnify m n (Entity o a) (Entity o b)
     , Contravariant (Magnified m r)
     )
     => Traversal' b a -> m r -> n r
