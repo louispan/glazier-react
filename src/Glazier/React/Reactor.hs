@@ -26,6 +26,7 @@ module Glazier.React.Reactor
     , getModel
     , getElementalRef
     , rerender
+    -- FIXME: Rename TickedModel to modifyModel or updateModel
     , tickModel
     , tickModelThen
     , domTrigger
