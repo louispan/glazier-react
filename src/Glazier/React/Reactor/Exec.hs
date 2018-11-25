@@ -22,7 +22,10 @@ module Glazier.React.Reactor.Exec
     , execGetModel
     , execGetElementalRef
     , execRerender
+    , execDoRerender
     , execMutate
+    , execNotifyMutated
+    , execResetMutation
     , execRegisterDOMListener
     , execRegisterReactListener
     , execRegisterMountedListener
@@ -160,7 +163,13 @@ execReactorCmd executor c = case c of
     GetModel obj k -> (`evalMaybeT` []) $ execGetModel obj >>= (lift . done . executor . k)
     GetElementalRef obj ri k -> done $ execGetElementalRef executor obj ri k
     Rerender obj -> execRerender False obj
-    -- Mutate obj tick -> (`evalMaybeT` []) $ execMutate obj tick >>= (lift . done . executor)
+    DoRerender obj -> done $ execDoRerender obj
+    Mutate obj tick -> (`evalMaybeT` []) $ do
+        (lastCmds, nextCmd) <- execMutate obj tick
+        lift $ executor nextCmd
+        pure lastCmds
+    NotifyMutated obj -> execNotifyMutated obj
+    ResetMutation obj -> done $ execResetMutation obj
     RegisterDOMListener obj j n goStrict goLazy -> done $ execRegisterDOMListener executor obj j n goStrict goLazy
     RegisterReactListener obj ri n goStrict goLazy -> done $ execRegisterReactListener executor obj ri n goStrict goLazy
     RegisterMountedListener obj k -> done $ execRegisterMountedListener executor obj k
@@ -168,7 +177,7 @@ execReactorCmd executor c = case c of
     RegisterNextRenderedListener obj k -> done $ execRegisterNextRenderedListener executor obj k
     RegisterMutatedListener obj k -> done $ execRegisterMutatedListener executor obj k
   where
-    done exec = (\() -> []) <$> exec
+    done f = (\() -> []) <$> f
 
 -----------------------------------------------------------------
 execMkReactId ::
@@ -365,7 +374,7 @@ execRerender rerenderSuppressed obj = (`evalMaybeT` []) $ do
                 atomicWriteIORef mdlRef scn'
                 putMVar mdlVar scn'
                 -- Schedule a rerender
-                pure [command' $ DoRerender_ obj]
+                pure [command' $ DoRerender obj]
             -- rerender has already been scheduled
             else do
                 putMVar mdlVar scn
@@ -414,7 +423,6 @@ execMutate obj tick = do
         -- This is so that if there are multiple mutates, it will try to only fire
         -- the notified callback as late as possible.
         let mutation' = scn' ^. _plan._mutation
-            requireNotifyMutated = mutation' == NotMutated
             scn'' = scn' & _plan._mutation .~ Mutated
                 -- Suppress rerender until after mutatedListener is called
                 & _plan._rerendering .~ RerenderSuppressed
@@ -424,9 +432,10 @@ execMutate obj tick = do
         -- Update the back buffer
         atomicWriteIORef mdlRef scn'''
         putMVar mdlVar scn'''
+        -- if previous mutated, then somethine else will notify mutated
         let c' = if mutation' == Mutated
                 then []
-                else [command' $ NotifyMutated_ obj]
+                else [command' $ NotifyMutated obj]
         pure (c', c)
 
 -- LOUISFIXME: Document tickNotified/renderRequired lifecycle
@@ -461,7 +470,7 @@ execNotifyMutated obj = (`evalMaybeT` []) $ do
                     -- force shedule a rerender
                     cs <- execRerender True obj
                     -- schedule reset mutation and rerendering
-                    pure $ (command' $ ResetMutation_ obj) : cs
+                    pure $ (command' $ ResetMutation obj) : cs
                 -- notify not required (eg. already processed)
                 else do
                     putMVar mdlVar scn

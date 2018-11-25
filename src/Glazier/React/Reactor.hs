@@ -96,13 +96,13 @@ data ReactorCmd cmd where
     -- | Rerender a ShimComponent using the given state.
     Rerender :: WeakObj s -> ReactorCmd cmd
     -- | Private: Renders the object (will only do something first time after Rerender)
-    DoRerender_ :: WeakObj s -> ReactorCmd cmd
+    DoRerender :: WeakObj s -> ReactorCmd cmd
     -- | Update and rerender.
     Mutate :: WeakObj s -> ModelState s cmd -> ReactorCmd cmd
     -- | Private: Calls the model mutatedListener (will only do something first time after Mutate)
-    NotifyMutated_ :: WeakObj s -> ReactorCmd cmd
+    NotifyMutated :: WeakObj s -> ReactorCmd cmd
     -- | Private: Resets the mutated state back to NotMutated
-    ResetMutation_ :: WeakObj s -> ReactorCmd cmd
+    ResetMutation :: WeakObj s -> ReactorCmd cmd
     -- | Create and register a dom callback
     RegisterDOMListener :: NFData a
         => WeakObj s
@@ -151,10 +151,10 @@ instance Show (ReactorCmd cmd) where
     showsPrec _ (GetModel _ _) = showString "GetModel"
     showsPrec _ (GetElementalRef _ _ _) = showString "GetElementalRef"
     showsPrec _ (Rerender _) = showString "Rerender"
-    showsPrec _ (DoRerender_ _) = showString "DoRreender_"
+    showsPrec _ (DoRerender _) = showString "DoRreender_"
     showsPrec _ (Mutate _ _) = showString "Mutate"
-    showsPrec _ (NotifyMutated_ _) = showString "NotifyMutated_"
-    showsPrec _ (ResetMutation_ _) = showString "ResetMutation_"
+    showsPrec _ (NotifyMutated _) = showString "NotifyMutated"
+    showsPrec _ (ResetMutation _) = showString "ResetMutation"
     showsPrec _ (RegisterDOMListener _ _ _ _ _) = showString "RegisterDOMListener"
     showsPrec _ (RegisterReactListener _ _ _ _ _) = showString "RegisterReactListener"
     showsPrec _ (RegisterMountedListener _ _) = showString "RegisterMountedListener"
