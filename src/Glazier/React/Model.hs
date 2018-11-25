@@ -67,6 +67,24 @@ releaseShimCallbacks (ShimCallbacks a b c d) = do
 
 ----------------------------------------------------------------------------------
 
+data Mutation
+    = NotMutated
+    -- | mutatedListener needs to be called
+    | Mutated
+    -- | mutation needs to be reset back to NotMutated
+    -- mutated callbacks are dropped
+    | MutationNotified
+    deriving (Show, Eq)
+
+data Rerendering
+    = RerenderNotRequired
+    -- | rerender is suppressed, but something will be guaranteed
+    -- to trigger another rerender, so it is safe to drop the current
+    -- rerender request
+    | RerenderSuppressed
+    | RerenderRequired
+    deriving (Show, Eq)
+
 -- | Interactivity data for a react component
 data Plan = Plan
     -- a react "ref" to the javascript instance of ReactComponent
@@ -75,7 +93,7 @@ data Plan = Plan
     , componentRef :: Maybe ComponentRef
     , shimCallbacks :: ShimCallbacks
     -- called after state was just updated
-    , tickedListener :: IO ()
+    , mutatedListener :: IO ()
     -- called after every rendering
     , renderedListener :: IO ()
     -- called after first rendering only
@@ -91,11 +109,10 @@ data Plan = Plan
         )
     -- cleanup to call eventTarget.removeEventListener()
     , finalCleanup :: IO ()
-
-    -- set to True if tickedListener has been processed
-    , tickedNotified :: Bool
-    -- set to True is rerender is required
-    , rerenderRequired :: Bool
+    -- set to MutationNotified if mutatedListener has been processed
+    , mutation :: Mutation
+    -- if rerender is required
+    , rerendering :: Rerendering
     } deriving (G.Generic)
 
 makeLenses_ ''Plan

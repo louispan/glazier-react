@@ -27,8 +27,8 @@ module Glazier.React.Reactor
     , getElementalRef
     , rerender
     -- FIXME: Rename TickedModel to modifyModel or updateModel
-    , tickModel
-    , tickModelThen
+    , mutate
+    , mutateThen
     , domTrigger
     , domTrigger_
     , trigger
@@ -36,7 +36,7 @@ module Glazier.React.Reactor
     , onMounted
     , onRendered
     , onNextRendered
-    , onTicked
+    , onMutated
     ) where
 
 import Control.Also
@@ -95,8 +95,14 @@ data ReactorCmd cmd where
         -> ReactorCmd cmd
     -- | Rerender a ShimComponent using the given state.
     Rerender :: WeakObj s -> ReactorCmd cmd
+    -- | Private: Renders the object (will only do something first time after Rerender)
+    DoRerender_ :: WeakObj s -> ReactorCmd cmd
     -- | Update and rerender.
-    TickModel :: WeakObj s -> ModelState s cmd -> ReactorCmd cmd
+    Mutate :: WeakObj s -> ModelState s cmd -> ReactorCmd cmd
+    -- | Private: Calls the model mutatedListener (will only do something first time after Mutate)
+    NotifyMutated_ :: WeakObj s -> ReactorCmd cmd
+    -- | Private: Resets the mutated state back to NotMutated
+    ResetMutation_ :: WeakObj s -> ReactorCmd cmd
     -- | Create and register a dom callback
     RegisterDOMListener :: NFData a
         => WeakObj s
@@ -131,7 +137,7 @@ data ReactorCmd cmd where
         -> cmd
         -> ReactorCmd cmd
     -- | Create and register a callback for the state updated event
-    RegisterTickedListener ::
+    RegisterMutatedListener ::
         WeakObj s
         -> cmd
         -> ReactorCmd cmd
@@ -145,13 +151,16 @@ instance Show (ReactorCmd cmd) where
     showsPrec _ (GetModel _ _) = showString "GetModel"
     showsPrec _ (GetElementalRef _ _ _) = showString "GetElementalRef"
     showsPrec _ (Rerender _) = showString "Rerender"
-    showsPrec _ (TickModel _ _) = showString "TickModel"
+    showsPrec _ (DoRerender_ _) = showString "DoRreender_"
+    showsPrec _ (Mutate _ _) = showString "Mutate"
+    showsPrec _ (NotifyMutated_ _) = showString "NotifyMutated_"
+    showsPrec _ (ResetMutation_ _) = showString "ResetMutation_"
     showsPrec _ (RegisterDOMListener _ _ _ _ _) = showString "RegisterDOMListener"
     showsPrec _ (RegisterReactListener _ _ _ _ _) = showString "RegisterReactListener"
     showsPrec _ (RegisterMountedListener _ _) = showString "RegisterMountedListener"
     showsPrec _ (RegisterRenderedListener _ _) = showString "RegisterRenderedListener"
     showsPrec _ (RegisterNextRenderedListener _ _) = showString "RegisterNextRenderedListener"
-    showsPrec _ (RegisterTickedListener _ _) = showString "RegisterTickedListener"
+    showsPrec _ (RegisterMutatedListener _ _) = showString "RegisterMutatedListener"
 
 ------------------------------------------------------
 -- | Make a unique named id
@@ -231,16 +240,16 @@ evalIOThen m = do
         exec' $ EvalIO (f' <$> m)
 
 -- | Update the 'Model' using the current @Entity@ context
-tickModel :: (MonadReactor p s cmd m) => ModelState s () -> m ()
-tickModel m = do
+mutate :: (MonadReactor p s cmd m) => ModelState s () -> m ()
+mutate m = do
     Entity obj slf <- ask
     let m' = zoom slf m
-    exec' $ TickModel obj (command_ <$> m')
+    exec' $ Mutate obj (command_ <$> m')
 
 -- | Update the 'Model' using the current @Entity@ context,
 -- and also return the next action to execute.
-tickModelThen :: (Also m a, MonadReactor p s cmd m) => ModelState s (m a) -> m a
-tickModelThen m = do
+mutateThen :: (Also m a, MonadReactor p s cmd m) => ModelState s (m a) -> m a
+mutateThen m = do
     Entity obj slf <- ask
     delegate $ \fire -> do
         let m' = getAls <$> zoom slf (Als <$> m)
@@ -248,7 +257,7 @@ tickModelThen m = do
             f n = n >>= fire
         -- f' :: m a -> cmd
         f' <- codify f
-        exec' $ TickModel obj (f' <$> m')
+        exec' $ Mutate obj (f' <$> m')
 
 -- | Create a callback for a 'JE.JSRep' and add it to this elementals's dlist of listeners.
 domTrigger ::
@@ -317,7 +326,7 @@ trigger_ ri n a = do
     pure a
 
 -- | Register actions to execute after a render.
--- It is safe to 'postCmd'' a 'TickModel' or 'Rerender'. These command will not
+-- It is safe to 'postCmd'' a 'Mutate' or 'Rerender'. These command will not
 -- trigger another rendered event.
 --
 -- NB. This is trigged by react 'componentDidMount'
@@ -335,7 +344,7 @@ onMounted m = do
         exec' $ RegisterMountedListener obj c
 
 -- | Register actions to execute after a render.
--- It is safe to 'postCmd'' a 'TickModel' or 'Rerender'. These command will not
+-- It is safe to 'postCmd'' a 'Mutate' or 'Rerender'. These command will not
 -- trigger another rendered event.
 --
 -- NB. This is trigged by react 'componentDidUpdate' and 'componentDidMount'
@@ -363,7 +372,7 @@ onNextRendered m = do
         exec' $ RegisterNextRenderedListener obj c
 
 -- | Register actions to execute after the state has been updated with TickState.
--- It is safe to 'postCmd'' another 'TickModel', another onRendered event will
+-- It is safe to 'postCmd'' another 'Mutate', another onRendered event will
 -- not be generated.
 --
 -- NB. This is trigged by react 'componentDidUpdate' and 'componentDidMount'
@@ -371,12 +380,12 @@ onNextRendered m = do
 -- See jsbits/react.js hgr$shimComponent.
 -- These callbacks are called after the ref callback by React
 -- See https://reactjs.org/docs/refs-and-the-dom.html.
-onTicked ::
+onMutated ::
     MonadReactor p s cmd m
     => m a
     -> m a
-onTicked m = do
+onMutated m = do
     obj <- view _weakObj
     delegate $ \fire -> do
         c <- codify' (m >>= fire)
-        exec' $ RegisterTickedListener obj c
+        exec' $ RegisterMutatedListener obj c
