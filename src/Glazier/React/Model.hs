@@ -68,17 +68,21 @@ releaseShimCallbacks (ShimCallbacks a b c d) = do
 ----------------------------------------------------------------------------------
 
 data Mutation
+    -- | Model is unmodified
     = NotMutated
-    -- | mutatedListener needs to be called
+    -- | Model was modified, the mutatedListener has been scheduled.
+    -- Requests to schedule the mutatedListener callback will be dropped.
     | Mutated
-    -- | mutation needs to be reset back to NotMutated
-    -- mutated callbacks are dropped
+    -- | Model is scheduled to be reset back to NotMutated.
+    -- Requests to schedule the mutatedListener callback will be dropped.
     | MutationNotified
     deriving (Show, Eq)
 
 data Rerendering
+    -- | Rerendering not scheduled
     = RerenderNotRequired
-    -- | rerender is suppressed, but something will be guaranteed
+    -- | Rerendering will be scheduled eventually.
+    -- erender is suppressed, but something will be guaranteed
     -- to trigger another rerender, so it is safe to drop the current
     -- rerender request
     | RerenderSuppressed

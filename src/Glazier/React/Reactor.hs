@@ -26,7 +26,6 @@ module Glazier.React.Reactor
     , getModel
     , getElementalRef
     , rerender
-    -- FIXME: Rename TickedModel to modifyModel or updateModel
     , mutate
     , mutateThen
     , domTrigger
@@ -81,9 +80,9 @@ data ReactorCmd cmd where
     MkReactId :: J.JSString -> (ReactId -> cmd) -> ReactorCmd cmd
     -- | the the rendering function in a Obj, replace any existing render callback
     SetRender :: WeakObj s -> Window s () -> ReactorCmd cmd
-    -- | Make a fully initialized subject (with ShimCallbacks) from a widget spec and state
+    -- | Make a fully initialized object from a widget and model
     MkObj :: Widget cmd s s () -> s -> (Obj s -> cmd) -> ReactorCmd cmd
-    -- | Generate a list of commands from reading the model.
+    -- | Get the model
     GetModel :: WeakObj s -> (s -> cmd) -> ReactorCmd cmd
     -- Get the event target
     -- If a "ref" callback to update 'elementalRef' has not been added;
