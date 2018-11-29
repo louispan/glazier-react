@@ -111,7 +111,7 @@ startApp executor wid s root = do
     let setup = do
             obj <- mkObj' wid s
             exec' (command_ <$> (putMVar objVar obj))
-        cs = (`execState` mempty) $ evalContT setup
+        cs = (`execState` mempty) $ runProgramT $ evalContT setup
 
     -- run the initial commands, this will store the app Obj into objVar
     traverse_ executor cs
@@ -325,7 +325,7 @@ execMkObj executor wid s = do
         let gad = runExceptT wid
             gad' = gad `bindLeft` setRndr
             gad'' = (either id id) <$> gad'
-            tick = runGadget gad'' (Entity obj id) pure
+            tick = runProgramT $ runGadget gad'' (Entity obj id) pure
             cs = execState tick mempty
             -- update the model to include the real shimcallbacks
             scn' = scn & _plan._shimCallbacks .~ ShimCallbacks renderCb mountedCb renderedCb refCb

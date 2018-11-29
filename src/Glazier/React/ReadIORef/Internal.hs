@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
+-- FIXME: Rename to SafeReactIO and include dereafWeakObj
 module Glazier.React.ReadIORef.Internal where
 
 import Control.Applicative

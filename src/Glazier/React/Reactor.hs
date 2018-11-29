@@ -75,6 +75,7 @@ type ModelState s = StateT s ReadIORef
 -- | NB. 'ReactorCmd' is not a functor because of the @Widget cmd@ in 'MkObj'
 data ReactorCmd cmd where
     -- run arbitrary IO, should only be used for debugging
+    -- FIXME: Rename to RunIO
     EvalIO :: IO cmd -> ReactorCmd cmd
     -- | Make a unique named id
     MkReactId :: J.JSString -> (ReactId -> cmd) -> ReactorCmd cmd
