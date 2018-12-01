@@ -2,7 +2,8 @@ module Glazier.React.ReactId
     ( ReactId -- constructor not exported
     , reactIdName
     , reactIdNum
-    , fullReactId
+    , reactIdKey
+    , reactIdKey'
     )
     where
 

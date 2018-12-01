@@ -82,7 +82,7 @@ displayObj obj = do
         , ("mounted", JE.toJSR mountedCb)
         , ("rendered", JE.toJSR renderedCb)
         , ("ref", JE.toJSR refCb)
-        , ("key", JE.toJSR $ fullReactId k)
+        , ("key", reactIdKey' k)
         ]
 
 #ifdef __GHCJS__

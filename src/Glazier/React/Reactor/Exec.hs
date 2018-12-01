@@ -608,7 +608,7 @@ execGetElementalRef executor obj k f = (`evalMaybeT` ()) $ do
             Just ret' -> do
                 liftIO $ putStrLn "LOUISDEBUG: Existing Just"
                 liftIO $ putMVar mdlVar scn
-                lift . executor . f $ ret'
+                lift . executor $ f ret'
 
 getOrRegisterRefCoreListener :: (MonadIO m)
     => WeakObj s
@@ -622,7 +622,7 @@ getOrRegisterRefCoreListener obj k pln = do
         (freshness, eventHdl) <-
             case pln ^. _elementals.at k.to (fromMaybe (Elemental Nothing mempty))._reactListeners.at n of
                 Nothing -> do
-                    liftIO $ putStrLn $ "LOUISDEBUG: RefCore Nothing " <> J.unpack (fullReactId k)
+                    liftIO $ putStrLn $ "LOUISDEBUG: RefCore Nothing " <> J.unpack (reactIdKey k)
                     listenerRef <- newIORef mempty
                     cb <- mkEventCallback listenerRef
                     -- update listenerRef with new event listener
@@ -630,7 +630,7 @@ getOrRegisterRefCoreListener obj k pln = do
                     addEventHandler (pure . JE.fromJSR) hdlRef listenerRef
                     pure (Fresh, (cb, listenerRef))
                 Just eventHdl -> do
-                    liftIO $ putStrLn $ "LOUISDEBUG: RefCore Just " <> J.unpack (fullReactId k)
+                    liftIO $ putStrLn $ "LOUISDEBUG: RefCore Just " <> J.unpack (reactIdKey k)
                     pure (Existing, eventHdl)
         -- prepare the updated state
         let pln' = pln & _elementals.at k %~ (Just . addElem . initElem)
@@ -663,7 +663,7 @@ execRegisterReactListener :: (NFData a, MonadUnliftIO m)
     -> (a -> cmd)
     -> m ()
 execRegisterReactListener executor obj k n goStrict goLazy = void . runMaybeT $ do
-    liftIO $ putStrLn $ "LOUISDEBUG: execRegisterReactListener " <> J.unpack (fullReactId k)
+    liftIO $ putStrLn $ "LOUISDEBUG: execRegisterReactListener " <> J.unpack (reactIdKey k)
     obj' <- deRefWeakObj obj
     let mdlRef = modelRef obj'
         mdlVar = modelVar obj'
