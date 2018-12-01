@@ -97,7 +97,7 @@ data Plan = Plan
     , componentRef :: Maybe ComponentRef
     , shimCallbacks :: ShimCallbacks
     -- called after state was just updated
-    , mutatedListener :: IO ()
+    , mutatedListener :: ReactId -> IO ()
     -- called after every rendering
     , renderedListener :: IO ()
     -- called after first rendering only
@@ -168,4 +168,4 @@ zoomedModel l = zoom (editModel l)
 ----------------------------------------------------------------------------------
 
 elementTarget :: ReactId -> Traversal' (Model s) EventTarget
-elementTarget ri = _plan._elementals.ix ri._elementalRef._Just
+elementTarget k = _plan._elementals.ix k._elementalRef._Just

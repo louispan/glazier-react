@@ -81,7 +81,7 @@ import Data.Semigroup
 #endif
 
 newtype ReactorEnv = ReactorEnv
-    { reactIdEnv :: MVar Int
+    { reactIdVar :: MVar Int
     -- , reactorBackgroundEnv :: TQueue (IO (IO ()))
     }
 
@@ -161,17 +161,18 @@ execReactorCmd executor c = case c of
     SetRender obj w -> done $ execSetRender obj w
     MkObj wid s k -> execMkObj executor wid s >>= (done . executor . k)
     GetModel obj k -> (`evalMaybeT` []) $ execGetModel obj >>= (lift . done . executor . k)
-    GetElementalRef obj ri k -> done $ execGetElementalRef executor obj ri k
+    GetElementalRef obj k f -> done $ execGetElementalRef executor obj k f
     Rerender obj -> execRerender False obj
     DoRerender obj -> done $ execDoRerender obj
-    Mutate obj tick -> (`evalMaybeT` []) $ do
-        (lastCmds, nextCmd) <- execMutate obj tick
+    Mutate cap k obj tick -> (`evalMaybeT` []) $ do
+        liftIO $ putStrLn $ "Caption: " <> J.unpack cap
+        (lastCmds, nextCmd) <- execMutate k obj tick
         lift $ executor nextCmd
         pure lastCmds
-    NotifyMutated obj -> execNotifyMutated obj
+    NotifyMutated k obj -> execNotifyMutated k obj
     ResetMutation obj -> done $ execResetMutation obj
     RegisterDOMListener obj j n goStrict goLazy -> done $ execRegisterDOMListener executor obj j n goStrict goLazy
-    RegisterReactListener obj ri n goStrict goLazy -> done $ execRegisterReactListener executor obj ri n goStrict goLazy
+    RegisterReactListener obj k n goStrict goLazy -> done $ execRegisterReactListener executor obj k n goStrict goLazy
     RegisterMountedListener obj k -> done $ execRegisterMountedListener executor obj k
     RegisterRenderedListener obj k -> done $ execRegisterRenderedListener executor obj k
     RegisterNextRenderedListener obj k -> done $ execRegisterNextRenderedListener executor obj k
@@ -188,12 +189,12 @@ execMkReactId ::
     => J.JSString
     -> m ReactId
 execMkReactId n = do
-    v <- view ((hasLens @ReactorEnv)._reactIdEnv)
+    v <- view ((hasLens @ReactorEnv)._reactIdVar)
     liftIO $ do
         i <- takeMVar v
         let i' = JE.safeIncrement i
         putMVar v i'
-        pure . ReactId . J.append n . J.cons ':' . J.pack $ show i'
+        pure $ ReactId n i'
 
 __render :: WeakObj s -> Window s () -> IO J.JSVal
 __render obj win = (`evalMaybeT` J.nullRef) $ do
@@ -277,11 +278,11 @@ execMkObj ::
     -> m (Obj s)
 execMkObj executor wid s = do
     liftIO $ putStrLn "LOUISDEBUG: execMkObj"
-    ri <- execMkReactId (J.pack "plan")
+    k <- execMkReactId (J.pack "plan")
     (obj, cs) <- liftIO $ do
         -- create shim with fake callbacks for now
         let newPlan = Plan
-                ri
+                k
                 Nothing
                 (ShimCallbacks (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef))
                 mempty
@@ -325,7 +326,7 @@ execMkObj executor wid s = do
         let gad = runExceptT wid
             gad' = gad `bindLeft` setRndr
             gad'' = (either id id) <$> gad'
-            tick = runProgramT $ runGadget gad'' (Entity obj id) pure
+            tick = runProgramT $ (`evalStateT` mempty) $ runGadget gad'' (Entity obj id) pure
             cs = execState tick mempty
             -- update the model to include the real shimcallbacks
             scn' = scn & _plan._shimCallbacks .~ ShimCallbacks renderCb mountedCb renderedCb refCb
@@ -410,10 +411,11 @@ execMutate ::
     ( MonadIO m
     , AsReactor cmd
     )
-    => WeakObj s
+    => ReactId
+    -> WeakObj s
     -> ModelState s cmd
     -> MaybeT m ([cmd], cmd)
-execMutate obj tick = do
+execMutate k obj tick = do
     liftIO $ putStrLn "LOUISDEBUG: execMutate"
     obj' <- deRefWeakObj obj
     let mdlRef = modelRef obj'
@@ -430,7 +432,7 @@ execMutate obj tick = do
         let mutation' = scn' ^. _plan._mutation
             -- Suppress rerender until after mutatedListener is called
             scn'' = scn' & _plan._rerendering .~ RerenderSuppressed
-            notifyCmd = [command' $ NotifyMutated obj]
+            notifyCmd = [command' $ NotifyMutated k obj]
             (c', scn''') = case mutation' of
                 NotMutated -> (notifyCmd, scn'' & _plan._mutation .~ Mutated)
                 _ -> ([], scn'')
@@ -450,8 +452,8 @@ execNotifyMutated ::
     ( MonadIO m
     , AsReactor cmd
     )
-    => WeakObj s -> m [cmd]
-execNotifyMutated obj = (`evalMaybeT` []) $ do
+    => ReactId -> WeakObj s -> m [cmd]
+execNotifyMutated k obj = (`evalMaybeT` []) $ do
     liftIO $ putStrLn "LOUISDEBUG: execNotifyMutated"
     obj' <- deRefWeakObj obj
     let mdlRef = modelRef obj'
@@ -468,7 +470,7 @@ execNotifyMutated obj = (`evalMaybeT` []) $ do
                 atomicWriteIORef mdlRef scn'
                 putMVar mdlVar scn'
                 -- run mutatedListener
-                cb
+                cb k
                 -- force shedule a rerender
                 cs <- execRerender True obj
                 -- schedule reset mutation and rerendering
@@ -566,18 +568,18 @@ execGetElementalRef ::
     -> ReactId
     -> (EventTarget -> cmd)
     -> m ()
-execGetElementalRef executor obj ri k = (`evalMaybeT` ()) $ do
+execGetElementalRef executor obj k f = (`evalMaybeT` ()) $ do
     liftIO $ putStrLn "LOUISDEBUG: execGetElementalRef"
     obj' <- deRefWeakObj obj
     let mdlRef = modelRef obj'
         mdlVar = modelVar obj'
     UnliftIO u <- lift askUnliftIO
     scn <- liftIO $ takeMVar mdlVar
-    (refFreshness, pln) <- lift $ getOrRegisterRefCoreListener obj ri (plan scn)
-    let tryAgain = u $ execGetElementalRef executor obj ri k
+    (refFreshness, pln) <- lift $ getOrRegisterRefCoreListener obj k (plan scn)
+    let tryAgain = u $ execGetElementalRef executor obj k f
         scn' = scn & _plan .~ pln -- to save the core listener
                 & _plan._nextRenderedListener %~ (*> tryAgain)
-        ret = pln ^? (_elementals.ix ri._elementalRef._Just)
+        ret = pln ^? (_elementals.ix k._elementalRef._Just)
         triggerTryAgain = liftIO $ do
             liftIO $ putStrLn "LOUISDEBUG: triggerTryAgain"
             -- save the tryAgain handler when nextRendered
@@ -606,21 +608,21 @@ execGetElementalRef executor obj ri k = (`evalMaybeT` ()) $ do
             Just ret' -> do
                 liftIO $ putStrLn "LOUISDEBUG: Existing Just"
                 liftIO $ putMVar mdlVar scn
-                lift . executor . k $ ret'
+                lift . executor . f $ ret'
 
 getOrRegisterRefCoreListener :: (MonadIO m)
     => WeakObj s
     -> ReactId
     -> Plan
     -> m (Freshness, Plan)
-getOrRegisterRefCoreListener obj ri pln = do
+getOrRegisterRefCoreListener obj k pln = do
     liftIO $ putStrLn "LOUISDEBUG: getOrRegisterRefCoreListener"
     liftIO $ do
         -- first get or make the target
         (freshness, eventHdl) <-
-            case pln ^. _elementals.at ri.to (fromMaybe (Elemental Nothing mempty))._reactListeners.at n of
+            case pln ^. _elementals.at k.to (fromMaybe (Elemental Nothing mempty))._reactListeners.at n of
                 Nothing -> do
-                    liftIO $ putStrLn $ "LOUISDEBUG: RefCore Nothing " <> J.unpack (unReactId ri)
+                    liftIO $ putStrLn $ "LOUISDEBUG: RefCore Nothing " <> J.unpack (fullReactId k)
                     listenerRef <- newIORef mempty
                     cb <- mkEventCallback listenerRef
                     -- update listenerRef with new event listener
@@ -628,10 +630,10 @@ getOrRegisterRefCoreListener obj ri pln = do
                     addEventHandler (pure . JE.fromJSR) hdlRef listenerRef
                     pure (Fresh, (cb, listenerRef))
                 Just eventHdl -> do
-                    liftIO $ putStrLn $ "LOUISDEBUG: RefCore Just " <> J.unpack (unReactId ri)
+                    liftIO $ putStrLn $ "LOUISDEBUG: RefCore Just " <> J.unpack (fullReactId k)
                     pure (Existing, eventHdl)
         -- prepare the updated state
-        let pln' = pln & _elementals.at ri %~ (Just . addElem . initElem)
+        let pln' = pln & _elementals.at k %~ (Just . addElem . initElem)
             initElem = fromMaybe (Elemental Nothing mempty)
             addElem = _reactListeners.at n %~ addListener
             addListener = Just . maybe eventHdl (const eventHdl)
@@ -640,14 +642,14 @@ getOrRegisterRefCoreListener obj ri pln = do
             Existing -> pure (Existing, pln)
   where
     n = J.pack "ref"
-    -- hdlRef x = command' $ Mutate obj (command_ <$> (_plan._elementals.ix ri._elementalRef .= x))
+    -- hdlRef x = command' $ Mutate obj (command_ <$> (_plan._elementals.ix k._elementalRef .= x))
     hdlRef x = void . runMaybeT $ do
         obj' <- deRefWeakObj obj
         let mdlRef = modelRef obj'
             mdlVar = modelVar obj'
         lift $ do
             scn <- takeMVar mdlVar
-            let scn' = scn & _plan._elementals.ix ri._elementalRef .~ x
+            let scn' = scn & _plan._elementals.ix k._elementalRef .~ x
             -- Update the back buffer
             atomicWriteIORef mdlRef scn'
             putMVar mdlVar scn'
@@ -660,8 +662,8 @@ execRegisterReactListener :: (NFData a, MonadUnliftIO m)
     -> (JE.JSRep -> MaybeT IO a)
     -> (a -> cmd)
     -> m ()
-execRegisterReactListener executor obj ri n goStrict goLazy = void . runMaybeT $ do
-    liftIO $ putStrLn $ "LOUISDEBUG: execRegisterReactListener " <> J.unpack (unReactId ri)
+execRegisterReactListener executor obj k n goStrict goLazy = void . runMaybeT $ do
+    liftIO $ putStrLn $ "LOUISDEBUG: execRegisterReactListener " <> J.unpack (fullReactId k)
     obj' <- deRefWeakObj obj
     let mdlRef = modelRef obj'
         mdlVar = modelVar obj'
@@ -670,7 +672,7 @@ execRegisterReactListener executor obj ri n goStrict goLazy = void . runMaybeT $
     -- special logic for ref, where the first ref handler must be 'registerRefCoreListener'
     scn <- if (n == (J.pack "ref"))
         then do
-            (refFreshness, pln) <- getOrRegisterRefCoreListener obj ri (plan scn_)
+            (refFreshness, pln) <- getOrRegisterRefCoreListener obj k (plan scn_)
             case refFreshness of
                 Existing -> pure scn_
                 Fresh -> pure (scn_ & _plan .~ pln)
@@ -678,14 +680,14 @@ execRegisterReactListener executor obj ri n goStrict goLazy = void . runMaybeT $
     liftIO $ do
         -- get or make the target
         (freshness, eventHdl@(_, listenerRef)) <-
-            case scn ^. _plan._elementals.at ri.to (fromMaybe (Elemental Nothing mempty))._reactListeners.at n of
+            case scn ^. _plan._elementals.at k.to (fromMaybe (Elemental Nothing mempty))._reactListeners.at n of
                 Nothing -> do
                     listenerRef <- newIORef mempty
                     cb <- mkEventCallback listenerRef
                     pure (Fresh, (cb, listenerRef))
                 Just eventHdl -> pure (Existing, eventHdl)
         let scn' = case freshness of
-                Fresh -> scn & _plan._elementals.at ri %~ (Just . addElem . initElem)
+                Fresh -> scn & _plan._elementals.at k %~ (Just . addElem . initElem)
                 Existing -> scn
             initElem = fromMaybe (Elemental Nothing mempty)
             addElem = _reactListeners.at n %~ addListener
@@ -702,18 +704,18 @@ mappendListener (f1, g1) (f2, g2) = (\x -> f1 x *> f2 x, g1 *> g2)
 execRegisterMutatedListener :: (MonadUnliftIO m)
     => (cmd -> m ())
     -> WeakObj s
-    -> cmd
+    -> (ReactId -> cmd)
     -> m ()
-execRegisterMutatedListener executor obj c = void . runMaybeT $ do
+execRegisterMutatedListener executor obj f = void . runMaybeT $ do
     liftIO $ putStrLn "LOUISDEBUG: execRegisterMutatedListener"
     obj' <- deRefWeakObj obj
     let mdlRef = modelRef obj'
         mdlVar = modelVar obj'
     UnliftIO u <- lift askUnliftIO
-    let hdl = u $ executor c
+    let hdl = u . executor . f
     liftIO $ do
         scn <- takeMVar mdlVar
-        let scn' = scn & _plan._mutatedListener %~ (*> hdl)
+        let scn' = scn & _plan._mutatedListener %~ (\g -> \k -> g k *> hdl k)
         atomicWriteIORef mdlRef scn'
         putMVar mdlVar scn'
 
@@ -792,16 +794,16 @@ execRegisterDOMListener executor obj j n goStrict goLazy = void . runMaybeT $ do
     -- Add the handler to the state
     UnliftIO u <- lift askUnliftIO
     -- generate a unique id
-    ri <- execMkReactId n
+    k <- execMkReactId n
     liftIO $ do
         scn <- takeMVar mdlVar
-        -- since ri is unique, it'll always be a new map item
+        -- since k is unique, it'll always be a new map item
         -- update the ioref with the new handler
         listenerRef <- newIORef mempty
         cb <- mkEventCallback listenerRef
         addEventHandler goStrict (u . executor . goLazy) listenerRef
         -- prepare the updated state,
-        let scn' = scn & _plan._domlListeners.at ri .~ (Just (cb, listenerRef))
+        let scn' = scn & _plan._domlListeners.at k .~ (Just (cb, listenerRef))
                 & _plan._finalCleanup %~ (*> removeDomListener j n cb)
         -- Update the subject
         atomicWriteIORef mdlRef scn'

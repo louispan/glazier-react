@@ -37,8 +37,8 @@ type Window s = RWST (Model s) () (DL.DList ReactMarkup) ReadIORef
 ----------------------------------------------------------------------------------
 
 getListeners :: MonadReader (Model s) m => ReactId -> m [JE.Property]
-getListeners ri = do
-    ls <- view (_plan._elementals.ix ri._reactListeners.to M.toList)
+getListeners k = do
+    ls <- view (_plan._elementals.ix k._reactListeners.to M.toList)
     pure $ (\(n, (cb, _)) -> (n, JE.toJSR cb)) <$> ls
 
 -- | Interactive version of 'lf' using listeners obtained from the 'Plan' for a 'ElementalId'.
@@ -47,8 +47,8 @@ lf' :: (MonadReader (Model s) m, MonadState (DL.DList ReactMarkup) m)
     -> JE.JSRep -- ^ eg "div" or "input"
     -> DL.DList JE.Property
     -> m ()
-lf' ri n props = do
-    ls <- getListeners ri
+lf' k n props = do
+    ls <- getListeners k
     lf n (props <> DL.fromList ls)
 
 -- | Interactive version of 'bh'
@@ -58,8 +58,8 @@ bh' :: (MonadReader (Model s) m, MonadState (DL.DList ReactMarkup) m)
     -> DL.DList JE.Property
     -> m r
     -> m r
-bh' ri n props childs = do
-    ls <- getListeners ri
+bh' k n props childs = do
+    ls <- getListeners k
     bh n (props <> DL.fromList ls) childs
 
 bindListenerContext :: JE.JSRep -> J.Callback (J.JSVal -> J.JSVal -> IO ()) -> JE.JSRep
@@ -73,7 +73,7 @@ displayObj obj = do
         mountedCb = shimMounted scb
         renderedCb = shimRendered scb
         refCb = shimRef scb
-        ri = scn ^. _plan._planId
+        k = scn ^. _plan._planId
     -- These are the callbacks on the 'ShimComponent'
     -- See jsbits/react.js
 
@@ -82,7 +82,7 @@ displayObj obj = do
         , ("mounted", JE.toJSR mountedCb)
         , ("rendered", JE.toJSR renderedCb)
         , ("ref", JE.toJSR refCb)
-        , ("key", JE.toJSR ri)
+        , ("key", JE.toJSR $ fullReactId k)
         ]
 
 #ifdef __GHCJS__
