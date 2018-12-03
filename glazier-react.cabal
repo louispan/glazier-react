@@ -42,6 +42,7 @@ library
                        Glazier.React.ReadIORef
                        Glazier.React.ReadIORef.Internal
                        Glazier.React.Model
+                       Glazier.React.MonadGadget
                        Glazier.React.Obj
                        Glazier.React.Obj.Internal
                        Glazier.React.Widget

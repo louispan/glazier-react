@@ -24,8 +24,8 @@ import Glazier.React.Window
 -- | A 'Widget' is a 'Gadget' that fires 'Either' a 'Window' or a value.
 type Widget cmd o s = ExceptT (Window s ()) (Gadget cmd o s)
 
--- | Use this function to verify at compile time that the first widget doesn't
--- require any @AsFacet (IO cmd) cmd@.
+-- | Pass the same MonadWidget into this function to verify at compile time
+-- that a concrete instance of widget doesn't require any @AsFacet (IO cmd) cmd@.
 noIOWidget :: Widget (NoIOCmd cmd) s s a -> Widget cmd s s a -> Widget cmd s s a
 noIOWidget _ = id
 

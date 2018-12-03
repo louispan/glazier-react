@@ -67,6 +67,7 @@ import Glazier.React.EventTarget
 import Glazier.React.Gadget
 import Glazier.React.Markup
 import Glazier.React.Model
+import Glazier.React.MonadGadget
 import Glazier.React.Obj.Internal
 import Glazier.React.ReactDOM
 import Glazier.React.ReactId.Internal

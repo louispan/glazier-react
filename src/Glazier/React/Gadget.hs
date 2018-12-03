@@ -11,7 +11,8 @@ import Glazier.Command
 import Glazier.React.Entity
 import Glazier.React.Obj
 
--- | The @s@ state can be magnified with 'magnifiedEntity'
+-- | A 'Gadget' is an instance of 'MonadGadget'
+-- The @s@ state can be magnified with 'magnifiedEntity'
 type Gadget cmd o s = ReaderT (Entity o s) (ContT () (StateT J.JSString (Program cmd)))
 
 toGadget ::
