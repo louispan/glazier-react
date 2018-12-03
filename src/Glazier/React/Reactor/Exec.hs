@@ -46,7 +46,7 @@ import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Maybe.Extras
-import Control.Monad.Trans.RWS.Strict
+import qualified Control.Monad.Trans.RWS.Strict as RWS
 import Control.Monad.Trans.State.Strict
 import Data.Diverse.Lens
 import qualified Data.DList as DL
@@ -54,6 +54,7 @@ import Data.Foldable
 import Data.IORef
 import qualified Data.JSString as J
 import Data.Maybe
+import qualified Data.Set as S
 import Data.Typeable
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Foreign.Callback.Internal as J
@@ -156,13 +157,13 @@ execReactorCmd ::
     )
     => (cmd -> m ()) -> ReactorCmd cmd -> m [cmd]
 execReactorCmd executor c = case c of
-    EvalIO n -> liftIO n >>= (done . executor)
+    DebugIO n -> liftIO n >>= (done . executor)
     MkReactId n k -> execMkReactId n >>= (done . executor . k)
     SetRender obj w -> done $ execSetRender obj w
     MkObj wid s k -> execMkObj executor wid s >>= (done . executor . k)
     GetModel obj k -> (`evalMaybeT` []) $ execGetModel obj >>= (lift . done . executor . k)
     GetElementalRef obj k f -> done $ execGetElementalRef executor obj k f
-    Rerender obj -> execRerender False obj
+    Rerender obj -> execRerender obj
     DoRerender obj -> done $ execDoRerender obj
     Mutate cap k obj tick -> (`evalMaybeT` []) $ do
         liftIO $ putStrLn $ "Caption: " <> J.unpack cap
@@ -170,7 +171,7 @@ execReactorCmd executor c = case c of
         lift $ executor nextCmd
         pure lastCmds
     NotifyMutated k obj -> execNotifyMutated k obj
-    ResetMutation obj -> done $ execResetMutation obj
+    ResetMutation k obj -> execResetMutation k obj
     RegisterDOMListener obj j n goStrict goLazy -> done $ execRegisterDOMListener executor obj j n goStrict goLazy
     RegisterReactListener obj k n goStrict goLazy -> done $ execRegisterReactListener executor obj k n goStrict goLazy
     RegisterMountedListener obj k -> done $ execRegisterMountedListener executor obj k
@@ -203,7 +204,7 @@ __render obj win = (`evalMaybeT` J.nullRef) $ do
     lift $ do
         -- render using from mdlRef (doesn't block)
         scn <- readIORef mdlRef
-        (mrkup, _) <- unReadIORef (execRWST win scn mempty) -- ignore unit writer output
+        (mrkup, _) <- unReadIORef (RWS.execRWST win scn mempty) -- ignore unit writer output
         a <- JE.toJS <$> toElement mrkup
         pure a
 
@@ -292,7 +293,7 @@ execMkObj executor wid s = do
                 mempty
                 mempty
                 mempty
-                NotMutated
+                S.empty
                 RerenderNotRequired
             scn = Model newPlan s
 
@@ -359,30 +360,35 @@ execRerender ::
     ( MonadIO m
     , AsReactor cmd
     )
-    => Bool -> WeakObj s -> m [cmd]
-execRerender rerenderSuppressed obj = (`evalMaybeT` []) $ do
+    => WeakObj s -> m [cmd]
+execRerender obj = (`evalMaybeT` []) $ do
     liftIO $ putStrLn "LOUISDEBUG: execRerender"
     obj' <- deRefWeakObj obj
-    let mdlRef = modelRef obj'
-        mdlVar = modelVar obj'
+    let mdlVar = modelVar obj'
     liftIO $ do
         scn <- takeMVar mdlVar
-        -- don't rerender straight away, but schedule a rerender
-        -- when the background worker thread
-        -- so multiple rerender requests will be naturally throttled
-        if scn ^. _plan._rerendering == RerenderNotRequired
-            || (rerenderSuppressed && scn ^. _plan._rerendering == RerenderSuppressed)
-            then do
-                let scn' = scn & _plan._rerendering .~ RerenderRequired
-                -- Update the back buffer
-                atomicWriteIORef mdlRef scn'
-                putMVar mdlVar scn'
-                -- Schedule a rerender
-                pure [command' $ DoRerender obj]
-            -- rerender has already been scheduled
-            else do
-                putMVar mdlVar scn
-                pure []
+        liftIO $ putStrLn "LOUISDEBUG: execRerender2"
+        let (cs, scn') = (`runState` scn) $ __rerenderState False obj
+        putMVar mdlVar scn'
+        pure cs
+
+__rerenderState ::
+    ( AsReactor cmd
+    )
+    => Bool -> WeakObj s -> State (Model s) [cmd]
+__rerenderState rerenderSuppressed obj = do
+    scn <- get
+    -- don't rerender straight away, but schedule a rerender
+    -- when the background worker thread
+    -- so multiple rerender requests will be naturally throttled
+    if scn ^. _plan._rerendering == RerenderNotRequired
+        || (rerenderSuppressed && scn ^. _plan._rerendering == RerenderSuppressed)
+        then do
+            put $ scn & _plan._rerendering .~ RerenderRequired
+            -- Schedule a rerender
+            pure [command' $ DoRerender obj]
+        -- rerender has already been scheduled
+        else pure []
 
 execDoRerender :: MonadIO m => WeakObj s -> m ()
 execDoRerender obj = (`evalMaybeT` ()) $ do
@@ -392,17 +398,21 @@ execDoRerender obj = (`evalMaybeT` ()) $ do
         mdlVar = modelVar obj'
     liftIO $ do
         scn <- takeMVar mdlVar
+        liftIO $ putStrLn "LOUISDEBUG: execDoRerender2"
         if scn ^. _plan._rerendering == RerenderRequired
             then do
                 let scn' = scn & _plan._rerendering .~ RerenderNotRequired
                 -- Update the back buffer
                 atomicWriteIORef mdlRef scn'
                 putMVar mdlVar scn'
+                putStrLn $ "LOUISDEBUG: execDoRerender3a "
                 case scn ^. _plan._componentRef of
                     Nothing -> pure ()
                     Just j -> rerenderShim j
             -- rerender not required (eg. already processed)
-            else putMVar mdlVar scn
+            else do
+                putMVar mdlVar scn
+                putStrLn $ "LOUISDEBUG: execDoRerender3b "
 
 -- | No need to run in a separate thread because it should never block for a significant amount of time.
 -- Update the model 'MVar' with the given action. Also triggers a rerender.
@@ -416,29 +426,35 @@ execMutate ::
     -> ModelState s cmd
     -> MaybeT m ([cmd], cmd)
 execMutate k obj tick = do
-    liftIO $ putStrLn "LOUISDEBUG: execMutate"
+    liftIO $ putStrLn $ "LOUISDEBUG: execMutate " <> J.unpack (reactIdKey k)
     obj' <- deRefWeakObj obj
     let mdlRef = modelRef obj'
         mdlVar = modelVar obj'
     -- q <- view ((hasLens @ReactorEnv)._reactorBackgroundEnv)
     liftIO $ do
         scn <- takeMVar mdlVar
+        putStrLn $ "LOUISDEBUG: execMutate2 " <> J.unpack (reactIdKey k)
         let s = scn ^. _model
         (c, s') <- unReadIORef $ runStateT tick s
         let scn' = scn & _model .~ s'
-        -- don't notify ticked listener straight away, but schedule it like rerender
+        -- don't notify ticked listener straight away, but schedule it like rerender.
         -- This is so that if there are multiple mutates, it will try to only fire
         -- the notified callback as late as possible.
-        let mutation' = scn' ^. _plan._mutation
-            -- Suppress rerender until after mutatedListener is called
-            scn'' = scn' & _plan._rerendering .~ RerenderSuppressed
+        -- 'execResetMutation' is now responsible for triggering a rerender,
+        -- so suppress rerender until after 'execResetMutation' is called.
+        let scn'' = scn' & _plan._rerendering .~ RerenderSuppressed
             notifyCmd = [command' $ NotifyMutated k obj]
-            (c', scn''') = case mutation' of
-                NotMutated -> (notifyCmd, scn'' & _plan._mutation .~ Mutated)
-                _ -> ([], scn'')
+            -- Only fire NotifyMutated once for the same ReactId in processing cycle.
+            (c', scn''') = case S.member k (scn' ^. _plan._mutations) of
+                False -> (notifyCmd, scn'' & _plan._mutations %~ (S.insert k))
+                True -> ([], scn'')
+        case S.member k (scn' ^. _plan._mutations) of
+            False -> putStrLn $ "new mutation"
+            True -> putStrLn $ "old mutation"
         -- Update the back buffer
         atomicWriteIORef mdlRef scn'''
         putMVar mdlVar scn'''
+        putStrLn $ "LOUISDEBUG: execMutate3 " <> J.unpack (reactIdKey k)
         pure (c', c)
 
 -- LOUISFIXME: Document tickNotified/renderRequired lifecycle
@@ -448,54 +464,55 @@ execMutate k obj tick = do
 -- then we won't get infinite work
 -- to also schedule a rerender
 -- Returns commands to process last
+-- There should only be one execNotifyMutated per ReactId from multiple Mutate with the same ReactId
 execNotifyMutated ::
     ( MonadIO m
     , AsReactor cmd
     )
     => ReactId -> WeakObj s -> m [cmd]
 execNotifyMutated k obj = (`evalMaybeT` []) $ do
-    liftIO $ putStrLn "LOUISDEBUG: execNotifyMutated"
+    liftIO $ putStrLn $ "LOUISDEBUG: execNotifyMutated " <> J.unpack (reactIdKey k)
     obj' <- deRefWeakObj obj
-    let mdlRef = modelRef obj'
-        mdlVar = modelVar obj'
+    let mdlVar = modelVar obj'
     liftIO $ do
-        scn <- takeMVar mdlVar
-        if scn ^. _plan._mutation == Mutated
+        scn <- readMVar mdlVar
+        putStrLn $ "LOUISDEBUG: execNotifyMutated2 " <> J.unpack (reactIdKey k)
+        if S.member k (scn ^. _plan._mutations)
             then do
                 -- Don't reset back to NotMutated to avoid
                 -- infinite loops if the mutatedListener mutates this same object
-                let scn' = scn & _plan._mutation .~ MutationNotified
-                    cb = scn ^. _plan._mutatedListener
-                -- Update the back buffer
-                atomicWriteIORef mdlRef scn'
-                putMVar mdlVar scn'
+                let cb = scn ^. _plan._mutatedListener
                 -- run mutatedListener
                 cb k
-                -- force shedule a rerender
-                cs <- execRerender True obj
                 -- schedule reset mutation and rerendering
-                pure $ (command' $ ResetMutation obj) : cs
+                pure [command' $ ResetMutation k obj]
             -- notify not required (eg. already processed)
-            else do
-                putMVar mdlVar scn
-                pure []
+            else pure []
 
 -- LOUISFIXME: Document tickNotified/renderRequired lifecycle
-execResetMutation :: MonadIO m => WeakObj s -> m ()
-execResetMutation obj = (`evalMaybeT` ()) $ do
-    liftIO $ putStrLn "LOUISDEBUG: execResetMutation"
+-- There should only be one execNotifyMutated per ReactId from multiple Mutate with the same ReactId
+execResetMutation ::
+    ( MonadIO m
+    , AsReactor cmd
+    )
+    => ReactId -> WeakObj s -> m [cmd]
+execResetMutation k obj = (`evalMaybeT` []) $ do
+    liftIO $ putStrLn $ "LOUISDEBUG: execResetMutation " <> J.unpack (reactIdKey k)
     obj' <- deRefWeakObj obj
     let mdlRef = modelRef obj'
         mdlVar = modelVar obj'
     liftIO $ do
         scn <- takeMVar mdlVar
-        if scn ^. _plan._mutation == MutationNotified
-            then do
-                let scn' = scn & _plan._mutation .~ NotMutated
-                -- Update the back buffer
-                atomicWriteIORef mdlRef scn'
-                putMVar mdlVar scn'
-            else putMVar mdlVar scn
+        putStrLn $ "LOUISDEBUG: execResetMutation2 " <> J.unpack (reactIdKey k)
+        let scn' = scn & _plan._mutations %~ (S.delete k)
+            (cs, scn'') = if scn' ^. _plan._mutations.to S.null
+                then (`runState` scn') $ __rerenderState True obj
+                else ([], scn')
+        -- Update the back buffer
+        atomicWriteIORef mdlRef scn''
+        putMVar mdlVar scn''
+        putStrLn $ "LOUISDEBUG: execResetMutation3 " <> J.unpack (reactIdKey k)
+        pure cs
 
 mkEventCallback ::
     (MonadIO m)

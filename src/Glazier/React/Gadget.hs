@@ -12,18 +12,18 @@ import Glazier.React.Entity
 import Glazier.React.Obj
 
 -- | The @s@ state can be magnified with 'magnifiedEntity'
-type Gadget cmd p s = ReaderT (Entity p s) (ContT () (StateT J.JSString (Program cmd)))
+type Gadget cmd o s = ReaderT (Entity o s) (ContT () (StateT J.JSString (Program cmd)))
 
 toGadget ::
-    (Entity p s
+    (Entity o s
         -> (a -> StateT J.JSString (Program cmd) ())
         -> StateT J.JSString (Program cmd) ())
-    -> Gadget cmd p s a
+    -> Gadget cmd o s a
 toGadget f = ReaderT (\r -> ContT (f r))
 
 runGadget ::
-    Gadget cmd p s a
-    -> Entity p s
+    Gadget cmd o s a
+    -> Entity o s
     -> (a -> StateT J.JSString (Program cmd) ())
     -> StateT J.JSString (Program cmd) ()
 runGadget x l = runContT (runReaderT x l)
@@ -34,5 +34,5 @@ gadgetWith obj = (`runReaderT` (Entity obj id))
 gadgetWith' :: Obj s -> Gadget cmd s s a -> ContT () (StateT J.JSString (Program cmd)) a
 gadgetWith' obj = gadgetWith (weakObj obj)
 
-evalGadget :: Gadget cmd p s () -> Entity p s -> StateT J.JSString (Program cmd) ()
+evalGadget :: Gadget cmd o s () -> Entity o s -> StateT J.JSString (Program cmd) ()
 evalGadget gad ent = evalContT . (`runReaderT` ent) $ gad

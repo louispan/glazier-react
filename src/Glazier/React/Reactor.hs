@@ -15,9 +15,10 @@ module Glazier.React.Reactor
     , MonadReactor
     , ReactorCmd(..)
     , ModelState
-    , evalIO
-    , evalIO_
-    , evalIOThen
+    -- FIXME: only enable if debug
+    , debugIO
+    , debugIO_
+    , debugIOThen
     , mkReactId
     , setRender
     , mkObj
@@ -65,9 +66,9 @@ type AsReactor cmd =
     , AsFacet (ReactorCmd cmd) cmd
     )
 
-type MonadReactor p s cmd m =
+type MonadReactor cmd o s m =
     ( AsReactor cmd
-    , MonadReader (Entity p s) m
+    , MonadReader (Entity o s) m
     , MonadCommand cmd m
     , MonadState J.JSString m
     )
@@ -78,7 +79,7 @@ type ModelState s = StateT s ReadIORef
 data ReactorCmd cmd where
     -- run arbitrary IO, should only be used for debugging
     -- FIXME: Rename to RunIO
-    EvalIO :: IO cmd -> ReactorCmd cmd
+    DebugIO :: IO cmd -> ReactorCmd cmd
     -- | Make a unique named id
     MkReactId :: J.JSString -> (ReactId -> cmd) -> ReactorCmd cmd
     -- | the the rendering function in a Obj, replace any existing render callback
@@ -101,10 +102,13 @@ data ReactorCmd cmd where
     DoRerender :: WeakObj s -> ReactorCmd cmd
     -- | Update and rerender.
     Mutate :: J.JSString -> ReactId -> WeakObj s -> ModelState s cmd -> ReactorCmd cmd
-    -- | Private: Calls the model mutatedListener (will only do something first time after Mutate)
+    -- | Private: Calls the model mutatedListener
+    -- Should only have one of this per ReactId for multiple Mutate with the same ReactId
     NotifyMutated :: ReactId -> WeakObj s -> ReactorCmd cmd
-    -- | Private: Resets the mutated state back to NotMutated
-    ResetMutation :: WeakObj s -> ReactorCmd cmd
+    -- | Private: Resets the mutated state for this ReactId
+    -- If there are no more pending mutations, then rerender.
+    -- Should only have one of this per ReactId for multiple Mutate with the same ReactId
+    ResetMutation :: ReactId -> WeakObj s -> ReactorCmd cmd
     -- | Create and register a dom callback
     RegisterDOMListener :: NFData a
         => WeakObj s
@@ -146,7 +150,7 @@ data ReactorCmd cmd where
 
 -- FIXME: can show ReactId and caption
 instance Show (ReactorCmd cmd) where
-    showsPrec _ (EvalIO _ ) = showString "EvalIO"
+    showsPrec _ (DebugIO _ ) = showString "DebugIO"
     showsPrec p (MkReactId s _) = showParen (p >= 11) $
         showString "MkReactId " . shows s
     showsPrec _ (SetRender _ _ ) = showString "SetRender"
@@ -157,7 +161,7 @@ instance Show (ReactorCmd cmd) where
     showsPrec _ (DoRerender _) = showString "DoRreender_"
     showsPrec _ (Mutate _ _ _ _) = showString "Mutate"
     showsPrec _ (NotifyMutated _ _) = showString "NotifyMutated"
-    showsPrec _ (ResetMutation _) = showString "ResetMutation"
+    showsPrec _ (ResetMutation _ _) = showString "ResetMutation"
     showsPrec _ (RegisterDOMListener _ _ _ _ _) = showString "RegisterDOMListener"
     showsPrec _ (RegisterReactListener _ _ _ _ _) = showString "RegisterReactListener"
     showsPrec _ (RegisterMountedListener _ _) = showString "RegisterMountedListener"
@@ -202,13 +206,13 @@ withMkObj wid s k = delegate $ \fire -> do
     exec' $ MkObj wid' s k'
 
 -- | Rerender the ShimComponent using the current @Entity@ context
-rerender :: (MonadReactor p s cmd m) => m ()
+rerender :: (MonadReactor cmd o s m) => m ()
 rerender = do
     obj <- view _weakObj
     exec' $ Rerender obj
 
 -- | Get the 'Model' and exec actions, using the current @Entity@ context
-getModel :: (MonadReactor p s cmd m) => m s
+getModel :: (MonadReactor cmd o s m) => m s
 getModel = delegate $ \fire -> do
     Entity obj slf <- ask
     let fire' s = case preview slf s of
@@ -220,30 +224,30 @@ getModel = delegate $ \fire -> do
 -- | Get the event target
 -- If a "ref" callback to update 'elementalRef' has not been added;
 -- then add it, rerender, then return the EventTarget.
-getElementalRef :: (MonadReactor p s cmd m) => ReactId -> m EventTarget
+getElementalRef :: (MonadReactor cmd o s m) => ReactId -> m EventTarget
 getElementalRef k = delegate $ \fire -> do
     obj <- view _weakObj
     c <- codify fire
     exec' $ GetElementalRef obj k c
 
 -- | Run an arbitrary IO. This should only be used for testing
-evalIO :: (MonadReactor p s cmd m) => IO cmd -> m ()
-evalIO m = exec' $ EvalIO m
+debugIO :: (MonadReactor cmd o s m) => IO cmd -> m ()
+debugIO m = exec' $ DebugIO m
 
-evalIO_ :: (MonadReactor p s cmd m) => IO () -> m ()
-evalIO_ m = exec' $ EvalIO (command_ <$> m)
+debugIO_ :: (MonadReactor cmd o s m) => IO () -> m ()
+debugIO_ m = exec' $ DebugIO (command_ <$> m)
 
-evalIOThen :: (MonadReactor p s cmd m) => IO (m a) -> m a
-evalIOThen m = do
+debugIOThen :: (MonadReactor cmd o s m) => IO (m a) -> m a
+debugIOThen m = do
     delegate $ \fire -> do
         -- f :: n a -> m ()
         let f n = n >>= fire
         -- f' :: m a -> cmd
         f' <- codify f
-        exec' $ EvalIO (f' <$> m)
+        exec' $ DebugIO (f' <$> m)
 
 -- | Update the 'Model' using the current @Entity@ context
-mutate :: (MonadReactor p s cmd m) => ReactId -> ModelState s () -> m ()
+mutate :: (MonadReactor cmd o s m) => ReactId -> ModelState s () -> m ()
 mutate k m = do
     Entity obj slf <- ask
     cap <- get
@@ -252,7 +256,7 @@ mutate k m = do
 
 -- | Update the 'Model' using the current @Entity@ context,
 -- and also return the next action to execute.
-mutateThen :: (Also m a, MonadReactor p s cmd m) => ReactId -> ModelState s (m a) -> m a
+mutateThen :: (Also m a, MonadReactor cmd o s m) => ReactId -> ModelState s (m a) -> m a
 mutateThen k m = do
     Entity obj slf <- ask
     delegate $ \fire -> do
@@ -267,7 +271,7 @@ mutateThen k m = do
 -- | Create a callback for a 'JE.JSRep' and add it to this elementals's dlist of listeners.
 domTrigger ::
     ( NFData a
-    , MonadReactor p s cmd m
+    , MonadReactor cmd o s m
     )
     => JE.JSRep
     -> J.JSString
@@ -280,7 +284,7 @@ domTrigger j n goStrict = delegate $ \goLazy -> do
 
 -- | A variation of trigger which ignores the event but fires the given arg instead.
 domTrigger_ ::
-    ( MonadReactor p s cmd m
+    ( MonadReactor cmd o s m
     )
     => JE.JSRep
     -> J.JSString
@@ -293,7 +297,7 @@ domTrigger_ j n a = do
 -- | Create a callback for a 'JE.JSRep' and add it to this elementals's dlist of listeners.
 doTrigger ::
     ( NFData a
-    , MonadReactor p s cmd m
+    , MonadReactor cmd o s m
     )
     => ReactId
     -> J.JSString
@@ -307,7 +311,7 @@ doTrigger k n goStrict = delegate $ \goLazy -> do
 -- | Create a callback for a 'Notice' and add it to this elementals's dlist of listeners.
 trigger ::
     ( NFData a
-    , MonadReactor p s cmd m
+    , MonadReactor cmd o s m
     )
     => ReactId
     -> J.JSString
@@ -320,7 +324,7 @@ trigger k n goStrict = doTrigger k n $ handlesNotice goStrict
 
 -- | A variation of trigger which ignores the event but fires the given arg instead.
 trigger_ ::
-    ( MonadReactor p s cmd m
+    ( MonadReactor cmd o s m
     )
     => ReactId
     -> J.JSString
@@ -339,7 +343,7 @@ trigger_ k n a = do
 -- These callbacks are called after the ref callback by React
 -- See https://reactjs.org/docs/refs-and-the-dom.html.
 onMounted ::
-    MonadReactor p s cmd m
+    MonadReactor cmd o s m
     => m a
     -> m a
 onMounted m = do
@@ -358,7 +362,7 @@ onMounted m = do
 -- These callbacks are called after the ref callback by React
 -- See https://reactjs.org/docs/refs-and-the-dom.html.
 onRendered ::
-    MonadReactor p s cmd m
+    MonadReactor cmd o s m
     => m a
     -> m a
 onRendered m = do
@@ -367,8 +371,9 @@ onRendered m = do
         c <- codify' (m >>= fire)
         exec' $ RegisterRenderedListener obj c
 
+-- | Same as 'onRendered' but the action only occurs once on the next rerender.
 onNextRendered ::
-    MonadReactor p s cmd m
+    MonadReactor cmd o s m
     => m a -> m a
 onNextRendered m = do
     obj <- view _weakObj
@@ -376,20 +381,12 @@ onNextRendered m = do
         c <- codify' (m >>= fire)
         exec' $ RegisterNextRenderedListener obj c
 
--- | FIXME: Add reactId here to onMutated can decide what to do based
--- on which component was mutated?
-
--- | Register actions to execute after the state has been updated with TickState.
--- To prevent infinite loops, if this 'onMutated' causes in another 'mutate'
--- another 'onMutated' callback will NOT be fired.
---
--- NB. This is trigged by react 'componentDidUpdate' and 'componentDidMount'
--- so it is also called for the initial render.
--- See jsbits/react.js hgr$shimComponent.
--- These callbacks are called after the ref callback by React
--- See https://reactjs.org/docs/refs-and-the-dom.html.
+-- | Register actions to execute after the state has been updated with 'mutate'.
+-- The callback is called with the 'ReactId' that was passed into 'mutate'.
+-- To prevent infinite loops, if this 'onMutated' causes another 'mutate'
+-- with the same 'ReactId', then another 'onMutated' callback will NOT be fired.
 onMutated ::
-    MonadReactor p s cmd m
+    MonadReactor cmd o s m
     => (ReactId -> m a) -> m a
 onMutated f = do
     obj <- view _weakObj
@@ -397,7 +394,8 @@ onMutated f = do
         g <- codify ((fire =<<) . f)
         exec' $ RegisterMutatedListener obj g
 
+-- | Variation of 'onMutated' where you don't care about the 'ReactId' that caused the rerender.
 onMutated' ::
-    MonadReactor p s cmd m
+    MonadReactor cmd o s m
     => m a -> m a
 onMutated' f = onMutated (const f)

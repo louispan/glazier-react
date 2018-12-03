@@ -21,6 +21,7 @@ import Control.Lens
 import Control.Lens.Misc
 import Data.IORef
 import qualified Data.Map.Strict as M
+import qualified Data.Set as S
 import Data.Maybe
 import qualified GHC.Generics as G
 import qualified GHCJS.Foreign.Callback as J
@@ -67,17 +68,6 @@ releaseShimCallbacks (ShimCallbacks a b c d) = do
 
 ----------------------------------------------------------------------------------
 
-data Mutation
-    -- | Model is unmodified
-    = NotMutated
-    -- | Model was modified, the mutatedListener has been scheduled.
-    -- Requests to schedule the mutatedListener callback will be dropped.
-    | Mutated
-    -- | Model is scheduled to be reset back to NotMutated.
-    -- Requests to schedule the mutatedListener callback will be dropped.
-    | MutationNotified
-    deriving (Show, Eq)
-
 data Rerendering
     -- | Rerendering not scheduled
     = RerenderNotRequired
@@ -113,8 +103,8 @@ data Plan = Plan
         )
     -- cleanup to call eventTarget.removeEventListener()
     , finalCleanup :: IO ()
-    -- set to MutationNotified if mutatedListener has been processed
-    , mutation :: Mutation
+    -- set of all reactIds that are modifying this widget
+    , mutations :: S.Set ReactId
     -- if rerender is required
     , rerendering :: Rerendering
     } deriving (G.Generic)
