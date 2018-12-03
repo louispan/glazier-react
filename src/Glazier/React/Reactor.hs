@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -53,9 +54,9 @@ import Glazier.Command
 import Glazier.React.Entity
 import Glazier.React.EventTarget
 import Glazier.React.Notice
+import Glazier.React.Obj
 import Glazier.React.ReactId
 import Glazier.React.ReadIORef
-import Glazier.React.Obj
 import Glazier.React.Widget
 import Glazier.React.Window
 import qualified JavaScript.Extras as JE
@@ -79,7 +80,9 @@ type ModelState s = StateT s ReadIORef
 data ReactorCmd cmd where
     -- run arbitrary IO, should only be used for debugging
     -- FIXME: Rename to RunIO
+#ifdef DEBUG_REACT
     DebugIO :: IO cmd -> ReactorCmd cmd
+#endif
     -- | Make a unique named id
     MkReactId :: J.JSString -> (ReactId -> cmd) -> ReactorCmd cmd
     -- | the the rendering function in a Obj, replace any existing render callback
@@ -150,7 +153,9 @@ data ReactorCmd cmd where
 
 -- FIXME: can show ReactId and caption
 instance Show (ReactorCmd cmd) where
+#ifdef DEBUG_REACT
     showsPrec _ (DebugIO _ ) = showString "DebugIO"
+#endif
     showsPrec p (MkReactId s _) = showParen (p >= 11) $
         showString "MkReactId " . shows s
     showsPrec _ (SetRender _ _ ) = showString "SetRender"
@@ -231,6 +236,8 @@ getElementalRef k = delegate $ \fire -> do
     exec' $ GetElementalRef obj k c
 
 -- | Run an arbitrary IO. This should only be used for testing
+#ifdef DEBUG_REACT
+
 debugIO :: (MonadReactor cmd o s m) => IO cmd -> m ()
 debugIO m = exec' $ DebugIO m
 
@@ -245,6 +252,21 @@ debugIOThen m = do
         -- f' :: m a -> cmd
         f' <- codify f
         exec' $ DebugIO (f' <$> m)
+
+#else
+
+debugIO :: (MonadReactor cmd o s m) => IO cmd -> m ()
+debugIO _ = pure ()
+
+debugIO_ :: (MonadReactor cmd o s m) => IO () -> m ()
+debugIO_ _ = pure ()
+
+debugIOThen :: (MonadReactor cmd o s m) => IO (m a) -> m a
+debugIOThen _ = finish (pure ())
+
+#endif
+
+{-# WARNING debugIO, debugIO_, debugIOThen "Use this for debugging only. It will be disabled when DEBUG_REACT is not set" #-}
 
 -- | Update the 'Model' using the current @Entity@ context
 mutate :: (MonadReactor cmd o s m) => ReactId -> ModelState s () -> m ()

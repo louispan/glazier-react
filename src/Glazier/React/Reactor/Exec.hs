@@ -157,7 +157,9 @@ execReactorCmd ::
     )
     => (cmd -> m ()) -> ReactorCmd cmd -> m [cmd]
 execReactorCmd executor c = case c of
+#ifdef DEBUG_REACT
     DebugIO n -> liftIO n >>= (done . executor)
+#endif
     MkReactId n k -> execMkReactId n >>= (done . executor . k)
     SetRender obj w -> done $ execSetRender obj w
     MkObj wid s k -> execMkObj executor wid s >>= (done . executor . k)
