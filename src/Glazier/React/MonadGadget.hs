@@ -45,7 +45,6 @@ import Control.Monad.Delegate
 import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Maybe
-import Data.Diverse.Lens
 import qualified GHCJS.Types as J
 import Glazier.Command
 import Glazier.React.Entity

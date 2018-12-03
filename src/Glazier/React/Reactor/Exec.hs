@@ -14,7 +14,6 @@ module Glazier.React.Reactor.Exec
     ( ReactorEnv(..)
     , mkReactorEnvIO
     , startApp
-    , reactorBackgroundWork
     , execReactorCmd
     , execMkReactId
     , execSetRender
@@ -96,26 +95,21 @@ mkReactorEnvIO = ReactorEnv <$> (newMVar (0 :: Int))
 -- | An example of starting an app using the glazier-react framework
 startApp ::
     ( MonadIO m
-    -- , MonadReader r m
-    -- , Has ReactorEnv r
     , Typeable s -- for J.export
     , AsReactor cmd
     , AsFacet (IO cmd) cmd
     )
     => (cmd -> m ()) -> Widget cmd s s () -> s -> JE.JSRep -> m ()
 startApp executor wid s root = do
-    -- background worker thread
-    -- q <- view ((hasLens @ReactorEnv)._reactorBackgroundEnv)
-    -- liftIO $ void $ forkIO $ forever $ reactorBackgroundWork q
-
-    -- create a mvar to store the app subject
+    -- create a mvar to store the app object
     objVar <- liftIO $ newEmptyMVar
     let setup = do
             obj <- mkObj' wid s
+            -- Create an 'IO cmd' to store the created object into an mvar
             exec' (command_ <$> (putMVar objVar obj))
         cs = (`execState` mempty) $ runProgramT $ evalContT setup
 
-    -- run the initial commands, this will store the app Obj into objVar
+    -- run the initial commands, this will store the app obj into objVar
     traverse_ executor cs
 
     -- Start the App render
@@ -126,28 +120,8 @@ startApp executor wid s root = do
         renderDOM e root
 
         -- Export obj to prevent it from being garbage collected
+        -- objVar is no longer needed, let it fall out of scope
         void $ J.export obj
-
--- | A runner of a queue of tasks that return another task to put into
--- the *back* of the queue after the queue is completely empty.
-reactorBackgroundWork :: TQueue (IO (IO ())) -> IO ()
-reactorBackgroundWork q = do
-    -- wait until there is data
-    void $ atomically $ peekTQueue q
-    -- now consume the entire queue
-    finalActions <- go mempty
-    -- run saved actions that run after there is no more work in the queue
-    fold finalActions
-  where
-    go zs = do
-        xs <- atomically $ flushTQueue q
-        case xs of
-            [] -> pure zs
-            xs' -> do
-                -- run the tasks - this might add more data into the queue
-                ys <- sequence xs'
-                -- keep trying until queue is complete empty
-                go (zs <> DL.fromList ys)
 
 -- | Returns commands that need to be processed last
 execReactorCmd ::
