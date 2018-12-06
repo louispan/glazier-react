@@ -8,7 +8,6 @@ module Glazier.React
     , module Glazier.React.EventTarget
     , module Glazier.React.Gadget
     , module Glazier.React.Entity
-    , module Glazier.React.ReadIORef
     , module Glazier.React.MonadGadget
     , module Glazier.React.Markup
     , module Glazier.React.NativeEvent
@@ -31,6 +30,7 @@ module Glazier.React
     , module Control.Monad.State.Strict
     , module Control.Monad.Trans.Maybe
     , module Control.Monad.Trans.Maybe.Extras
+    , module Glazier.Benign
     ) where
 
 import Control.Also
@@ -58,8 +58,8 @@ import Glazier.React.ReactDOM
 import Glazier.React.ReactId
 import Glazier.React.Reactor
 import Glazier.React.Reactor.Exec
-import Glazier.React.ReadIORef
 import Glazier.React.Model
 import Glazier.React.Obj
 import Glazier.React.Widget
 import Glazier.React.Window
+import Glazier.Benign

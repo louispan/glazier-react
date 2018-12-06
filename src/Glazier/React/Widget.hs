@@ -21,7 +21,7 @@ import Glazier.React.Gadget
 import Glazier.React.Model
 import Glazier.React.Window
 
--- | A 'Widget' is a 'Gadget' that fires 'Either' a 'Window' or a value.
+-- | A 'Widget' is a 'Gadget' that fires 'Either' a 'Window' or an event.
 type Widget cmd o s = ExceptT (Window s ()) (Gadget cmd o s)
 
 -- | Pass the same MonadWidget into this function to verify at compile time
@@ -46,9 +46,6 @@ mapWidget = mapExceptT
 
 display :: Window s () -> Widget cmd o s a
 display = throwError
-
--- display' :: Window s () -> Widget cmd p s ()
--- display' = throwError
 
 overWindow :: (Window s () -> Window s ()) -> Widget cmd o s a -> Widget cmd o s a
 overWindow = withExceptT

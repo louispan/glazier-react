@@ -71,7 +71,7 @@ import Glazier.React.Obj.Internal
 import Glazier.React.ReactDOM
 import Glazier.React.ReactId.Internal
 import Glazier.React.Reactor
-import Glazier.React.ReadIORef
+import Glazier.Benign
 import Glazier.React.Widget
 import Glazier.React.Window
 import qualified JavaScript.Extras as JE
@@ -115,7 +115,7 @@ startApp executor wid s root = do
     -- Start the App render
     liftIO $ do
         obj <- takeMVar objVar
-        markup <- unReadIORef $ (`execStateT` mempty) $ displayObj obj
+        markup <- getBenign $ (`execStateT` mempty) $ displayObj obj
         e <- toElement markup
         renderDOM e root
 
@@ -181,7 +181,7 @@ __render obj win = (`evalMaybeT` J.nullRef) $ do
     lift $ do
         -- render using from mdlRef (doesn't block)
         scn <- readIORef mdlRef
-        (mrkup, _) <- unReadIORef (RWS.execRWST win scn mempty) -- ignore unit writer output
+        (mrkup, _) <- getBenign (RWS.execRWST win scn mempty) -- ignore unit writer output
         a <- JE.toJS <$> toElement mrkup
         pure a
 
@@ -412,7 +412,7 @@ execMutate k obj tick = do
         scn <- takeMVar mdlVar
         putStrLn $ "LOUISDEBUG: execMutate2 " <> J.unpack (reactIdKey k)
         let s = scn ^. _model
-        (c, s') <- unReadIORef $ runStateT tick s
+        (c, s') <- getBenign $ runStateT tick s
         let scn' = scn & _model .~ s'
         -- don't notify ticked listener straight away, but schedule it like rerender.
         -- This is so that if there are multiple mutates, it will try to only fire

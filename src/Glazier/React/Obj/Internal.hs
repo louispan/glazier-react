@@ -5,12 +5,14 @@
 module Glazier.React.Obj.Internal where
 
 import Control.Concurrent
+import Control.Lens
 import Control.Monad.Trans
 import Control.Monad.Trans.Maybe
 import Data.IORef
 import Glazier.React.Model
 import System.Mem.Weak
-import Control.Lens
+import Glazier.Benign.Internal
+import Control.Monad.Morph
 
 data WeakObj s = WeakObj (Weak (IORef (Model s))) (Weak (MVar (Model s)))
 
@@ -54,3 +56,6 @@ deRefWeakObj obj = do
   where
     mdlWkRef = modelWeakRef obj
     mdlWkVar = modelWeakVar obj
+
+benignDeRefWeakObj :: MonadIO m => WeakObj s -> MaybeT (Benign m) (Obj s)
+benignDeRefWeakObj = hoist Benign . deRefWeakObj

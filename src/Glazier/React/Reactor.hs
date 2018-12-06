@@ -21,7 +21,7 @@ import qualified GHCJS.Types as J
 import Glazier.React.EventTarget
 import Glazier.React.Obj
 import Glazier.React.ReactId
-import Glazier.React.ReadIORef
+import Glazier.Benign
 import Glazier.React.Widget
 import Glazier.React.Window
 import qualified JavaScript.Extras as JE
@@ -32,7 +32,7 @@ type AsReactor cmd =
     , AsFacet (ReactorCmd cmd) cmd
     )
 
-type ModelState s = StateT s ReadIORef
+type ModelState s = StateT s (Benign IO)
 
 -- | NB. 'ReactorCmd' is not a functor because of the @Widget cmd@ in 'MkObj'
 data ReactorCmd cmd where

@@ -21,7 +21,7 @@ import qualified GHCJS.Types as J
 import Glazier.React.Component
 import Glazier.React.Markup
 import Glazier.React.ReactId
-import Glazier.React.ReadIORef
+import Glazier.Benign
 import Glazier.React.Model
 import Glazier.React.Obj
 import qualified JavaScript.Extras as JE
@@ -31,7 +31,7 @@ import Data.Semigroup
 #endif
 
 -- The @s@ can be magnified with 'magnifiedModel'
-type Window s = RWST (Model s) () (DL.DList ReactMarkup) ReadIORef
+type Window s = RWST (Model s) () (DL.DList ReactMarkup) (Benign IO)
 
 -- type ModelDisplay x s r = Display (Model x s) r
 ----------------------------------------------------------------------------------
@@ -65,9 +65,9 @@ bh' k n props childs = do
 bindListenerContext :: JE.JSRep -> J.Callback (J.JSVal -> J.JSVal -> IO ()) -> JE.JSRep
 bindListenerContext = js_bindListenerContext
 
-displayObj :: (MonadTrans t, MonadState (DL.DList ReactMarkup) (t ReadIORef)) => Obj s -> t ReadIORef ()
+displayObj :: (MonadTrans t, MonadIO m, MonadState (DL.DList ReactMarkup) (t (Benign m))) => Obj s -> t (Benign m) ()
 displayObj obj = do
-    scn <- lift (doReadIORef (modelRef obj))
+    scn <- lift (benignReadIORef (modelRef obj))
     let scb = scn ^. _plan._shimCallbacks
         renderCb = shimRender scb
         mountedCb = shimMounted scb
