@@ -2,13 +2,13 @@
 -- It is up to the user to import the Event modules as required.
 module Glazier.React
     ( module Glazier.Command
+    , module Glazier.Benign
     , module Glazier.Command.Exec
     , module Glazier.React.Component
     , module Glazier.React.Element
     , module Glazier.React.EventTarget
     , module Glazier.React.Gadget
     , module Glazier.React.Entity
-    , module Glazier.React.MonadGadget
     , module Glazier.React.Markup
     , module Glazier.React.NativeEvent
     , module Glazier.React.Notice
@@ -30,7 +30,6 @@ module Glazier.React
     , module Control.Monad.State.Strict
     , module Control.Monad.Trans.Maybe
     , module Control.Monad.Trans.Maybe.Extras
-    , module Glazier.Benign
     ) where
 
 import Control.Also
@@ -43,6 +42,7 @@ import Control.Monad.State.Strict
 import Control.Monad.Trans
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Maybe.Extras
+import Glazier.Benign
 import Glazier.Command
 import Glazier.Command.Exec
 import Glazier.React.Component
@@ -50,16 +50,14 @@ import Glazier.React.Element
 import Glazier.React.Entity
 import Glazier.React.EventTarget
 import Glazier.React.Gadget
-import Glazier.React.MonadGadget
 import Glazier.React.Markup
+import Glazier.React.Model
 import Glazier.React.NativeEvent
 import Glazier.React.Notice
+import Glazier.React.Obj
 import Glazier.React.ReactDOM
 import Glazier.React.ReactId
 import Glazier.React.Reactor
 import Glazier.React.Reactor.Exec
-import Glazier.React.Model
-import Glazier.React.Obj
 import Glazier.React.Widget
 import Glazier.React.Window
-import Glazier.Benign

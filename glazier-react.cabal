@@ -40,7 +40,6 @@ library
                        Glazier.React.Reactor
                        Glazier.React.Reactor.Exec
                        Glazier.React.Model
-                       Glazier.React.MonadGadget
                        Glazier.React.Obj
                        Glazier.React.Obj.Internal
                        Glazier.React.Widget

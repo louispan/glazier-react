@@ -66,7 +66,6 @@ import Glazier.React.EventTarget
 import Glazier.React.Gadget
 import Glazier.React.Markup
 import Glazier.React.Model
-import Glazier.React.MonadGadget
 import Glazier.React.Obj.Internal
 import Glazier.React.ReactDOM
 import Glazier.React.ReactId.Internal
@@ -96,16 +95,16 @@ mkReactorEnvIO = ReactorEnv <$> (newMVar (0 :: Int))
 startApp ::
     ( MonadIO m
     , Typeable s -- for J.export
-    , AsReactor cmd
-    , AsFacet (IO cmd) cmd
+    , AsReactor c
+    , AsFacet (IO c) c
     )
-    => (cmd -> m ()) -> Widget cmd s s () -> s -> JE.JSRep -> m ()
+    => (c -> m ()) -> Widget c s s () -> s -> JE.JSRep -> m ()
 startApp executor wid s root = do
     -- create a mvar to store the app object
     objVar <- liftIO $ newEmptyMVar
     let setup = do
             obj <- mkObj' wid s
-            -- Create an 'IO cmd' to store the created object into an mvar
+            -- Create an 'IO c' to store the created object into an mvar
             exec' (command_ <$> (putMVar objVar obj))
         cs = (`execState` mempty) $ runProgramT $ evalContT setup
 
@@ -127,12 +126,12 @@ startApp executor wid s root = do
 execReactorCmd ::
     ( MonadUnliftIO m
     , MonadReader r m
-    , AsReactor cmd
+    , AsReactor c
     , Has ReactorEnv r
     )
-    => (cmd -> m ()) -> ReactorCmd cmd -> m [cmd]
+    => (c -> m ()) -> ReactorCmd c -> m [c]
 execReactorCmd executor c = case c of
-#ifdef DEBUG_REACT
+#ifdef DEBUG_GLAZIER
     DebugIO n -> liftIO n >>= (done . executor)
 #endif
     MkReactId n k -> execMkReactId n >>= (done . executor . k)
@@ -248,10 +247,10 @@ execMkObj ::
     ( MonadIO m
     , Has ReactorEnv r
     , MonadReader r m
-    , AsReactor cmd
+    , AsReactor c
     )
-    => (cmd -> m ())
-    -> Widget cmd s s ()
+    => (c -> m ())
+    -> Widget c s s ()
     -> s
     -> m (Obj s)
 execMkObj executor wid s = do
@@ -335,9 +334,9 @@ execGetModel obj = do
 
 execRerender ::
     ( MonadIO m
-    , AsReactor cmd
+    , AsReactor c
     )
-    => WeakObj s -> m [cmd]
+    => WeakObj s -> m [c]
 execRerender obj = (`evalMaybeT` []) $ do
     liftIO $ putStrLn "LOUISDEBUG: execRerender"
     obj' <- deRefWeakObj obj
@@ -350,9 +349,9 @@ execRerender obj = (`evalMaybeT` []) $ do
         pure cs
 
 __rerenderState ::
-    ( AsReactor cmd
+    ( AsReactor c
     )
-    => Bool -> WeakObj s -> State (Model s) [cmd]
+    => Bool -> WeakObj s -> State (Model s) [c]
 __rerenderState rerenderSuppressed obj = do
     scn <- get
     -- don't rerender straight away, but schedule a rerender
@@ -396,12 +395,12 @@ execDoRerender obj = (`evalMaybeT` ()) $ do
 -- Returns (cmds to process last, cmds to process first)
 execMutate ::
     ( MonadIO m
-    , AsReactor cmd
+    , AsReactor c
     )
     => ReactId
     -> WeakObj s
-    -> ModelState s cmd
-    -> MaybeT m ([cmd], cmd)
+    -> ModelState s c
+    -> MaybeT m ([c], c)
 execMutate k obj tick = do
     liftIO $ putStrLn $ "LOUISDEBUG: execMutate " <> J.unpack (reactIdKey k)
     obj' <- deRefWeakObj obj
@@ -444,9 +443,9 @@ execMutate k obj tick = do
 -- There should only be one execNotifyMutated per ReactId from multiple Mutate with the same ReactId
 execNotifyMutated ::
     ( MonadIO m
-    , AsReactor cmd
+    , AsReactor c
     )
-    => ReactId -> WeakObj s -> m [cmd]
+    => ReactId -> WeakObj s -> m [c]
 execNotifyMutated k obj = (`evalMaybeT` []) $ do
     liftIO $ putStrLn $ "LOUISDEBUG: execNotifyMutated " <> J.unpack (reactIdKey k)
     obj' <- deRefWeakObj obj
@@ -470,9 +469,9 @@ execNotifyMutated k obj = (`evalMaybeT` []) $ do
 -- There should only be one execNotifyMutated per ReactId from multiple Mutate with the same ReactId
 execResetMutation ::
     ( MonadIO m
-    , AsReactor cmd
+    , AsReactor c
     )
-    => ReactId -> WeakObj s -> m [cmd]
+    => ReactId -> WeakObj s -> m [c]
 execResetMutation k obj = (`evalMaybeT` []) $ do
     liftIO $ putStrLn $ "LOUISDEBUG: execResetMutation " <> J.unpack (reactIdKey k)
     obj' <- deRefWeakObj obj
@@ -557,10 +556,10 @@ data Freshness = Existing | Fresh
 execGetElementalRef ::
     ( MonadUnliftIO m
     )
-    => (cmd -> m ())
+    => (c -> m ())
     -> WeakObj s
     -> ReactId
-    -> (EventTarget -> cmd)
+    -> (EventTarget -> c)
     -> m ()
 execGetElementalRef executor obj k f = (`evalMaybeT` ()) $ do
     liftIO $ putStrLn "LOUISDEBUG: execGetElementalRef"
@@ -649,12 +648,12 @@ getOrRegisterRefCoreListener obj k pln = do
             putMVar mdlVar scn'
 
 execRegisterReactListener :: (NFData a, MonadUnliftIO m)
-    => (cmd -> m ())
+    => (c -> m ())
     -> WeakObj s
     -> ReactId
     -> J.JSString
     -> (JE.JSRep -> MaybeT IO a)
-    -> (a -> cmd)
+    -> (a -> c)
     -> m ()
 execRegisterReactListener executor obj k n goStrict goLazy = void . runMaybeT $ do
     liftIO $ putStrLn $ "LOUISDEBUG: execRegisterReactListener " <> J.unpack (reactIdKey k)
@@ -696,9 +695,9 @@ mappendListener :: (J.JSVal -> IO (), IO ()) -> (J.JSVal -> IO (), IO ()) -> (J.
 mappendListener (f1, g1) (f2, g2) = (\x -> f1 x *> f2 x, g1 *> g2)
 
 execRegisterMutatedListener :: (MonadUnliftIO m)
-    => (cmd -> m ())
+    => (c -> m ())
     -> WeakObj s
-    -> (ReactId -> cmd)
+    -> (ReactId -> c)
     -> m ()
 execRegisterMutatedListener executor obj f = void . runMaybeT $ do
     liftIO $ putStrLn "LOUISDEBUG: execRegisterMutatedListener"
@@ -714,9 +713,9 @@ execRegisterMutatedListener executor obj f = void . runMaybeT $ do
         putMVar mdlVar scn'
 
 execRegisterMountedListener :: (MonadUnliftIO m)
-    => (cmd -> m ())
+    => (c -> m ())
     -> WeakObj s
-    -> cmd
+    -> c
     -> m ()
 execRegisterMountedListener executor obj c = void . runMaybeT $ do
     liftIO $ putStrLn "LOUISDEBUG: execRegisterMountedListener"
@@ -732,9 +731,9 @@ execRegisterMountedListener executor obj c = void . runMaybeT $ do
         putMVar mdlVar scn'
 
 execRegisterRenderedListener :: (MonadUnliftIO m)
-    => (cmd -> m ())
+    => (c -> m ())
     -> WeakObj s
-    -> cmd
+    -> c
     -> m ()
 execRegisterRenderedListener executor obj c = void . runMaybeT $ do
     liftIO $ putStrLn "LOUISDEBUG: execRegisterRenderedListener"
@@ -750,9 +749,9 @@ execRegisterRenderedListener executor obj c = void . runMaybeT $ do
         putMVar mdlVar scn'
 
 execRegisterNextRenderedListener :: (MonadUnliftIO m)
-    => (cmd -> m ())
+    => (c -> m ())
     -> WeakObj s
-    -> cmd
+    -> c
     -> m ()
 execRegisterNextRenderedListener executor obj c = void . runMaybeT $ do
     liftIO $ putStrLn "LOUISDEBUG: execRegisterNextRenderedListener"
@@ -773,12 +772,12 @@ execRegisterDOMListener ::
     , Has ReactorEnv r
     , MonadReader r m
     )
-    => (cmd -> m ())
+    => (c -> m ())
     -> WeakObj s
     -> JE.JSRep
     -> J.JSString
     -> (JE.JSRep -> MaybeT IO a)
-    -> (a -> cmd)
+    -> (a -> c)
     -> m ()
 execRegisterDOMListener executor obj j n goStrict goLazy = void . runMaybeT $ do
     liftIO $ putStrLn "LOUISDEBUG: execRegisterDOMListener"
