@@ -97,14 +97,14 @@ data ReactorCmd c where
     -- | Private: Renders the object (will only do something first time after Rerender)
     DoRerender :: WeakObj s -> ReactorCmd c
     -- | Update and rerender.
-    Mutate :: J.JSString -> ReactId -> WeakObj s -> ModelState s c -> ReactorCmd c
+    Mutate :: WeakObj s -> J.JSString -> ReactId -> ModelState s c -> ReactorCmd c
     -- | Private: Calls the model mutatedListener
     -- Should only have one of this per ReactId for multiple Mutate with the same ReactId
-    NotifyMutated :: ReactId -> WeakObj s -> ReactorCmd c
+    NotifyMutated :: WeakObj s -> ReactId -> ReactorCmd c
     -- | Private: Resets the mutated state for this ReactId
     -- If there are no more pending mutations, then rerender.
     -- Should only have one of this per ReactId for multiple Mutate with the same ReactId
-    ResetMutation :: ReactId -> WeakObj s -> ReactorCmd c
+    ResetMutation :: WeakObj s -> ReactId -> ReactorCmd c
     -- | Create and register a dom callback
     RegisterDOMListener :: NFData a
         => WeakObj s
@@ -157,11 +157,16 @@ instance Show (ReactorCmd c) where
     showsPrec _ (GetElementalRef _ _ _) = showString "GetElementalRef"
     showsPrec _ (Rerender _) = showString "Rerender"
     showsPrec _ (DoRerender _) = showString "DoRreender_"
-    showsPrec _ (Mutate _ _ _ _) = showString "Mutate"
-    showsPrec _ (NotifyMutated _ _) = showString "NotifyMutated"
-    showsPrec _ (ResetMutation _ _) = showString "ResetMutation"
-    showsPrec _ (RegisterDOMListener _ _ _ _ _) = showString "RegisterDOMListener"
-    showsPrec _ (RegisterReactListener _ _ _ _ _) = showString "RegisterReactListener"
+    showsPrec p (Mutate _ ctx k _) = showParen (p >= 11) $
+        shows ctx . showString ": Mutate " . shows k
+    showsPrec p (NotifyMutated _ k) = showParen (p >= 11) $
+        showString "NotifyMutated " . shows k
+    showsPrec p (ResetMutation _ k) = showParen (p >= 11) $
+        showString "ResetMutation " . shows k
+    showsPrec p (RegisterDOMListener _ k n _ _) = showParen (p >= 11) $
+        showString "RegisterDOMListener " . shows k . showString ":" . shows n
+    showsPrec p (RegisterReactListener _ k n _ _) = showParen (p >= 11) $
+        showString "RegisterReactListener " . shows k . showString ":" . shows n
     showsPrec _ (RegisterMountedListener _ _) = showString "RegisterMountedListener"
     showsPrec _ (RegisterRenderedListener _ _) = showString "RegisterRenderedListener"
     showsPrec _ (RegisterNextRenderedListener _ _) = showString "RegisterNextRenderedListener"
@@ -274,7 +279,7 @@ mutate k m = do
     Entity obj slf <- ask
     cap <- get
     let m' = zoom slf m
-    exec' $ Mutate cap k obj (command_ <$> m')
+    exec' $ Mutate obj cap k (command_ <$> m')
 
 -- | Update the 'Model' using the current @Entity@ context,
 -- and also return the next action to execute.
@@ -288,7 +293,7 @@ mutateThen k m = do
         -- f' :: m a -> c
         f' <- codify f
         cap <- get
-        exec' $ Mutate cap k obj (f' <$> m')
+        exec' $ Mutate obj cap k (f' <$> m')
 
 -- | Create a callback for a 'JE.JSRep' and add it to this elementals's dlist of listeners.
 -- 'domTrigger' does not expect a 'Notice' as it is not part of React.

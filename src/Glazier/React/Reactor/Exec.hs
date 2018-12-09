@@ -141,13 +141,13 @@ execReactorCmd executor c = case c of
     GetElementalRef obj k f -> done $ execGetElementalRef executor obj k f
     Rerender obj -> execRerender obj
     DoRerender obj -> done $ execDoRerender obj
-    Mutate cap k obj tick -> (`evalMaybeT` []) $ do
+    Mutate obj cap k tick -> (`evalMaybeT` []) $ do
         liftIO $ putStrLn $ "Caption: " <> J.unpack cap
-        (lastCmds, nextCmd) <- execMutate k obj tick
+        (lastCmds, nextCmd) <- execMutate obj k tick
         lift $ executor nextCmd
         pure lastCmds
-    NotifyMutated k obj -> execNotifyMutated k obj
-    ResetMutation k obj -> execResetMutation k obj
+    NotifyMutated obj k -> execNotifyMutated obj k
+    ResetMutation obj k -> execResetMutation obj k
     RegisterDOMListener obj j n goStrict goLazy -> done $ execRegisterDOMListener executor obj j n goStrict goLazy
     RegisterReactListener obj k n goStrict goLazy -> done $ execRegisterReactListener executor obj k n goStrict goLazy
     RegisterMountedListener obj k -> done $ execRegisterMountedListener executor obj k
@@ -397,11 +397,11 @@ execMutate ::
     ( MonadIO m
     , AsReactor c
     )
-    => ReactId
-    -> WeakObj s
+    => WeakObj s
+    -> ReactId
     -> ModelState s c
     -> MaybeT m ([c], c)
-execMutate k obj tick = do
+execMutate obj k tick = do
     liftIO $ putStrLn $ "LOUISDEBUG: execMutate " <> J.unpack (reactIdKey k)
     obj' <- deRefWeakObj obj
     let mdlRef = modelRef obj'
@@ -419,7 +419,7 @@ execMutate k obj tick = do
         -- 'execResetMutation' is now responsible for triggering a rerender,
         -- so suppress rerender until after 'execResetMutation' is called.
         let scn'' = scn' & _plan._rerendering .~ RerenderSuppressed
-            notifyCmd = [command' $ NotifyMutated k obj]
+            notifyCmd = [command' $ NotifyMutated obj k]
             -- Only fire NotifyMutated once for the same ReactId in processing cycle.
             (c', scn''') = case S.member k (scn' ^. _plan._mutations) of
                 False -> (notifyCmd, scn'' & _plan._mutations %~ (S.insert k))
@@ -445,8 +445,8 @@ execNotifyMutated ::
     ( MonadIO m
     , AsReactor c
     )
-    => ReactId -> WeakObj s -> m [c]
-execNotifyMutated k obj = (`evalMaybeT` []) $ do
+    => WeakObj s -> ReactId -> m [c]
+execNotifyMutated obj k = (`evalMaybeT` []) $ do
     liftIO $ putStrLn $ "LOUISDEBUG: execNotifyMutated " <> J.unpack (reactIdKey k)
     obj' <- deRefWeakObj obj
     let mdlVar = modelVar obj'
@@ -461,7 +461,7 @@ execNotifyMutated k obj = (`evalMaybeT` []) $ do
                 -- run mutatedListener
                 cb k
                 -- schedule reset mutation and rerendering
-                pure [command' $ ResetMutation k obj]
+                pure [command' $ ResetMutation obj k]
             -- notify not required (eg. already processed)
             else pure []
 
@@ -471,8 +471,8 @@ execResetMutation ::
     ( MonadIO m
     , AsReactor c
     )
-    => ReactId -> WeakObj s -> m [c]
-execResetMutation k obj = (`evalMaybeT` []) $ do
+    => WeakObj s -> ReactId -> m [c]
+execResetMutation obj k = (`evalMaybeT` []) $ do
     liftIO $ putStrLn $ "LOUISDEBUG: execResetMutation " <> J.unpack (reactIdKey k)
     obj' <- deRefWeakObj obj
     let mdlRef = modelRef obj'
