@@ -1,7 +1,5 @@
 module Glazier.React.ReactId
     ( ReactId -- constructor not exported
-    , reactIdName
-    , reactIdNum
     , reactIdKey
     , reactIdKey'
     )

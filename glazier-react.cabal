@@ -13,6 +13,11 @@ build-type:          Simple
 extra-source-files:  README.md
 cabal-version:       >=1.10
 
+Flag debug
+  Description: Enable debug io
+  Default:     False
+  Manual:      True
+
 library
   hs-source-dirs:      src
   js-sources:          jsbits/react.js
@@ -44,7 +49,8 @@ library
                        Glazier.React.Obj.Internal
                        Glazier.React.Widget
                        Glazier.React.Window
-  build-depends:       base >= 4.7 && < 5
+  build-depends:       base >= 4.9.0 && < 5
+                     , aeson >= 0.11
                      , alternators >= 1.0
                      , containers >= 0.5
                      , data-diverse >= 4.6
@@ -52,7 +58,7 @@ library
                      , deepseq >= 1.4
                      , dlist >= 0.8
                      , glazier >= 1.1
-                     , javascript-extras >= 0.5
+                     , javascript-extras >= 0.6
                      , lens >= 4
                      , lens-misc >= 0
                      , mmorph >= 1
@@ -61,15 +67,19 @@ library
                      , stm >= 2.4.5
                      , tagged >= 0.8
                      , transformers >= 0.4
+                     , unordered-containers >= 0.2.7
                      , unliftio >= 0.2
                      , unliftio-core >= 0.1
   default-language:    Haskell2010
   default-extensions:  ApplicativeDo
+  -- FIXME: How to only define cpp options in executable?
   ghc-options:         -Wall -Wredundant-constraints
+  if flag(Debug)
+    cpp-options:     -DDEBUGIO
   if impl(ghcjs)
     build-depends: ghcjs-base
   if !impl(ghcjs)
-    build-depends: ghcjs-base-stub >= 0.2
+    build-depends: ghcjs-base-stub >= 0.2.1
 
 source-repository head
   type:     git

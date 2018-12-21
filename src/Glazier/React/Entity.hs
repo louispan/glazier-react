@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Glazier.React.Entity where
 
@@ -10,7 +11,9 @@ import Glazier.React.Obj
 
 ----------------------------------------------------------------------------------
 
-data Entity o s = Entity (WeakObj o) (Traversal' o s)
+-- | Contains a 'WeakObj' pointer to a data structure,
+-- and a 'Traversal'' to focus on a subset of the data structure.
+data Entity o s = Entity { entity :: WeakObj o, this :: Traversal' o s }
 
 instance GetWeakObj (Entity o s) o where
     weakObj (Entity o _) = o
@@ -25,4 +28,4 @@ magnifiedEntity ::
     => Traversal' b a -> m r -> n r
 magnifiedEntity l = magnify (to go)
   where
-    go (Entity obj this) = Entity obj (this.l)
+    go Entity {..} = Entity entity (this.l)

@@ -3,7 +3,9 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
@@ -50,15 +52,19 @@ import Control.Monad.Trans.State.Strict
 import Data.Diverse.Lens
 import qualified Data.DList as DL
 import Data.Foldable
+import qualified Data.HashMap.Strict as HM
 import Data.IORef
 import qualified Data.JSString as J
+import Data.List
 import Data.Maybe
 import qualified Data.Set as S
 import Data.Typeable
+import GHC.Stack
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Foreign.Callback.Internal as J
 import qualified GHCJS.Foreign.Export as J
 import qualified GHCJS.Types as J
+import Glazier.Benign
 import Glazier.Command
 import Glazier.React.Component
 import Glazier.React.Entity
@@ -70,19 +76,21 @@ import Glazier.React.Obj.Internal
 import Glazier.React.ReactDOM
 import Glazier.React.ReactId.Internal
 import Glazier.React.Reactor
-import Glazier.Benign
 import Glazier.React.Widget
 import Glazier.React.Window
 import qualified JavaScript.Extras as JE
+import System.IO
 import System.Mem.Weak
 
 #if MIN_VERSION_base(4,9,0) && !MIN_VERSION_base(4,10,0)
 import Data.Semigroup
 #endif
 
-newtype ReactorEnv = ReactorEnv
+data ReactorEnv = ReactorEnv
     { reactIdVar :: MVar Int
-    -- , reactorBackgroundEnv :: TQueue (IO (IO ()))
+    , defaultLogLevel :: IORef LogLevel
+    -- overrides defaultLogLevel
+    , moduleLogLevel :: IORef (HM.HashMap String LogLevel)
     }
 
 makeLenses_ ''ReactorEnv
@@ -90,6 +98,8 @@ makeLenses_ ''ReactorEnv
 mkReactorEnvIO :: IO (ReactorEnv)
 -- mkReactorEnvIO = ReactorEnv <$> (newMVar (0 :: Int)) <*> newTQueueIO
 mkReactorEnvIO = ReactorEnv <$> (newMVar (0 :: Int))
+    <*> (newIORef Trace) -- FIXME: Info
+    <*> (newIORef mempty)
 
 -- | An example of starting an app using the glazier-react framework
 startApp ::
@@ -131,9 +141,10 @@ execReactorCmd ::
     )
     => (c -> m ()) -> ReactorCmd c -> m [c]
 execReactorCmd executor c = case c of
-#ifdef DEBUG_GLAZIER
+#ifdef DEBUGIO
     DebugIO n -> liftIO n >>= (done . executor)
 #endif
+    LogLn stk lvl m -> done $ execLogLn stk lvl m
     MkReactId n k -> execMkReactId n >>= (done . executor . k)
     SetRender obj w -> done $ execSetRender obj w
     MkObj wid s k -> execMkObj executor wid s >>= (done . executor . k)
@@ -141,8 +152,7 @@ execReactorCmd executor c = case c of
     GetElementalRef obj k f -> done $ execGetElementalRef executor obj k f
     Rerender obj -> execRerender obj
     DoRerender obj -> done $ execDoRerender obj
-    Mutate obj cap k tick -> (`evalMaybeT` []) $ do
-        liftIO $ putStrLn $ "Caption: " <> J.unpack cap
+    Mutate obj k tick -> (`evalMaybeT` []) $ do
         (lastCmds, nextCmd) <- execMutate obj k tick
         lift $ executor nextCmd
         pure lastCmds
@@ -158,6 +168,54 @@ execReactorCmd executor c = case c of
     done f = (\() -> []) <$> f
 
 -----------------------------------------------------------------
+execLogLn ::
+    ( MonadIO m
+    , Has ReactorEnv r
+    , MonadReader r m
+    )
+    => CallStack -> LogLevel -> Benign IO J.JSString -> m ()
+execLogLn stk lvl m = do
+    defLvlVar <- view ((hasLens @ReactorEnv)._defaultLogLevel)
+    mdlLvlsVar <- view ((hasLens @ReactorEnv)._moduleLogLevel)
+    liftIO $ do
+        mLvl <- runMaybeT $ do
+            mdl <- MaybeT $ pure mFstModule
+            mdlLvls <- lift $ readIORef mdlLvlsVar
+            MaybeT $ pure $ HM.lookup mdl mdlLvls
+        allowedLvl <- maybe (readIORef defLvlVar) pure mLvl
+        when (lvl >= allowedLvl) $ case lvl of
+            LogTrace -> liftIO $ getBenign m >>= (go js_logInfo  "TRACE " $ prettyStk fstStk)
+            LogDebug -> liftIO $ getBenign m >>= (go js_logInfo  "DEBUG " $ prettyStk fstStk)
+            LogInfo -> liftIO $ getBenign m >>=  (go js_logInfo  "INFO  " $ prettyStk fstStk)
+            LogWarn -> liftIO $ getBenign m >>=  (go js_logWarn  "WARN  " $ prettyStk fstStk)
+            LogError -> liftIO $ getBenign m >>= (go js_logError "ERROR " $ prettyStk stks)
+  where
+    go f hdr ftr a = f $ hdr <> a <> ftr
+    stks = getCallStack stk
+    mFstStk = listToMaybe stks
+    mFstSrcLoc = snd <$> mFstStk
+    mFstModule = srcLocModule <$> mFstSrcLoc
+    fstStk = maybeToList $ mFstStk
+    prettyStk s = J.pack $ " [" <> prettyCallStack' s <> "]"
+
+    -- Modified from GHC.Stack to be shorter
+    prettyCallStack' :: [(String, SrcLoc)] -> String
+    prettyCallStack' = intercalate "\n " . prettyCallStackLines'
+
+    prettyCallStackLines' :: [(String, SrcLoc)] -> [String]
+    prettyCallStackLines' = fmap prettyCallSite'
+
+    prettyCallSite' :: (String, SrcLoc) -> String
+    prettyCallSite' (f, loc) = f ++ "@" ++ prettySrcLoc' loc
+
+    prettySrcLoc' :: SrcLoc -> String
+    prettySrcLoc' SrcLoc {..}
+        = foldr (++) ""
+            [ srcLocModule, ":"
+            , show srcLocStartLine, ":"
+            , show srcLocStartCol
+            ]
+
 execMkReactId ::
     ( MonadIO m
     , Has ReactorEnv r
@@ -171,7 +229,7 @@ execMkReactId n = do
         i <- takeMVar v
         let i' = JE.safeIncrement i
         putMVar v i'
-        pure $ ReactId n i'
+        pure $ ReactId (n, i')
 
 __render :: WeakObj s -> Window s () -> IO J.JSVal
 __render obj win = (`evalMaybeT` J.nullRef) $ do
@@ -255,7 +313,7 @@ execMkObj ::
     -> m (Obj s)
 execMkObj executor wid s = do
     liftIO $ putStrLn "LOUISDEBUG: execMkObj"
-    k <- execMkReactId (J.pack "plan")
+    k <- execMkReactId (J.pack "obj")
     (obj, cs) <- liftIO $ do
         -- create shim with fake callbacks for now
         let newPlan = Plan
@@ -303,7 +361,7 @@ execMkObj executor wid s = do
         let gad = runExceptT wid
             gad' = gad `bindLeft` setRndr
             gad'' = (either id id) <$> gad'
-            tick = runProgramT $ (`evalStateT` mempty) $ runGadget gad'' (Entity obj id) pure
+            tick = runProgramT $ runGadget gad'' (Entity obj id) pure
             cs = execState tick mempty
             -- update the model to include the real shimcallbacks
             scn' = scn & _plan._shimCallbacks .~ ShimCallbacks renderCb mountedCb renderedCb refCb
@@ -820,6 +878,18 @@ foreign import javascript unsafe
     "if ($1 && $1['removeEventListener']) { $1['removeEventListener']($2, $3); }"
     js_removeDomListener :: J.JSVal -> J.JSString -> J.JSVal -> IO ()
 
+foreign import javascript unsafe
+    "console.info($1);"
+    js_logInfo :: J.JSString -> IO ()
+
+foreign import javascript unsafe
+    "console.warn($1);"
+    js_logWarn :: J.JSString -> IO ()
+
+foreign import javascript unsafe
+    "console.error($1);"
+    js_logError :: J.JSString -> IO ()
+
 #else
 
 js_addDomListener :: J.JSVal -> J.JSString -> J.JSVal -> IO ()
@@ -827,5 +897,14 @@ js_addDomListener _ _ _ = pure mempty
 
 js_removeDomListener :: J.JSVal -> J.JSString -> J.JSVal -> IO ()
 js_removeDomListener _ _ _ = pure mempty
+
+js_logInfo :: J.JSString -> IO ()
+js_logInfo = putStrLn . J.unpack
+
+js_logWarn :: J.JSString -> IO ()
+js_logWarn = hPutStrLn stderr . J.unpack
+
+js_logError :: J.JSString -> IO ()
+js_logError = hPutStrLn stderr . J.unpack
 
 #endif

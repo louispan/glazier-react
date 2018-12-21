@@ -45,11 +45,13 @@ extra-deps:
 - git: git@github.com:ghcjs/ghcjs-base.git
   commit: HEAD
 - lens-misc-0.0.2.0
-- javascript-extras-0.5.0.0
+# - javascript-extras-0.5.0.0
+- '/Users/louis/repo/js/javascript-extras'
 - alternators-1.0.0.0
 - data-diverse-4.6.0.0
 - data-diverse-lens-4.3.0.0
-- ghcjs-base-stub-0.2.0.0
+# - ghcjs-base-stub-0.2.0.0
+- '/Users/louis/repo/js/ghcjs-base-stub'
 - '/Users/louis/repo/hs/glazier'
 # - glazier-1.0.0.0
 

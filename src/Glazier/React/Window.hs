@@ -18,12 +18,12 @@ import qualified Data.DList as DL
 import qualified Data.Map.Strict as M
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
+import Glazier.Benign
 import Glazier.React.Component
 import Glazier.React.Markup
-import Glazier.React.ReactId
-import Glazier.Benign
 import Glazier.React.Model
 import Glazier.React.Obj
+import Glazier.React.ReactId
 import qualified JavaScript.Extras as JE
 
 #if MIN_VERSION_base(4,9,0) && !MIN_VERSION_base(4,10,0)
@@ -84,6 +84,15 @@ displayObj obj = do
         , ("ref", JE.toJSR refCb)
         , ("key", reactIdKey' k)
         ]
+
+    lf (JE.toJSR shimComponent)
+        [ ("render", JE.toJSR renderCb)
+        , ("mounted", JE.toJSR mountedCb)
+        , ("rendered", JE.toJSR renderedCb)
+        , ("ref", JE.toJSR refCb)
+        , ("key", reactIdKey' k)
+        ]
+
 
 #ifdef __GHCJS__
 

@@ -30,6 +30,7 @@ module Glazier.React
     , module Control.Monad.State.Strict
     , module Control.Monad.Trans.Maybe
     , module Control.Monad.Trans.Maybe.Extras
+    , module GHC.Stack
     ) where
 
 import Control.Also
@@ -42,6 +43,7 @@ import Control.Monad.State.Strict
 import Control.Monad.Trans
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Maybe.Extras
+import GHC.Stack
 import Glazier.Benign
 import Glazier.Command
 import Glazier.Command.Exec

@@ -124,8 +124,6 @@ instance Show Plan where
 
 -- | A 'Model' contains interactivity data for all widgets as well as the model data.
 data Model s = Model
-    -- commands could be in a writer monad, but then you can't get
-    -- a MonadWriter with ContT, but you can have a MonadState with ContT.
     { plan :: Plan
     , model :: s
     } deriving (G.Generic, Show, Functor)
@@ -154,6 +152,12 @@ zoomedModel ::
     )
     => LensLike' (Zoomed m r) b a -> m r -> n r
 zoomedModel l = zoom (editModel l)
+
+data Proto s = Proto
+    { planId2 :: ReactId
+    , model2 :: s
+    } deriving (G.Generic, Show, Functor)
+
 
 ----------------------------------------------------------------------------------
 
