@@ -27,6 +27,9 @@ class GetWeakObj c s | c -> s where
     _weakObj = to weakObj
     weakObj :: c -> WeakObj s
 
+instance GetWeakObj (WeakObj s) s where
+    weakObj = id
+
 -- | Something with a ref for nonblocking reads
 -- and a MVar for synchronized updates
 -- as well as the corresponding 'Weak' pointer.

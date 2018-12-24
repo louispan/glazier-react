@@ -44,6 +44,7 @@ packages:
 extra-deps:
 - git: git@github.com:ghcjs/ghcjs-base.git
   commit: HEAD
+- aeson-1.1.2.0
 - lens-misc-0.0.2.0
 # - javascript-extras-0.5.0.0
 - '/Users/louis/repo/js/javascript-extras'

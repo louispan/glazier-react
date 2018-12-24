@@ -28,7 +28,7 @@ runGadget ::
 runGadget x l = runContT (runReaderT x l)
 
 gadgetWith :: GetWeakObj o s => o -> Gadget c s s a -> ContT () (Program c) a
-gadgetWith obj = (`runReaderT` (Entity (weakObj obj) id))
+gadgetWith obj = (`runReaderT` (Entity id (weakObj obj)))
 
 evalGadget :: Gadget c o s () -> Entity o s -> (Program c) ()
 evalGadget gad ent = evalContT . (`runReaderT` ent) $ gad

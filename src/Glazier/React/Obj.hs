@@ -7,6 +7,7 @@ module Glazier.React.Obj
 , Obj
 , modelRef
 , modelVar
+, benignDeRefWeakObj
 ) where
 
 import Glazier.React.Obj.Internal

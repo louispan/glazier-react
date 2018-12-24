@@ -23,6 +23,7 @@ library
   js-sources:          jsbits/react.js
                        jsbits/registry.js
   exposed-modules:     Glazier.React
+                       Glazier.React.Aeson
                        Glazier.React.Component
                        Glazier.React.Component.Internal
                        Glazier.React.Element
@@ -50,7 +51,7 @@ library
                        Glazier.React.Widget
                        Glazier.React.Window
   build-depends:       base >= 4.9.0 && < 5
-                     , aeson >= 0.11
+                     , aeson >= 1.1.2.0
                      , alternators >= 1.0
                      , containers >= 0.5
                      , data-diverse >= 4.6

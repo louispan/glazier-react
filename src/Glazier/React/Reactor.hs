@@ -30,7 +30,9 @@ module Glazier.React.Reactor
     , mkObj'
     , withMkObj
     , getModel
+    , getModelOf
     , getElementalRef
+    , getElementalRefOf
     , rerender
     , mutate
     , mutateThen
@@ -52,8 +54,6 @@ import Control.Monad.Delegate
 import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Maybe
-import Data.Aeson
-import Data.ByteString
 import Data.Diverse.Lens
 import qualified Data.JSString as J
 import GHC.Stack
@@ -67,6 +67,7 @@ import Glazier.React.ReactId
 import Glazier.React.Widget
 import Glazier.React.Window
 import qualified JavaScript.Extras as JE
+import JavaScript.Extras.Aeson.Instances ()
 
 -----------------------------------------------------------------
 
@@ -108,7 +109,7 @@ data ReactorCmd c where
     LogLn :: CallStack -> LogLevel -> Benign IO J.JSString -> ReactorCmd c
     -- | Make a unique named id
     MkReactId :: J.JSString -> (ReactId -> c) -> ReactorCmd c
-    -- | the the rendering function in a Obj, replace any existing render callback
+    -- | Set the the rendering function in a Obj, replace any existing render callback
     SetRender :: WeakObj s -> Window s () -> ReactorCmd c
     -- | Make a fully initialized object from a widget and model
     MkObj :: Widget c s s () -> s -> (Obj s -> c) -> ReactorCmd c
@@ -276,13 +277,13 @@ showCmd c = pure (J.pack $ show c)
 tracedExec :: (Show cmd, AsReactor c, AsFacet cmd c, MonadCommand c m)
     => CallStack -> cmd -> m ()
 tracedExec stk c = do
-    exec' $ LogLn stk Trace (showCmd c)
+    exec' $ LogLn stk LogTrace (showCmd c)
     exec c
 
 tracedExec' :: (Show (cmd c), AsReactor c, AsFacet (cmd c) c, MonadCommand c m)
     => CallStack -> cmd c -> m ()
 tracedExec' stk c = do
-    exec' $ LogLn stk Trace (showCmd c)
+    exec' $ LogLn stk LogTrace (showCmd c)
     exec' c
 
 tracedEval' :: (Show (cmd c), AsReactor c, AsFacet [c] c, AsFacet (cmd c) c, MonadCommand c m)
@@ -336,8 +337,11 @@ rerender = do
 
 -- | Get the 'Model' and exec actions, using the current @Entity@ context
 getModel :: (HasCallStack, MonadReactor c o s m) => m s
-getModel = delegate $ \fire -> do
-    Entity {..} <- ask
+getModel = ask >>= getModelOf
+
+-- | Get the 'Model' and exec actions, using the current @Entity@ context
+getModelOf :: (HasCallStack, AsReactor c, MonadCommand c m) => Entity o' s' -> m s'
+getModelOf Entity {..} = delegate $ \fire -> do
     let fire' s = case preview this s of
             Nothing -> pure ()
             Just s' -> fire s'
@@ -348,10 +352,15 @@ getModel = delegate $ \fire -> do
 -- If a "ref" callback to update 'elementalRef' has not been added;
 -- then add it, rerender, then return the EventTarget.
 getElementalRef :: (HasCallStack, MonadReactor c o s m) => ReactId -> m EventTarget
-getElementalRef k = delegate $ \fire -> do
-    Entity {..} <- ask
+getElementalRef k = view _weakObj >>= getElementalRefOf k
+
+-- | Get the event target
+-- If a "ref" callback to update 'elementalRef' has not been added;
+-- then add it, rerender, then return the EventTarget.
+getElementalRefOf :: (HasCallStack, AsReactor c, MonadCommand c m) => ReactId -> WeakObj o -> m EventTarget
+getElementalRefOf k obj = delegate $ \fire -> do
     c <- codify fire
-    tracedExec' callStack $ GetElementalRef entity k c
+    tracedExec' callStack $ GetElementalRef obj k c
 
 -- | Update the 'Model' using the current @Entity@ context
 mutate :: (HasCallStack, MonadReactor c o s m) => ReactId -> ModelState s () -> m ()
@@ -528,14 +537,3 @@ onMutated' ::
     (HasCallStack, MonadReactor c o s m)
     => m a -> m a
 onMutated' f = __onMutated callStack (const f)
-
-
-
-wack ::
-    ( HasCallStack
-    , AsReactor c
-    , MonadCommand c m
-    , FromJSON s
-    ) => ByteString
-    -> Maybe (m a)
-wack = undefined

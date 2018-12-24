@@ -25,6 +25,8 @@ import Glazier.React.Model
 import Glazier.React.Obj
 import Glazier.React.ReactId
 import qualified JavaScript.Extras as JE
+import Control.Monad.Morph
+import Control.Monad.Trans.Maybe.Extras
 
 #if MIN_VERSION_base(4,9,0) && !MIN_VERSION_base(4,10,0)
 import Data.Semigroup
@@ -85,14 +87,10 @@ displayObj obj = do
         , ("key", reactIdKey' k)
         ]
 
-    lf (JE.toJSR shimComponent)
-        [ ("render", JE.toJSR renderCb)
-        , ("mounted", JE.toJSR mountedCb)
-        , ("rendered", JE.toJSR renderedCb)
-        , ("ref", JE.toJSR refCb)
-        , ("key", reactIdKey' k)
-        ]
-
+displayWeakObj :: (MonadTrans t, MonadIO m, MonadState (DL.DList ReactMarkup) (t (Benign m))) => WeakObj s -> t (Benign m) ()
+displayWeakObj wkObj = (`evalMaybeT` ()) $ do
+    obj <- hoist lift $ benignDeRefWeakObj wkObj
+    lift $ displayObj obj
 
 #ifdef __GHCJS__
 

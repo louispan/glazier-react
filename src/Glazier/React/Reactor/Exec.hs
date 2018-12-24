@@ -98,7 +98,7 @@ makeLenses_ ''ReactorEnv
 mkReactorEnvIO :: IO (ReactorEnv)
 -- mkReactorEnvIO = ReactorEnv <$> (newMVar (0 :: Int)) <*> newTQueueIO
 mkReactorEnvIO = ReactorEnv <$> (newMVar (0 :: Int))
-    <*> (newIORef Trace) -- FIXME: Info
+    <*> (newIORef LogTrace) -- LOUISFIXME: Info
     <*> (newIORef mempty)
 
 -- | An example of starting an app using the glazier-react framework
@@ -361,7 +361,7 @@ execMkObj executor wid s = do
         let gad = runExceptT wid
             gad' = gad `bindLeft` setRndr
             gad'' = (either id id) <$> gad'
-            tick = runProgramT $ runGadget gad'' (Entity obj id) pure
+            tick = runProgramT $ runGadget gad'' (Entity id obj) pure
             cs = execState tick mempty
             -- update the model to include the real shimcallbacks
             scn' = scn & _plan._shimCallbacks .~ ShimCallbacks renderCb mountedCb renderedCb refCb
