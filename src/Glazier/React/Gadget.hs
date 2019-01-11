@@ -9,7 +9,7 @@ import Glazier.Command
 import Glazier.React.Entity
 import Glazier.React.Obj
 
--- | A 'Gadget' is an instance of 'MonadReactor'
+-- | A 'Gadget' is an instance of 'MonadGadget'
 -- The @s@ state can be magnified with 'magnifiedEntity'
 type Gadget c o s = ReaderT (Entity o s) (ContT () (Program c))
 

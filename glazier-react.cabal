@@ -23,7 +23,6 @@ library
   js-sources:          jsbits/react.js
                        jsbits/registry.js
   exposed-modules:     Glazier.React
-                       Glazier.React.Aeson
                        Glazier.React.Component
                        Glazier.React.Component.Internal
                        Glazier.React.Element
@@ -52,6 +51,7 @@ library
                        Glazier.React.Window
   build-depends:       base >= 4.9.0 && < 5
                      , aeson >= 1.1.2.0
+                     , aeson-applicative >= 1.4
                      , alternators >= 1.0
                      , containers >= 0.5
                      , data-diverse >= 4.6
@@ -68,9 +68,10 @@ library
                      , stm >= 2.4.5
                      , tagged >= 0.8
                      , transformers >= 0.4
-                     , unordered-containers >= 0.2.7
+                     , unordered-containers >= 0.2.8
                      , unliftio >= 0.2
                      , unliftio-core >= 0.1
+                     , vector >= 0.11
   default-language:    Haskell2010
   default-extensions:  ApplicativeDo
   -- FIXME: How to only define cpp options in executable?

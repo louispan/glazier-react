@@ -4,7 +4,6 @@ module Glazier.React
     ( module Glazier.Command
     , module Glazier.Benign
     , module Glazier.Command.Exec
-    , module Glazier.React.Aeson
     , module Glazier.React.Component
     , module Glazier.React.Element
     , module Glazier.React.EventTarget
@@ -48,7 +47,6 @@ import GHC.Stack
 import Glazier.Benign
 import Glazier.Command
 import Glazier.Command.Exec
-import Glazier.React.Aeson
 import Glazier.React.Component
 import Glazier.React.Element
 import Glazier.React.Entity

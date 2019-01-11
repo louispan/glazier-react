@@ -13,7 +13,7 @@ import Glazier.React.Obj
 
 -- | Contains a 'WeakObj' pointer to a data structure,
 -- and a 'Traversal'' to focus on a subset of the data structure.
-data Entity o s = Entity { this :: Traversal' o s,  entity :: WeakObj o }
+data Entity o s = Entity { this :: Traversal' o s,  self :: WeakObj o }
 
 instance GetWeakObj (Entity o s) o where
     weakObj (Entity _ o) = o
@@ -28,4 +28,4 @@ magnifiedEntity ::
     => Traversal' b a -> m r -> n r
 magnifiedEntity l = magnify (to go)
   where
-    go Entity {..} = Entity (this.l) entity
+    go Entity {..} = Entity (this.l) self

@@ -20,7 +20,6 @@ module Glazier.React.Reactor.Exec
     , execMkReactId
     , execSetRender
     , execMkObj
-    , execGetModel
     , execGetElementalRef
     , execRerender
     , execDoRerender
@@ -145,10 +144,10 @@ execReactorCmd executor c = case c of
     DebugIO n -> liftIO n >>= (done . executor)
 #endif
     LogLn stk lvl m -> done $ execLogLn stk lvl m
+    EvalBenignIO m k -> (`evalMaybeT` []) $ (liftIO $ getBenign m) >>= (lift . done . executor . k)
     MkReactId n k -> execMkReactId n >>= (done . executor . k)
     SetRender obj w -> done $ execSetRender obj w
     MkObj wid s k -> execMkObj executor wid s >>= (done . executor . k)
-    GetModel obj k -> (`evalMaybeT` []) $ execGetModel obj >>= (lift . done . executor . k)
     GetElementalRef obj k f -> done $ execGetElementalRef executor obj k f
     Rerender obj -> execRerender obj
     DoRerender obj -> done $ execDoRerender obj
@@ -380,15 +379,6 @@ execMkObj executor wid s = do
     setRndr win = do
         obj <- view _weakObj
         exec' $ SetRender obj win
-
-execGetModel ::
-    MonadIO m
-    => WeakObj s
-    -> MaybeT m s
-execGetModel obj = do
-    liftIO $ putStrLn "LOUISDEBUG: execGetModel"
-    mdlRef <- MaybeT . liftIO . deRefWeak $ modelWeakRef obj
-    liftIO $ model <$> readIORef mdlRef
 
 execRerender ::
     ( MonadIO m
