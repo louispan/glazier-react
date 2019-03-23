@@ -16,6 +16,7 @@ import Control.Also
 import Control.DeepSeq
 import Control.Lens
 import Control.Monad.Delegate
+import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Maybe
@@ -565,17 +566,21 @@ onMutated' f = do
     onObjMutated self (const f)
 
 -- | Orphan instance because it requires AsReactor
-instance (MonadIO m, A.AToJSON (Benign m) a) => A.AToJSON (Benign m) (Obj a) where
+instance (MonadIO m, A.AToJSON (Benign m) s) => A.AToJSON (Benign m) (Obj s) where
     atoEncoding o = (model <$> benignReadObj o) >>= A.atoEncoding
 
--- | Specify a default widget for a model type
--- to be used in AFromJSON instances.
--- Use @Tagged t s@ to add other instances, which can be `coerce`d back to @s@.
-class DefaultWidget s where
-    defaultWidget :: Widget c s s ()
-
--- | Use @Obj (Tagged t s)@ which is 'coerce'-able to @Obj s@ to use other instances of 'defaultWidget'
-instance (MonadReactor c m, DefaultWidget a, A.AFromJSON m a) => A.AFromJSON m (Obj a) where
+-- | Orphan instance because it requires AsReactor
+instance (MonadReactor c m, A.AFromJSON m s) => A.AFromJSON (ExceptT a (ReaderT (Widget c s s a) m)) (Obj s) where
     aparseJSON v = do
-        ma <- A.aparseJSON v
-        pure (ma >>= mkObj' defaultWidget)
+        ms <- fmap lift (A.aparseJSON v)
+        let meobj = do
+                wid <- ask
+                s <- ms
+                mkObj wid s
+        pure (ExceptT meobj)
+
+-- -- | Specify a default widget for a model type
+-- -- to be used in AFromJSON instances.
+-- -- Use @Tagged t s@ to add other instances, which can be `coerce`d back to @s@.
+-- class DefaultWidget s where
+--     defaultWidget :: Widget c s s ()
