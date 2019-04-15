@@ -41,12 +41,12 @@ unsafeCoerceElement = ReactElement . JE.JSRep
 -- | Create a react element (with children) from a HashMap of properties
 mkBranchElement :: JE.JSRep -> [JE.Property] -> [ReactElement] -> IO ReactElement
 mkBranchElement n props xs =
-    js_mkBranchElement n (JE.fromProperties props) (JA.fromList $ JE.toJS <$> xs)
+    js_mkBranchElement n (JE.propertiesToObject props) (JA.fromList $ JE.toJS <$> xs)
 
 -- | Create a react element (with no children) from a HashMap of properties
 mkLeafElement :: JE.JSRep -> [JE.Property] -> IO ReactElement
 mkLeafElement n props =
-    js_mkLeafElement n (JE.fromProperties props)
+    js_mkLeafElement n (JE.propertiesToObject props)
 
 -- | Not an IO action because JSString is immutable
 textElement :: J.JSString -> ReactElement

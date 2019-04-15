@@ -22,7 +22,7 @@ module Glazier.React.Reactor.Exec
     , execMkObj
     , execGetElementalRef
     , execRerender
-    , execDoRerender
+    , execRerenderNow
     , execMutate
     , execNotifyMutated
     , execResetMutation
@@ -30,7 +30,7 @@ module Glazier.React.Reactor.Exec
     , execRegisterReactListener
     , execRegisterMountedListener
     , execRegisterRenderedListener
-    , execRegisterNextRenderedListener
+    , execRegisterRenderedOnceListener
     , execRegisterMutatedListener
     ) where
 
@@ -54,9 +54,12 @@ import Data.Foldable
 import qualified Data.HashMap.Strict as HM
 import Data.IORef
 import qualified Data.JSString as J
+import qualified Data.JSString.Text as J
 import Data.List
 import Data.Maybe
 import qualified Data.Set as S
+import qualified Data.Text as T
+import Data.Tuple
 import Data.Typeable
 import GHC.Stack
 import qualified GHCJS.Foreign.Callback as J
@@ -65,16 +68,19 @@ import qualified GHCJS.Foreign.Export as J
 import qualified GHCJS.Types as J
 import Glazier.Benign
 import Glazier.Command
-import Glazier.React.Component
+import Glazier.Logger
+import Glazier.Logger.Exec
 import Glazier.React.Entity
 import Glazier.React.EventTarget
 import Glazier.React.Gadget
 import Glazier.React.Markup
 import Glazier.React.Model
+import Glazier.React.Obj
 import Glazier.React.Obj.Internal
 import Glazier.React.ReactDOM
 import Glazier.React.ReactId.Internal
 import Glazier.React.Reactor
+import Glazier.React.Shim
 import Glazier.React.Widget
 import Glazier.React.Window
 import qualified JavaScript.Extras as JE
@@ -87,35 +93,61 @@ import Data.Semigroup
 
 data ReactorEnv = ReactorEnv
     { reactIdVar :: MVar Int
-    , defaultLogLevel :: IORef LogLevel
-    -- overrides defaultLogLevel
-    , moduleLogLevel :: IORef (HM.HashMap String LogLevel)
+    , defaultLogLevel :: IORef (Maybe LogLevel)  -- Nothing means turn off logging
+    -- overrides defaultLogLevel.
+    -- This map will be populated with entries are Obj with different lognames are created.
+    -- Nothing means no override.
+    -- Just Nothing means turn off logging.
+    -- Do not delete from this map to remove log overrides
+    -- instead, set them to nothing.
+    , logLevelOverrides :: IORef (HM.HashMap T.Text (IORef (Maybe (Maybe LogLevel))))
     }
 
 makeLenses_ ''ReactorEnv
 
-mkReactorEnvIO :: IO (ReactorEnv)
--- mkReactorEnvIO = ReactorEnv <$> (newMVar (0 :: Int)) <*> newTQueueIO
-mkReactorEnvIO = ReactorEnv <$> (newMVar (0 :: Int))
-    <*> (newIORef LogTrace) -- LOUISFIXME: Info
-    <*> (newIORef mempty)
+mkReactorEnvIO :: Maybe LogLevel -> HM.HashMap T.Text (IORef (Maybe (Maybe LogLevel)))
+    -> IO (ReactorEnv)
+mkReactorEnvIO logLvl overrides = ReactorEnv <$> (newMVar (0 :: Int))
+    <*> (newIORef logLvl)
+    <*> (newIORef overrides)
+
+namedLogLevel :: IORef (Maybe LogLevel) -> IORef (HM.HashMap T.Text (IORef (Maybe (Maybe LogLevel))))
+    -> T.Text -> IO (Benign IO (Maybe LogLevel))
+namedLogLevel defLogLvlRef logLvlOverridesRef logname = do
+    -- find or insert entry into overrides
+    defOverride <- newIORef Nothing
+    entryRef <- atomicModifyIORef' logLvlOverridesRef (swap . findOrInsert logname defOverride)
+    -- return action to read from overrides
+    let go = do
+            override <- benignReadIORef entryRef
+            case override of
+                -- override is Nothing, ready from defLogLvl IORef
+                Nothing -> benignReadIORef defLogLvlRef
+                Just x -> pure x
+    pure go
+
+-- findOrInsert :: (Eq k, At (map k)) => k -> v -> map k v -> (v, map k v)
+findOrInsert k v = at k . non v <%~ id
 
 -- | An example of starting an app using the glazier-react framework
+-- This requies a (IO c) executor to create an MVar to store the app object.
 startApp ::
     ( MonadIO m
     , Typeable s -- for J.export
     , AsReactor c
+    , Logger r c m
     , AsFacet (IO c) c
     )
-    => (c -> m ()) -> Widget c s s () -> s -> JE.JSRep -> m ()
-startApp executor wid s root = do
+    => (c -> m ()) -> Widget c s s () -> J.JSString -> s -> JE.JSRep -> m ()
+startApp executor wid logname s root = do
+    logLvl <- view _logLevel
     -- create a mvar to store the app object
     objVar <- liftIO $ newEmptyMVar
     let setup = do
-            obj <- mkObj' wid s
+            obj <- mkObj' wid logname s
             -- Create an 'IO c' to store the created object into an mvar
             exec' (command_ <$> (putMVar objVar obj))
-        cs = (`execState` mempty) $ runProgramT $ evalContT setup
+        cs = (`execState` mempty) $ runProgramT $ evalContT $ (`runReaderT` logLvl) setup
 
     -- run the initial commands, this will store the app obj into objVar
     traverse_ executor cs
@@ -131,6 +163,7 @@ startApp executor wid s root = do
         -- objVar is no longer needed, let it fall out of scope
         void $ J.export obj
 
+
 -- | Returns commands that need to be processed last
 execReactorCmd ::
     ( MonadUnliftIO m
@@ -140,17 +173,12 @@ execReactorCmd ::
     )
     => (c -> m ()) -> ReactorCmd c -> m [c]
 execReactorCmd executor c = case c of
-#ifdef DEBUGIO
-    DebugIO n -> liftIO n >>= (done . executor)
-#endif
-    LogLn stk lvl m -> done $ execLogLn stk lvl m
-    EvalBenignIO m k -> (`evalMaybeT` []) $ (liftIO $ getBenign m) >>= (lift . done . executor . k)
-    MkReactId n k -> execMkReactId n >>= (done . executor . k)
+    MkReactId n k -> done $ execMkReactId n >>= (executor . k)
     SetRender obj w -> done $ execSetRender obj w
-    MkObj wid s k -> execMkObj executor wid s >>= (done . executor . k)
-    GetElementalRef obj k f -> done $ execGetElementalRef executor obj k f
-    Rerender obj -> execRerender obj
-    DoRerender obj -> done $ execDoRerender obj
+    MkObj wid logname s k -> done $ execMkObj executor wid logname s >>= (executor . k)
+    GetReactRef obj k f -> done $ execGetReactRef executor obj k f
+    ScheduleRerender obj -> execScheduleRerender obj
+    RerenderNow obj -> done $ execRerenderNow obj
     Mutate obj k tick -> (`evalMaybeT` []) $ do
         (lastCmds, nextCmd) <- execMutate obj k tick
         lift $ executor nextCmd
@@ -161,59 +189,60 @@ execReactorCmd executor c = case c of
     RegisterReactListener obj k n goStrict goLazy -> done $ execRegisterReactListener executor obj k n goStrict goLazy
     RegisterMountedListener obj k -> done $ execRegisterMountedListener executor obj k
     RegisterRenderedListener obj k -> done $ execRegisterRenderedListener executor obj k
-    RegisterNextRenderedListener obj k -> done $ execRegisterNextRenderedListener executor obj k
+    RegisterRenderedOnceListener obj k -> done $ execRegisterRenderedOnceListener executor obj k
     RegisterMutatedListener obj k -> done $ execRegisterMutatedListener executor obj k
   where
     done f = (\() -> []) <$> f
 
------------------------------------------------------------------
-execLogLn ::
-    ( MonadIO m
-    , Has ReactorEnv r
-    , MonadReader r m
-    )
-    => CallStack -> LogLevel -> Benign IO J.JSString -> m ()
-execLogLn stk lvl m = do
-    defLvlVar <- view ((hasLens @ReactorEnv)._defaultLogLevel)
-    mdlLvlsVar <- view ((hasLens @ReactorEnv)._moduleLogLevel)
-    liftIO $ do
-        mLvl <- runMaybeT $ do
-            mdl <- MaybeT $ pure mFstModule
-            mdlLvls <- lift $ readIORef mdlLvlsVar
-            MaybeT $ pure $ HM.lookup mdl mdlLvls
-        allowedLvl <- maybe (readIORef defLvlVar) pure mLvl
-        when (lvl >= allowedLvl) $ case lvl of
-            LogTrace -> liftIO $ getBenign m >>= (go js_logInfo  "TRACE " $ prettyStk fstStk)
-            LogDebug -> liftIO $ getBenign m >>= (go js_logInfo  "DEBUG " $ prettyStk fstStk)
-            LogInfo -> liftIO $ getBenign m >>=  (go js_logInfo  "INFO  " $ prettyStk fstStk)
-            LogWarn -> liftIO $ getBenign m >>=  (go js_logWarn  "WARN  " $ prettyStk fstStk)
-            LogError -> liftIO $ getBenign m >>= (go js_logError "ERROR " $ prettyStk stks)
-  where
-    go f hdr ftr a = f $ hdr <> a <> ftr
-    stks = getCallStack stk
-    mFstStk = listToMaybe stks
-    mFstSrcLoc = snd <$> mFstStk
-    mFstModule = srcLocModule <$> mFstSrcLoc
-    fstStk = maybeToList $ mFstStk
-    prettyStk s = J.pack $ " [" <> prettyCallStack' s <> "]"
 
-    -- Modified from GHC.Stack to be shorter
-    prettyCallStack' :: [(String, SrcLoc)] -> String
-    prettyCallStack' = intercalate "\n " . prettyCallStackLines'
+-- -----------------------------------------------------------------
+-- execLogLn ::
+--     ( MonadIO m
+--     , Has ReactorEnv r
+--     , MonadReader r m
+--     )
+--     => CallStack -> LogLevel -> Benign IO J.JSString -> m ()
+-- execLogLn stk lvl m = do
+--     defLvlVar <- view ((hasLens @ReactorEnv)._defaultLogLevel)
+--     mdlLvlsVar <- view ((hasLens @ReactorEnv)._moduleLogLevel)
+--     liftIO $ do
+--         mLvl <- runMaybeT $ do
+--             mdl <- MaybeT $ pure mFstModule
+--             mdlLvls <- lift $ readIORef mdlLvlsVar
+--             MaybeT $ pure $ HM.lookup mdl mdlLvls
+--         allowedLvl <- maybe (readIORef defLvlVar) pure mLvl
+--         when (lvl >= allowedLvl) $ case lvl of
+--             LogTrace -> liftIO $ getBenign m >>= (go js_logInfo  "TRACE " $ prettyStk fstStk)
+--             LogDebug -> liftIO $ getBenign m >>= (go js_logInfo  "DEBUG " $ prettyStk fstStk)
+--             LogInfo -> liftIO $ getBenign m >>=  (go js_logInfo  "INFO  " $ prettyStk fstStk)
+--             LogWarn -> liftIO $ getBenign m >>=  (go js_logWarn  "WARN  " $ prettyStk fstStk)
+--             LogError -> liftIO $ getBenign m >>= (go js_logError "ERROR " $ prettyStk stks)
+--   where
+--     go f hdr ftr a = f $ hdr <> a <> ftr
+--     stks = getCallStack stk
+--     mFstStk = listToMaybe stks
+--     mFstSrcLoc = snd <$> mFstStk
+--     mFstModule = srcLocModule <$> mFstSrcLoc
+--     fstStk = maybeToList $ mFstStk
+--     prettyStk s = J.pack $ " [" <> prettyCallStack' s <> "]"
 
-    prettyCallStackLines' :: [(String, SrcLoc)] -> [String]
-    prettyCallStackLines' = fmap prettyCallSite'
+--     -- Modified from GHC.Stack to be shorter
+--     prettyCallStack' :: [(String, SrcLoc)] -> String
+--     prettyCallStack' = intercalate "\n " . prettyCallStackLines'
 
-    prettyCallSite' :: (String, SrcLoc) -> String
-    prettyCallSite' (f, loc) = f ++ "@" ++ prettySrcLoc' loc
+--     prettyCallStackLines' :: [(String, SrcLoc)] -> [String]
+--     prettyCallStackLines' = fmap prettyCallSite'
 
-    prettySrcLoc' :: SrcLoc -> String
-    prettySrcLoc' SrcLoc {..}
-        = foldr (++) ""
-            [ srcLocModule, ":"
-            , show srcLocStartLine, ":"
-            , show srcLocStartCol
-            ]
+--     prettyCallSite' :: (String, SrcLoc) -> String
+--     prettyCallSite' (f, loc) = f ++ "@" ++ prettySrcLoc' loc
+
+--     prettySrcLoc' :: SrcLoc -> String
+--     prettySrcLoc' SrcLoc {..}
+--         = foldr (++) ""
+--             [ srcLocModule, ":"
+--             , show srcLocStartLine, ":"
+--             , show srcLocStartCol
+--             ]
 
 execMkReactId ::
     ( MonadIO m
@@ -230,53 +259,6 @@ execMkReactId n = do
         putMVar v i'
         pure $ ReactId (n, i')
 
-__render :: WeakObj s -> Window s () -> IO J.JSVal
-__render obj win = (`evalMaybeT` J.nullRef) $ do
-    obj' <- deRefWeakObj obj
-    let mdlRef = modelRef obj'
-    lift $ do
-        -- render using from mdlRef (doesn't block)
-        scn <- readIORef mdlRef
-        (mrkup, _) <- getBenign (RWS.execRWST win scn mempty) -- ignore unit writer output
-        a <- JE.toJS <$> toElement mrkup
-        pure a
-
-__ref :: WeakObj s -> J.JSVal -> IO ()
-__ref obj j = (`evalMaybeT` ()) $ do
-    obj' <- deRefWeakObj obj
-    let mdlRef = modelRef obj'
-        mdlVar = modelVar obj'
-    lift $ do
-        -- update componentRef held in the Plan
-        scn <- takeMVar mdlVar
-        let scn' = scn & _plan._componentRef .~ (JE.fromJS j)
-        atomicWriteIORef mdlRef scn'
-        putMVar mdlVar scn'
-
-__rendered :: WeakObj s -> IO ()
-__rendered obj = (`evalMaybeT` ()) $ do
-    obj' <- deRefWeakObj obj
-    let mdlRef = modelRef obj'
-        mdlVar = modelVar obj'
-    lift $ do
-        -- update nextRenderedListener held in the Plan
-        scn <- takeMVar mdlVar
-        let scn' = scn & _plan._nextRenderedListener .~ mempty
-            nxt = scn ^. _plan._nextRenderedListener
-            cb = scn ^. _plan._renderedListener
-
-        atomicWriteIORef mdlRef scn'
-        putMVar mdlVar scn'
-        nxt
-        cb
-
-__mounted :: WeakObj s -> IO ()
-__mounted obj = (`evalMaybeT` ()) $ do
-    mdlRef <- MaybeT . deRefWeak $ modelWeakRef obj
-    lift $ do
-        scn <- readIORef mdlRef
-        scn ^. _plan._mountedListener
-
 execSetRender :: MonadIO m => WeakObj s -> Window s () -> m ()
 execSetRender obj win = void . runMaybeT $ do
     liftIO $ putStrLn "LOUISDEBUG: execSetRender"
@@ -285,15 +267,26 @@ execSetRender obj win = void . runMaybeT $ do
         mdlVar = modelVar obj'
     -- create the callbacks
     liftIO $ do
-        renderCb <- J.syncCallback' (__render obj win)
+        renderCb <- J.syncCallback' (renderCb obj win)
         -- Replace the existing ShimCallbacks
         scn <- takeMVar mdlVar
         -- replace the rendering function
-        let origRenderCb = scn ^. _plan._shimCallbacks._shimRender
-            scn' = scn & _plan._shimCallbacks._shimRender .~ renderCb
+        let origRenderCb = scn ^. _plan._shimCallbacks._shimOnRender
+            scn' = scn & _plan._shimCallbacks._shimOnRender .~ renderCb
         atomicWriteIORef mdlRef scn'
         putMVar mdlVar scn'
         J.releaseCallback origRenderCb
+  where
+    renderCb :: WeakObj s -> Window s () -> IO J.JSVal
+    renderCb obj win = (`evalMaybeT` J.nullRef) $ do
+        obj' <- deRefWeakObj obj
+        let mdlRef = modelRef obj'
+        lift $ do
+            -- render using from mdlRef (doesn't block)
+            scn <- readIORef mdlRef
+            (mrkup, _) <- getBenign (RWS.execRWST win scn mempty) -- ignore unit writer output
+            a <- JE.toJS <$> toElement mrkup
+            pure a
 
 -- | Make an initialized 'Obj' for a given model using the given
 -- 'Window' rendering function.
@@ -308,15 +301,20 @@ execMkObj ::
     )
     => (c -> m ())
     -> Widget c s s ()
+    -> J.JSString
     -> s
     -> m (Obj s)
-execMkObj executor wid s = do
+execMkObj executor wid logname s = do
     liftIO $ putStrLn "LOUISDEBUG: execMkObj"
-    k <- execMkReactId (J.pack "obj")
+    defLogLvlRef <- view ((hasLens @ReactorEnv)._defaultLogLevel)
+    logLvlOverridesRef <- view ((hasLens @ReactorEnv)._logLevelOverrides)
+    k <- execMkReactId logname
     (obj, cs) <- liftIO $ do
+        namedLogLvl <- namedLogLevel defLogLvlRef logLvlOverridesRef (J.textFromJSString logname)
         -- create shim with fake callbacks for now
         let newPlan = Plan
                 k
+                namedLogLvl
                 Nothing
                 (ShimCallbacks (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef))
                 mempty
@@ -337,28 +335,23 @@ execMkObj executor wid s = do
             putStrLn "LOUISDEBUG: release mdlRef"
 
         -- Create automatic garbage collection of the callbacks
-        -- that will run when the Obj lease members are garbage collected.
+        -- that will run when the Obj is garbage collected.
         mdlWkVar <- mkWeakMVar mdlVar $ do
             putStrLn "LOUISDEBUG: release mdlVar"
             scn' <- readIORef mdlRef
-            -- scn' ^. _plan._nextRenderedListener
             scn' ^. _plan._finalCleanup
-            let cbs = scn' ^. _plan._shimCallbacks
-            releaseShimCallbacks cbs
-            -- cleanup callbacks
-            traverse_ (traverse (J.releaseCallback . fst) . reactListeners) (scn' ^. _plan._elementals)
-            traverse_ (J.releaseCallback . fst) (scn' ^. _plan._domlListeners)
+            releasePlanCallbacks (scn' ^. _plan)
 
         let obj = WeakObj mdlWkRef mdlWkVar
         -- Create callbacks for now
         renderCb <- J.syncCallback' (pure J.nullRef) -- dummy render for now
-        refCb <- J.syncCallback1 J.ContinueAsync (__ref obj)
-        mountedCb <- J.syncCallback J.ContinueAsync (__mounted obj)
-        renderedCb <- J.syncCallback J.ContinueAsync (__rendered obj)
+        refCb <- J.syncCallback1 J.ContinueAsync (onRefCb obj)
+        mountedCb <- J.syncCallback J.ContinueAsync (onMountedCb obj)
+        renderedCb <- J.syncCallback J.ContinueAsync (onRenderedCb obj)
 
         -- Now we have enough to make a subject
         let gad = runExceptT wid
-            gad' = gad `bindLeft` setRndr
+            gad' = gad >>= either (fmap Left . setRndr) (pure . Right)
             gad'' = (either id id) <$> gad'
             tick = runProgramT $ runGadget gad'' (Entity id obj) pure
             cs = execState tick mempty
@@ -380,63 +373,104 @@ execMkObj executor wid s = do
         obj <- view _weakObj
         exec' $ SetRender obj win
 
-execRerender ::
+    onRefCb :: WeakObj s -> J.JSVal -> IO ()
+    onRefCb obj j = (`evalMaybeT` ()) $ do
+        obj' <- deRefWeakObj obj
+        let mdlRef = modelRef obj'
+            mdlVar = modelVar obj'
+        lift $ do
+            -- update componentRef held in the Plan
+            scn <- takeMVar mdlVar
+            let scn' = scn & _plan._componentRef .~ (JE.fromJS j)
+            atomicWriteIORef mdlRef scn'
+            putMVar mdlVar scn'
+
+    onRenderedCb :: WeakObj s -> IO ()
+    onRenderedCb obj = (`evalMaybeT` ()) $ do
+        obj' <- deRefWeakObj obj
+        let mdlRef = modelRef obj'
+            mdlVar = modelVar obj'
+        lift $ do
+            -- update renderedOnceListener held in the Plan
+            scn <- takeMVar mdlVar
+            let scn' = scn & _plan._renderedOnceListener .~ mempty
+                nxt = scn ^. _plan._renderedOnceListener
+                cb = scn ^. _plan._renderedListener
+
+            atomicWriteIORef mdlRef scn'
+            putMVar mdlVar scn'
+            nxt
+            cb
+
+    onMountedCb :: WeakObj s -> IO ()
+    onMountedCb obj = (`evalMaybeT` ()) $ do
+        mdlRef <- MaybeT . deRefWeak $ modelWeakRef obj
+        lift $ do
+            scn <- readIORef mdlRef
+            scn ^. _plan._mountedListener
+
+-- Schedule a rerender, only if not lalready scheduled or
+-- not in middle of mutation
+execScheduleRerender ::
     ( MonadIO m
     , AsReactor c
     )
     => WeakObj s -> m [c]
-execRerender obj = (`evalMaybeT` []) $ do
-    liftIO $ putStrLn "LOUISDEBUG: execRerender"
+execScheduleRerender obj = (`evalMaybeT` []) $ do
+    liftIO $ putStrLn "LOUISDEBUG: execScheduleRerender"
     obj' <- deRefWeakObj obj
     let mdlVar = modelVar obj'
     liftIO $ do
         scn <- takeMVar mdlVar
-        liftIO $ putStrLn "LOUISDEBUG: execRerender2"
-        let (cs, scn') = (`runState` scn) $ __rerenderState False obj
+        liftIO $ putStrLn "LOUISDEBUG: execScheduleRerender2"
+        let (cs, scn') = (`runState` scn) $ scheduleRerender obj
         putMVar mdlVar scn'
         pure cs
 
-__rerenderState ::
+scheduleRerender ::
     ( AsReactor c
     )
-    => Bool -> WeakObj s -> State (Model s) [c]
-__rerenderState rerenderSuppressed obj = do
+    => WeakObj s -> State (Model s) [c]
+scheduleRerender alsoRerenderSuppressed obj = do
     scn <- get
     -- don't rerender straight away, but schedule a rerender
-    -- when the background worker thread
     -- so multiple rerender requests will be naturally throttled
     if scn ^. _plan._rerendering == RerenderNotRequired
-        || (rerenderSuppressed && scn ^. _plan._rerendering == RerenderSuppressed)
+        && scn ^. _plan._mutations.to S.null
         then do
             put $ scn & _plan._rerendering .~ RerenderRequired
             -- Schedule a rerender
-            pure [command' $ DoRerender obj]
+            pure [command' $ RerenderNow obj]
         -- rerender has already been scheduled
         else pure []
 
-execDoRerender :: MonadIO m => WeakObj s -> m ()
-execDoRerender obj = (`evalMaybeT` ()) $ do
-    liftIO $ putStrLn "LOUISDEBUG: execDoRerender"
+execRerenderNow :: MonadIO m => WeakObj s -> m ()
+execRerenderNow obj = (`evalMaybeT` ()) $ do
+    liftIO $ putStrLn "LOUISDEBUG: execRerenderNow"
     obj' <- deRefWeakObj obj
     let mdlRef = modelRef obj'
         mdlVar = modelVar obj'
     liftIO $ do
         scn <- takeMVar mdlVar
-        liftIO $ putStrLn "LOUISDEBUG: execDoRerender2"
+        liftIO $ putStrLn "LOUISDEBUG: execRerenderNow2"
+        -- don't render if in the middle of a mutation
+        -- (the ResetMutation will render)
+        -- Or if rerenderScheduled is false - it means rerender has been called
         if scn ^. _plan._rerendering == RerenderRequired
+            && scn ^. _plan._mutations.to S.null
             then do
                 let scn' = scn & _plan._rerendering .~ RerenderNotRequired
                 -- Update the back buffer
                 atomicWriteIORef mdlRef scn'
                 putMVar mdlVar scn'
-                putStrLn $ "LOUISDEBUG: execDoRerender3a "
+                putStrLn $ "LOUISDEBUG: execRerenderNow3a "
                 case scn ^. _plan._componentRef of
                     Nothing -> pure ()
                     Just j -> rerenderShim j
-            -- rerender not required (eg. already processed)
+            -- rerender not required (eg. already processed, or in the middle of mutation)
             else do
                 putMVar mdlVar scn
-                putStrLn $ "LOUISDEBUG: execDoRerender3b "
+                putStrLn $ "LOUISDEBUG: execRerenderNow3b "
 
 -- | No need to run in a separate thread because it should never block for a significant amount of time.
 -- Update the model 'MVar' with the given action. Also triggers a rerender.
@@ -472,6 +506,7 @@ execMutate obj k tick = do
             (c', scn''') = case S.member k (scn' ^. _plan._mutations) of
                 False -> (notifyCmd, scn'' & _plan._mutations %~ (S.insert k))
                 True -> ([], scn'')
+        -- LOUISFIXME: remove debug
         case S.member k (scn' ^. _plan._mutations) of
             False -> putStrLn $ "new mutation"
             True -> putStrLn $ "old mutation"
@@ -484,7 +519,7 @@ execMutate obj k tick = do
 -- LOUISFIXME: Document tickNotified/renderRequired lifecycle
 -- ensuring that the mutatedListener callback is called.
 -- at most once per reactorBackgroundBatch
--- Want to catch the case if two obj ticked and listen to each other
+-- We want to cater for the case if two obj ticked and listen to each other
 -- then we won't get infinite work
 -- to also schedule a rerender
 -- Returns commands to process last
@@ -529,8 +564,9 @@ execResetMutation obj k = (`evalMaybeT` []) $ do
         scn <- takeMVar mdlVar
         putStrLn $ "LOUISDEBUG: execResetMutation2 " <> J.unpack (reactIdKey k)
         let scn' = scn & _plan._mutations %~ (S.delete k)
+            -- If this was the last ResetMutation, then rerender
             (cs, scn'') = if scn' ^. _plan._mutations.to S.null
-                then (`runState` scn') $ __rerenderState True obj
+                then (`runState` scn') $ scheduleRerender obj
                 else ([], scn')
         -- Update the back buffer
         atomicWriteIORef mdlRef scn''
@@ -601,7 +637,7 @@ addEventHandler goStrict goLazy listenerRef = do
 -- | Create ref handler to assign 'elementalRef'
 data Freshness = Existing | Fresh
 
-execGetElementalRef ::
+execGetReactRef ::
     ( MonadUnliftIO m
     )
     => (c -> m ())
@@ -609,17 +645,17 @@ execGetElementalRef ::
     -> ReactId
     -> (EventTarget -> c)
     -> m ()
-execGetElementalRef executor obj k f = (`evalMaybeT` ()) $ do
-    liftIO $ putStrLn "LOUISDEBUG: execGetElementalRef"
+execGetReactRef executor obj k f = (`evalMaybeT` ()) $ do
+    liftIO $ putStrLn "LOUISDEBUG: execGetReactRef"
     obj' <- deRefWeakObj obj
     let mdlRef = modelRef obj'
         mdlVar = modelVar obj'
     UnliftIO u <- lift askUnliftIO
     scn <- liftIO $ takeMVar mdlVar
     (refFreshness, pln) <- lift $ getOrRegisterRefCoreListener obj k (plan scn)
-    let tryAgain = u $ execGetElementalRef executor obj k f
+    let tryAgain = u $ execGetReactRef executor obj k f
         scn' = scn & _plan .~ pln -- to save the core listener
-                & _plan._nextRenderedListener %~ (*> tryAgain)
+                & _plan._renderedOnceListener %~ (*> tryAgain)
         ret = pln ^? (_elementals.ix k._elementalRef._Just)
         triggerTryAgain = liftIO $ do
             liftIO $ putStrLn "LOUISDEBUG: triggerTryAgain"
@@ -796,13 +832,13 @@ execRegisterRenderedListener executor obj c = void . runMaybeT $ do
         atomicWriteIORef mdlRef scn'
         putMVar mdlVar scn'
 
-execRegisterNextRenderedListener :: (MonadUnliftIO m)
+execRegisterRenderedOnceListener :: (MonadUnliftIO m)
     => (c -> m ())
     -> WeakObj s
     -> c
     -> m ()
-execRegisterNextRenderedListener executor obj c = void . runMaybeT $ do
-    liftIO $ putStrLn "LOUISDEBUG: execRegisterNextRenderedListener"
+execRegisterRenderedOnceListener executor obj c = void . runMaybeT $ do
+    liftIO $ putStrLn "LOUISDEBUG: execRegisterRenderedOnceListener"
     obj' <- deRefWeakObj obj
     let mdlRef = modelRef obj'
         mdlVar = modelVar obj'
@@ -810,7 +846,7 @@ execRegisterNextRenderedListener executor obj c = void . runMaybeT $ do
     let hdl = u $ executor c
     liftIO $ do
         scn <- takeMVar mdlVar
-        let scn' = scn & _plan._nextRenderedListener %~ (*> hdl)
+        let scn' = scn & _plan._renderedOnceListener %~ (*> hdl)
         atomicWriteIORef mdlRef scn'
         putMVar mdlVar scn'
 

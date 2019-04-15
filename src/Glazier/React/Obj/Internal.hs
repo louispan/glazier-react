@@ -5,7 +5,6 @@
 module Glazier.React.Obj.Internal where
 
 import Control.Concurrent
-import Control.Lens
 import Control.Monad.Morph
 import Control.Monad.Trans
 import Control.Monad.Trans.Maybe
@@ -17,19 +16,21 @@ import System.Mem.Weak
 
 data WeakObj s = WeakObj (Weak (IORef (Model s))) (Weak (MVar (Model s)))
 
+-- | read-only accessor
 modelWeakRef :: WeakObj s -> Weak (IORef (Model s))
 modelWeakRef (WeakObj r _) = r
 
+-- | read-only accessor
 modelWeakVar :: WeakObj s -> Weak (MVar (Model s))
 modelWeakVar (WeakObj _ v) = v
 
-class GetWeakObj c s | c -> s where
-    _weakObj :: Getter c (WeakObj s)
-    _weakObj = to weakObj
-    weakObj :: c -> WeakObj s
+-- class GetWeakObj c s | c -> s where
+--     _weakObj :: Getter c (WeakObj s)
+--     _weakObj = to weakObj
+--     weakObj :: c -> WeakObj s
 
-instance GetWeakObj (WeakObj s) s where
-    weakObj = id
+-- instance GetWeakObj (WeakObj s) s where
+--     weakObj = id
 
 -- | Something with a ref for nonblocking reads
 -- and a MVar for synchronized updates
@@ -43,14 +44,20 @@ data Obj s = Obj
 instance Eq (Obj s) where
     (Obj _ _ x) == (Obj _ _ y) = x == y
 
-instance GetWeakObj (Obj s) s where
-    weakObj (Obj s _ _) = s
+-- instance GetWeakObj (Obj s) s where
+--     weakObj (Obj s _ _) = s
 
+-- | read-only accessor
 modelRef :: Obj s -> IORef (Model s)
 modelRef (Obj _ r _) = r
 
+-- | read-only accessor
 modelVar :: Obj s -> MVar (Model s)
 modelVar (Obj _ _ v) = v
+
+-- | read-only accessor
+weakObj :: Obj s -> WeakObj s
+weakObj (Obj w _ _) = w
 
 deRefWeakObj :: MonadIO m => WeakObj s -> MaybeT m (Obj s)
 deRefWeakObj obj = Obj obj <$> mdlRef <*> mdlVar

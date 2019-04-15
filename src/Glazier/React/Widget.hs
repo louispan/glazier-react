@@ -26,6 +26,7 @@ type Widget c o s = ExceptT (Window s ()) (Gadget c o s)
 
 -- | Pass the same MonadWidget into this function to verify at compile time
 -- that a concrete instance of widget doesn't require any @AsFacet (IO c) c@.
+-- LOUISFIXME: is there a simpler way @c ~ NoIOCmd c@?
 noIOWidget :: Widget (NoIOCmd c) s s a -> Widget c s s a -> Widget c s s a
 noIOWidget _ = id
 

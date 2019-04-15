@@ -2,11 +2,11 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
-module Glazier.React.Component.Internal
+module Glazier.React.Shim.Internal
     ( ShimComponent(..) -- constructor exported
     , shimComponent
     , rerenderShim
-    , ComponentRef(..) -- constructor exported
+    , ShimRef(..) -- constructor exported
     ) where
 
 import Control.DeepSeq
@@ -27,15 +27,15 @@ shimComponent :: ShimComponent
 shimComponent = ShimComponent js_shimComponent
 
 -- | Rerenders an instance of a component created using ShimComponent.
-rerenderShim :: ComponentRef -> IO ()
+rerenderShim :: ShimRef -> IO ()
 rerenderShim = js_rerenderShim
 
 -- | This is used store the react "ref" to a javascript instance of a react Component.
-newtype ComponentRef = ComponentRef JE.JSRep
+newtype ShimRef = ShimRef JE.JSRep
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
-instance JE.FromJS ComponentRef where
-    fromJS a | js_isReactComponent a = Just $ ComponentRef $ JE.JSRep a
+instance JE.FromJS ShimRef where
+    fromJS a | js_isReactComponent a = Just $ ShimRef $ JE.JSRep a
     fromJS _ = Nothing
 
 #ifdef __GHCJS__
@@ -53,7 +53,7 @@ foreign import javascript unsafe
 
 foreign import javascript unsafe
   "if ($1 && $1['rerender']) { $1['rerender']() };"
-  js_rerenderShim :: ComponentRef -> IO ()
+  js_rerenderShim :: ShimRef -> IO ()
 
 #else
 
@@ -63,7 +63,7 @@ js_shimComponent = JE.JSRep J.nullRef
 js_isReactComponent :: J.JSVal -> Bool
 js_isReactComponent _ = False
 
-js_rerenderShim :: ComponentRef -> IO ()
+js_rerenderShim :: ShimRef -> IO ()
 js_rerenderShim _ = pure ()
 
 #endif

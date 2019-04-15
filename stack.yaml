@@ -49,12 +49,12 @@ extra-deps:
 # - javascript-extras-0.5.0.0
 - '/Users/louis/repo/js/javascript-extras'
 - '/Users/louis/repo/hs/aeson-applicative'
-- alternators-1.0.0.0
 - data-diverse-4.6.0.0
 - data-diverse-lens-4.3.0.0
 # - ghcjs-base-stub-0.2.0.0
 - '/Users/louis/repo/js/ghcjs-base-stub'
 - '/Users/louis/repo/hs/glazier'
+- '/Users/louis/repo/hs/alternators'
 # - glazier-1.0.0.0
 
 - data-has-0.3.0.0

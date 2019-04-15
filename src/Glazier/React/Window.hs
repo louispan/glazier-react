@@ -19,13 +19,13 @@ import qualified Data.Map.Strict as M
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
 import Glazier.Benign
-import Glazier.React.Component
 import Glazier.React.Markup
 import Glazier.React.Model
 import Glazier.React.Obj
 import Glazier.React.ReactId
 import qualified JavaScript.Extras as JE
 import Control.Monad.Morph
+import Glazier.React.Shim
 import Control.Monad.Trans.Maybe.Extras
 
 #if MIN_VERSION_base(4,9,0) && !MIN_VERSION_base(4,10,0)
@@ -40,7 +40,7 @@ type Window s = RWST (Model s) () (DL.DList ReactMarkup) (Benign IO)
 
 getListeners :: MonadReader (Model s) m => ReactId -> m [JE.Property]
 getListeners k = do
-    ls <- view (_plan._elementals.ix k._reactListeners.to M.toList)
+    ls <- view (_plan._reactants.ix k._reactListeners.to M.toList)
     pure $ (\(n, (cb, _)) -> (n, JE.toJSR cb)) <$> ls
 
 -- | Interactive version of 'lf' using listeners obtained from the 'Plan' for a 'ElementalId'.
@@ -71,10 +71,10 @@ displayObj :: (MonadTrans t, MonadIO m, MonadState (DL.DList ReactMarkup) (t (Be
 displayObj obj = do
     scn <- lift (benignReadIORef (modelRef obj))
     let scb = scn ^. _plan._shimCallbacks
-        renderCb = shimRender scb
-        mountedCb = shimMounted scb
-        renderedCb = shimRendered scb
-        refCb = shimRef scb
+        renderCb = shimOnRender scb
+        mountedCb = shimOnMounted scb
+        renderedCb = shimOnRendered scb
+        refCb = shimOnRef scb
         k = scn ^. _plan._planId
     -- These are the callbacks on the 'ShimComponent'
     -- See jsbits/react.js
