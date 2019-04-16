@@ -15,7 +15,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 
-module Glazier.React.Model where
+module Glazier.React.Scene where
 
 import Control.Lens
 import Control.Lens.Misc
@@ -130,38 +130,38 @@ instance Show Plan where
 
 ----------------------------------------------------------------------------------
 
--- | A 'Model' contains interactivity data for all widgets as well as the model data.
-data Model s = Model
+-- | A 'Scene' contains interactivity data for all widgets as well as the model data.
+data Scene s = Scene
     { plan :: Plan
     , model :: s
     } deriving (G.Generic, Show, Functor)
 
-_model :: Lens (Model s) (Model s') s s'
+_model :: Lens (Scene s) (Scene s') s s'
 _model = lens model (\s a -> s { model = a})
 
-_plan :: Lens' (Model s) Plan
+_plan :: Lens' (Scene s) Plan
 _plan = lens plan (\s a -> s { plan = a})
 
-editModel :: (Functor f) => LensLike' f s a -> LensLike' f (Model s) (Model a)
-editModel l safa s = (\s' -> s & _model .~ s' ) <$> l afa' (s ^. _model)
+editScene :: (Functor f) => LensLike' f s a -> LensLike' f (Scene s) (Scene a)
+editScene l safa s = (\s' -> s & _model .~ s' ) <$> l afa' (s ^. _model)
   where
     afa' a = (view _model) <$> safa (s & _model .~ a)
 
-magnifiedModel ::
-    ( Magnify m n (Model a) (Model b)
+magnifiedScene ::
+    ( Magnify m n (Scene a) (Scene b)
     , Functor (Magnified m r)
     )
     => LensLike' (Magnified m r) b a -> m r -> n r
-magnifiedModel l = magnify (editModel l)
+magnifiedScene l = magnify (editScene l)
 
-zoomedModel ::
-    ( Zoom m n (Model a) (Model b)
+zoomedScene ::
+    ( Zoom m n (Scene a) (Scene b)
     , Functor (Zoomed m r)
     )
     => LensLike' (Zoomed m r) b a -> m r -> n r
-zoomedModel l = zoom (editModel l)
+zoomedScene l = zoom (editScene l)
 
 ----------------------------------------------------------------------------------
 
-elementTarget :: ReactId -> Traversal' (Model s) EventTarget
+elementTarget :: ReactId -> Traversal' (Scene s) EventTarget
 elementTarget k = _plan._reactants.ix k._reactRef._Just

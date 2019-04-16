@@ -5,24 +5,19 @@
 module Glazier.React.Obj.Internal where
 
 import Control.Concurrent
-import Control.Monad.Morph
-import Control.Monad.Trans
-import Control.Monad.Trans.Maybe
 import Data.IORef
-import Glazier.Benign
-import Glazier.Benign.Internal
-import Glazier.React.Model
+import Glazier.React.Scene
 import System.Mem.Weak
 
-data WeakObj s = WeakObj (Weak (IORef (Model s))) (Weak (MVar (Model s)))
+data WeakObj s = WeakObj (Weak (IORef (Scene s))) (Weak (MVar (Scene s)))
 
 -- | read-only accessor
-modelWeakRef :: WeakObj s -> Weak (IORef (Model s))
-modelWeakRef (WeakObj r _) = r
+sceneWeakRef :: WeakObj s -> Weak (IORef (Scene s))
+sceneWeakRef (WeakObj r _) = r
 
 -- | read-only accessor
-modelWeakVar :: WeakObj s -> Weak (MVar (Model s))
-modelWeakVar (WeakObj _ v) = v
+sceneWeakVar :: WeakObj s -> Weak (MVar (Scene s))
+sceneWeakVar (WeakObj _ v) = v
 
 -- class GetWeakObj c s | c -> s where
 --     _weakObj :: Getter c (WeakObj s)
@@ -38,8 +33,8 @@ modelWeakVar (WeakObj _ v) = v
 -- This is so that IO is not required to get the weak pointer.
 data Obj s = Obj
     (WeakObj s)
-    (IORef (Model s))
-    (MVar (Model s))
+    (IORef (Scene s))
+    (MVar (Scene s))
 
 instance Eq (Obj s) where
     (Obj _ _ x) == (Obj _ _ y) = x == y
@@ -48,24 +43,24 @@ instance Eq (Obj s) where
 --     weakObj (Obj s _ _) = s
 
 -- | read-only accessor
-modelRef :: Obj s -> IORef (Model s)
-modelRef (Obj _ r _) = r
+sceneRef :: Obj s -> IORef (Scene s)
+sceneRef (Obj _ r _) = r
 
 -- | read-only accessor
-modelVar :: Obj s -> MVar (Model s)
-modelVar (Obj _ _ v) = v
+sceneVar :: Obj s -> MVar (Scene s)
+sceneVar (Obj _ _ v) = v
 
 -- | read-only accessor
 weakObj :: Obj s -> WeakObj s
 weakObj (Obj w _ _) = w
 
-deRefWeakObj :: MonadIO m => WeakObj s -> MaybeT m (Obj s)
-deRefWeakObj obj = Obj obj <$> mdlRef <*> mdlVar
-  where
-    mdlWkRef = modelWeakRef obj
-    mdlWkVar = modelWeakVar obj
-    mdlRef = MaybeT . liftIO . deRefWeak $ mdlWkRef
-    mdlVar = MaybeT . liftIO . deRefWeak $ mdlWkVar
+-- deRefWeakObj :: MonadIO m => WeakObj s -> m (Maybe (Obj s))
+-- deRefWeakObj obj = runMaybeT $ Obj obj <$> scnRef <*> scnVar
+--   where
+--     mdlWkRef = sceneWeakRef obj
+--     mdlWkVar = sceneWeakVar obj
+--     scnRef = MaybeT . liftIO . deRefWeak $ mdlWkRef
+--     scnVar = MaybeT . liftIO . deRefWeak $ mdlWkVar
 
-benignDeRefWeakObj :: MonadIO m => WeakObj s -> MaybeT (Benign m) (Obj s)
-benignDeRefWeakObj = hoist Benign . deRefWeakObj
+-- benignDeRefWeakObj :: MonadIO m => WeakObj s -> Benign m (Maybe (Obj s))
+-- benignDeRefWeakObj = Benign . deRefWeakObj

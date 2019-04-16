@@ -24,14 +24,14 @@ library
                        jsbits/registry.js
   exposed-modules:     Glazier.React
                        Glazier.React.Element
-                       Glazier.React.Entity
+                      --  Glazier.React.Entity
                        Glazier.React.Event.HashChange
                        Glazier.React.Event.Keyboard
                        Glazier.React.Event.Mouse
                        Glazier.React.Event.Synthetic
                        Glazier.React.EventTarget
                        Glazier.React.EventTarget.Internal
-                       Glazier.React.Gadget
+                      --  Glazier.React.Gadget
                        Glazier.React.Markup
                        Glazier.React.NativeEvent
                        Glazier.React.NativeEvent.Internal
@@ -41,13 +41,14 @@ library
                        Glazier.React.ReactId
                        Glazier.React.ReactId.Internal
                        Glazier.React.Reactor
-                       Glazier.React.Reactor.Exec
-                       Glazier.React.Model
+                      --  Glazier.React.Reactor.Exec
                        Glazier.React.Obj
                        Glazier.React.Obj.Internal
+                       Glazier.React.Scene
+                       Glazier.React.Subject
                        Glazier.React.Shim
                        Glazier.React.Shim.Internal
-                       Glazier.React.Widget
+                      --  Glazier.React.Widget
                        Glazier.React.Window
   build-depends:       base >= 4.9.0 && < 5
                      , aeson >= 1.1.2.0
