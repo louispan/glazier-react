@@ -29,8 +29,8 @@ module Glazier.React
     , module Control.Monad.Except
     , module Control.Monad.RWS.Strict
     , module Control.Monad.State.Strict
+    , module Control.Monad.Trans.Extras
     , module Control.Monad.Trans.Maybe
-    , module Control.Monad.Trans.Maybe.Extras
     , module GHC.Stack
     ) where
 
@@ -42,8 +42,8 @@ import Control.Monad.Reader
 import Control.Monad.RWS.Strict
 import Control.Monad.State.Strict
 import Control.Monad.Trans
+import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
-import Control.Monad.Trans.Maybe.Extras
 import GHC.Stack
 import Glazier.Benign
 import Glazier.Command

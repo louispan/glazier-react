@@ -8,24 +8,27 @@
 
 module Glazier.React.Obj
 ( WeakObj
+, WeakObjReader(..)
 -- , HasWeakObj(..)
-, GetWeakObj(..)
+-- , GetWeakObj(..)
 , sceneWeakRef
 , sceneWeakVar
 -- , self
 , Obj
-, ToObj(..)
+-- , ToObj(..)
 -- , HasObj(..)
 , sceneRef
 , sceneVar
 , weakObj
 -- , benignDeRefWeakObj
+, benignReadWeakObjScene
 , benignReadObjScene
 ) where
 
 -- import Data.Diverse.Lens
-import Control.Lens
+import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
+import Control.Monad.Morph
 import Glazier.Benign
 import Glazier.React.Obj.Internal
 import Glazier.React.Scene
@@ -49,14 +52,14 @@ import Glazier.React.Scene
 -- | A restricted form of 'HasWeakObj' limiting the lens to a 'Getter'.
 -- 'Obj' only has an instance of 'GetWeakObj'
 -- The @r -> o@ functional dependency resolves ambiguity with @o@
-class GetWeakObj s r | r -> s where
-    _getWeakObj :: Getter r (WeakObj s)
+-- class GetWeakObj s r | r -> s where
+--     _getWeakObj :: Getter r (WeakObj s)
 
--- instance {-# OVERLAPPABLE #-} HasWeakObj s r => GetWeakObj s r where
---     _getWeakObj = _weakObj
+-- -- instance {-# OVERLAPPABLE #-} HasWeakObj s r => GetWeakObj s r where
+-- --     _getWeakObj = _weakObj
 
-instance GetWeakObj s (WeakObj s) where
-    _getWeakObj = id
+-- instance GetWeakObj s (WeakObj s) where
+--     _getWeakObj = id
 
 -- _weakObj :: forall s t. Has (WeakObj s) t => Lens' t (WeakObj s)
 -- _weakObj = hasLens @(WeakObj s)
@@ -69,25 +72,44 @@ instance GetWeakObj s (WeakObj s) where
 -- instance HasObj s (Obj s) where
 --     _obj = id
 
-instance GetWeakObj s (Obj s) where
-    _getWeakObj = to weakObj
+-- instance GetWeakObj s (Obj s) where
+--     _getWeakObj = to weakObj
 
-class ToObj s r | r -> s where
-    toObj :: MonadBenignIO m => r -> m (Maybe (Obj s))
+-- class ToObj s r | r -> s where
+--     toObj :: MonadBenignIO m => r -> m (Maybe (Obj s))
 
-instance ToObj s (Obj s) where
-    toObj obj = pure (Just obj)
+-- instance ToObj s (Obj s) where
+--     toObj obj = pure (Just obj)
 
-instance ToObj s (WeakObj s) where
-    toObj wkObj = runMaybeT $ Obj wkObj <$> scnRef <*> scnVar
-      where
-        scnWkRef = sceneWeakRef wkObj
-        scnWkVar = sceneWeakVar wkObj
-        scnRef = MaybeT . liftBenignIO . benignDeRefWeak $ scnWkRef
-        scnVar = MaybeT . liftBenignIO . benignDeRefWeak $ scnWkVar
+-- instance ToObj s (WeakObj s) where
+--     toObj wkObj = runMaybeT $ Obj wkObj <$> scnRef <*> scnVar
+--       where
+--         scnWkRef = sceneWeakRef wkObj
+--         scnWkVar = sceneWeakVar wkObj
+--         scnRef = MaybeT . liftBenignIO . benignDeRefWeak $ scnWkRef
+--         scnVar = MaybeT . liftBenignIO . benignDeRefWeak $ scnWkVar
 
 -- _obj :: forall s t. Has (Obj s) t => Lens' t (Obj s)
 -- _obj = hasLens @(Obj s)
 
+benignReadWeakObjScene :: MonadBenignIO m => WeakObj s -> m (Maybe (Scene s))
+benignReadWeakObjScene obj = runMaybeT $ do
+    scnRef <- MaybeT . liftBenignIO . benignDeRefWeak $ sceneWeakRef obj
+    liftBenignIO $ benignReadIORef scnRef
+
 benignReadObjScene :: MonadBenignIO m => Obj s -> m (Scene s)
 benignReadObjScene obj = liftBenignIO $ benignReadIORef $ sceneRef obj
+
+-----------------------------------------------
+
+class Monad m => WeakObjReader o m | m -> o where
+    askWeakObj :: m (WeakObj o)
+    localWeakObj :: (WeakObj o -> WeakObj o) -> m a -> m a
+
+instance {-# OVERLAPPABLE #-} (Monad (t m), MonadTrans t, MFunctor t, WeakObjReader o m) => WeakObjReader o (t m) where
+    askWeakObj = lift askWeakObj
+    localWeakObj f m = hoist (localWeakObj f) m
+
+instance {-# OVERLAPPABLE #-} Monad m => WeakObjReader o (ReaderT (WeakObj o) m) where
+    askWeakObj = ask
+    localWeakObj = local

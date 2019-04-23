@@ -14,9 +14,10 @@ import Control.Lens
 import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Maybe
-import Control.Monad.Trans.Maybe.Extras
+import Control.Monad.Trans.Extras
 import Control.Monad.Trans.RWS.Strict
 import qualified Data.DList as DL
+import qualified Data.JSString as J
 import qualified Data.Map.Strict as M
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
@@ -42,7 +43,7 @@ type Window s = RWST (Scene s) () (DL.DList ReactMarkup) (Benign IO)
 getListeners :: MonadReader (Scene s) m => ReactId -> m [JE.Property]
 getListeners k = do
     ls <- view (_plan._reactants.ix k._reactListeners.to M.toList)
-    pure $ (\(n, (cb, _)) -> (n, JE.toJSR cb)) <$> ls
+    pure $ (\(n, (cb, _)) -> (n, JE.toJSRep cb)) <$> ls
 
 -- | Interactive version of 'lf' using listeners obtained from the 'Plan' for a 'ElementalId'.
 lf' :: (MonadReader (Scene s) m, MonadState (DL.DList ReactMarkup) m)
@@ -68,10 +69,9 @@ bh' k n props childs = do
 bindListenerContext :: JE.JSRep -> J.Callback (J.JSVal -> J.JSVal -> IO ()) -> JE.JSRep
 bindListenerContext = js_bindListenerContext
 
-displayObj :: (MonadBenignIO m, MonadState (DL.DList ReactMarkup) m, ToObj s obj) => obj -> m ()
-displayObj obj = (`evalMaybeT` ()) $ do
-    obj' <- MaybeT $ toObj obj
-    scn <- benignReadObjScene obj'
+displayWeakObj :: (MonadBenignIO m, MonadState (DL.DList ReactMarkup) m) => WeakObj o -> m ()
+displayWeakObj obj = (`evalMaybeT` ()) $ do
+    scn <- MaybeT $ benignReadWeakObjScene obj
     let scb = scn ^. _plan._shimCallbacks
         renderCb = shimOnRender scb
         mountedCb = shimOnMounted scb
@@ -81,12 +81,12 @@ displayObj obj = (`evalMaybeT` ()) $ do
     -- These are the callbacks on the 'ShimComponent'
     -- See jsbits/react.js
 
-    lf (JE.toJSR shimComponent)
-        [ ("render", JE.toJSR renderCb)
-        , ("mounted", JE.toJSR mountedCb)
-        , ("rendered", JE.toJSR renderedCb)
-        , ("ref", JE.toJSR refCb)
-        , ("key", reactIdKey' k)
+    lf (JE.toJSRep shimComponent)
+        [ ("render", JE.toJSRep renderCb)
+        , ("mounted", JE.toJSRep mountedCb)
+        , ("rendered", JE.toJSRep renderedCb)
+        , ("ref", JE.toJSRep refCb)
+        , ("key", JE.toJSRep . J.pack $ show k)
         ]
 
 #ifdef __GHCJS__

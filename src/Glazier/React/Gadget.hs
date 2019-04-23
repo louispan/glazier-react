@@ -19,7 +19,7 @@ type MonadGadget' c r o m = (MonadReactor c m, HasWeakObj o r, Has ReactId r)
 -- The @s@ state can be magnified with 'magnifiedSubject'
 type Gadget c r = ReaderT r (ContT () (Program c))
 
-instance GetWeakObj s r => HMonadLogLevel (Gadget c r) where
+instance GetWeakObj s r => MonadLogLevel (Gadget c r) where
     -- logLevel :: m (Benign IO (Maybe LogLevel))
     logLevel = do
         obj <- view _getWeakObj
@@ -52,3 +52,4 @@ runGadget x l = runContT (runReaderT x l)
 
 evalGadget :: Gadget c r () -> r -> (Program c) ()
 evalGadget gad r = evalContT . (`runReaderT` r) $ gad
+

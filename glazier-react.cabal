@@ -39,7 +39,6 @@ library
                        Glazier.React.Notice.Internal
                        Glazier.React.ReactDOM
                        Glazier.React.ReactId
-                       Glazier.React.ReactId.Internal
                        Glazier.React.Reactor
                       --  Glazier.React.Reactor.Exec
                        Glazier.React.Obj
@@ -51,8 +50,7 @@ library
                       --  Glazier.React.Widget
                        Glazier.React.Window
   build-depends:       base >= 4.9.0 && < 5
-                     , aeson >= 1.1.2.0
-                     , aeson-applicative >= 1.4
+                     , aeson >= 1.4.2.0
                      , async >= 2.2
                      , alternators >= 2.0
                      , containers >= 0.5
@@ -63,7 +61,7 @@ library
                      , glazier >= 2.0
                      , javascript-extras >= 0.6
                      , lens >= 4
-                     , lens-misc >= 0
+                     , lens-misc >= 0.0.2
                      , mmorph >= 1
                      , mtl >= 2
                      , newtype-generics >= 0.5
