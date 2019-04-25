@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
+
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
@@ -32,6 +34,7 @@ import Control.Monad.Morph
 import Glazier.Benign
 import Glazier.React.Obj.Internal
 import Glazier.React.Scene
+import Glazier.Logger
 
 -- | Get a 'Lens' to a 'WeakObj'.
 -- The 'Setter' in the 'Lens' is useful to be used in a 'MonadReader' environment
@@ -92,12 +95,12 @@ import Glazier.React.Scene
 -- _obj :: forall s t. Has (Obj s) t => Lens' t (Obj s)
 -- _obj = hasLens @(Obj s)
 
-benignReadWeakObjScene :: MonadBenignIO m => WeakObj s -> m (Maybe (Scene s))
+benignReadWeakObjScene :: MonadBenignIO m => WeakObj o -> m (Maybe (Scene o))
 benignReadWeakObjScene obj = runMaybeT $ do
     scnRef <- MaybeT . liftBenignIO . benignDeRefWeak $ sceneWeakRef obj
     liftBenignIO $ benignReadIORef scnRef
 
-benignReadObjScene :: MonadBenignIO m => Obj s -> m (Scene s)
+benignReadObjScene :: MonadBenignIO m => Obj o -> m (Scene o)
 benignReadObjScene obj = liftBenignIO $ benignReadIORef $ sceneRef obj
 
 -----------------------------------------------
@@ -113,3 +116,14 @@ instance {-# OVERLAPPABLE #-} (Monad (t m), MonadTrans t, MFunctor t, WeakObjRea
 instance {-# OVERLAPPABLE #-} Monad m => WeakObjReader o (ReaderT (WeakObj o) m) where
     askWeakObj = ask
     localWeakObj = local
+
+instance Monad m => LogLevelReader (ReaderT (WeakObj o) m) where
+    -- logLevel :: m (Benign IO (Maybe LogLevel))
+    askLogLevel = do
+        obj <- askWeakObj
+        pure . go . sceneWeakRef $ obj
+      where
+        go wk = runMaybeT $ do
+            ref <- MaybeT $ benignDeRefWeak wk
+            s <- lift $ benignReadIORef ref
+            MaybeT . planLogLevel . plan $ s

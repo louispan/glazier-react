@@ -40,7 +40,7 @@ library
                        Glazier.React.ReactDOM
                        Glazier.React.ReactId
                        Glazier.React.Reactor
-                      --  Glazier.React.Reactor.Exec
+                       Glazier.React.Reactor.Exec
                        Glazier.React.Obj
                        Glazier.React.Obj.Internal
                        Glazier.React.Scene

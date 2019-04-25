@@ -14,11 +14,11 @@ module Glazier.React
     , module Glazier.React.ReactDOM
     , module Glazier.React.ReactId
     , module Glazier.React.Reactor
-    -- , module Glazier.React.Reactor.Exec
+    , module Glazier.React.Reactor.Exec
     , module Glazier.React.Obj
     , module Glazier.React.Scene
     , module Glazier.React.Shim
-    , module Glazier.React.Subject
+    -- , module Glazier.React.Subject
     -- , module Glazier.React.Widget
     , module Glazier.React.Window
     , module Control.Also
@@ -59,9 +59,9 @@ import Glazier.React.Obj
 import Glazier.React.ReactDOM
 import Glazier.React.ReactId
 import Glazier.React.Reactor
--- import Glazier.React.Reactor.Exec
+import Glazier.React.Reactor.Exec
 import Glazier.React.Scene
 import Glazier.React.Shim
-import Glazier.React.Subject
+-- import Glazier.React.Subject
 -- import Glazier.React.Widget
 import Glazier.React.Window
