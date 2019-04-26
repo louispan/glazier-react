@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-redundant-constraints #-}
+
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -5,7 +7,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
--- {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
@@ -68,6 +69,7 @@ import qualified GHCJS.Foreign.Callback.Internal as J
 import qualified GHCJS.Foreign.Export as J
 import qualified GHCJS.Types as J
 import Glazier.Command
+import Glazier.Command.Exec
 import Glazier.Logger
 import Glazier.React.EventTarget
 import Glazier.React.Markup
@@ -141,12 +143,16 @@ startObj root obj = liftIO $ do
 -- WARN: A different @Obj o@ will be create everytime this function is used,
 -- however, each time running this may execute arbitrary commands in the given
 -- widget in order to initialize the widget object.
+-- This function has a redundant constraint of @CmdTypes c c ~ CmdTypes (NoIOCmd c) c@
+-- which ensures that the command @c@ doesn't contain arbitrary @IO c@ effects.
 startWidget ::
     ( MonadIO m
     , Has ReactorEnv r
     , MonadReader r m
     , AsReactor c
     , Typeable s
+    -- redundant contraint, but ensures no @IO c@ commands can be executed
+    , CmdTypes c c ~ CmdTypes (NoIOCmd c) c
     )
     => (c -> m ()) -> Widget c s s () -> J.JSString -> s -> JE.JSRep -> m (J.Export (Obj s))
 startWidget executor wid logname s root = execMkObj executor wid logname s >>= startObj root
