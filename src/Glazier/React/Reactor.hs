@@ -283,10 +283,10 @@ rerender = do
 getModel :: (HasCallStack, AsReactor c, MonadGadget' c o m) => Traversal' o s -> m s
 getModel sbj = do
     obj <- askWeakObj
-    ms <- runMaybeT $ do
-        o <- MaybeT $ invoke (id @(Benign IO _) (fmap model <$> benignReadWeakObjScene obj))
-        MaybeT $ pure $ preview sbj o
+    ms <- invoke (id @(Benign IO _) (go <$> benignReadWeakObjScene obj))
     fireJust ms
+  where
+    go scn = scn ^? (_Just._model.sbj)
 
 -- | Create a callback for a 'JE.JSRep' and add it to this elementals's dlist of listeners.
 -- 'domTrigger' does not expect a 'Notice' as it is not part of React.
@@ -313,7 +313,6 @@ domTrigger_ ::
 domTrigger_ j n a = do
     domTrigger j n (const $ pure ())
     pure a
-
 
 -- | Register actions to execute after a render.
 -- It is safe to 'exec'' a 'Mutate' or 'Rerender' in this callback.
@@ -474,35 +473,3 @@ trigger_ n a = do
 -- -- -- Use @Tagged t s@ to add other instances, which can be `coerce`d back to @s@.
 -- -- class DefaultWidget s where
 -- --     defaultWidget :: Widget c s s ()
-
-
--- wack :: (AsFacet [c] c, MonadWidget c o o m) => m ()
--- wack = pure ()
-
--- wock :: AsFacet [c] c => ReaderT (ReactId)
---     (ReaderT (WeakObj o)
---     (ExceptT (Window o ())
---     (ContT ()
---     (Program c)))) ()
--- wock = wack
-
--- data WackCmd c where
---      WackCmd :: (MonadWidget c o o m) => m () -> WackCmd c
-
--- wack1 :: (AsFacet [c] c) => WackCmd c
--- wack1 = WackCmd wock
-
--- -- wack2 :: AsFacet [c] c => WackCmd c -> ReaderT (ReactId)
--- --     (ReaderT (WeakObj o)
--- --     (ExceptT (Window o ())
--- --     (ContT ()
--- --     (Program c)))) c
--- wack2 (WackCmd m) = m
-
-
--- wack2 :: forall c o. (AsFacet [c] c) => (forall m. MonadWidget c o o m => m ()) -> ReaderT (ReactId)
---     (ReaderT (WeakObj o)
---     (ExceptT (Window o ())
---     (ContT ()
---     (Program c)))) ()
--- wack2 a = a

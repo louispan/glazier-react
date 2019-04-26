@@ -58,6 +58,7 @@ import qualified Data.HashMap.Strict as HM
 import Data.IORef
 import qualified Data.JSString as J
 import qualified Data.JSString.Text as J
+import qualified Data.Map.Strict as M
 import Data.Maybe
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -121,6 +122,9 @@ namedLogLevel defLogLvlRef logLvlOverridesRef logname = do
                 Nothing -> benignReadIORef defLogLvlRef
                 Just x -> pure x
     pure go
+  where
+    findOrInsert :: (At t, Eq (IxValue t)) => Index t -> IxValue t -> t -> (IxValue t, t)
+    findOrInsert k v = at k . non v <%~ id
 
 -- | An example of starting an app using the glazier-react framework
 -- WARN: A different @Obj o@ will be create everytime this function is used,
@@ -392,7 +396,7 @@ execMkObj executor wid logname s = do
         let scnRef = sceneRef obj'
             scnVar = sceneVar obj'
         lift $ do
-            -- update componentRef held in the Plan
+            -- update shimRef held in the Plan
             scn <- takeMVar scnVar
             let scn' = scn & _plan._shimRef .~ (JE.fromJS j)
             atomicWriteIORef scnRef scn'
@@ -672,17 +676,22 @@ execGetReactRef executor obj k f = (`evalMaybeT` ()) $ do
     let scnRef = sceneRef obj'
         scnVar = sceneVar obj'
     UnliftIO u <- lift askUnliftIO
-    scn <- liftIO $ takeMVar scnVar
-    (refFreshness, pln) <- lift $ getOrRegisterRefCoreListener obj k (plan scn)
-    let tryAgain = u $ execGetReactRef executor obj k f
-        scn' = scn & _plan .~ pln -- to save the core listener
-                & _plan._renderedOnceListener %~ (*> tryAgain)
-        ret = pln ^? (_reactants.ix k._reactRef._Just)
-        triggerTryAgain = liftIO $ do
+
+    -- make sure the reactRef shim ref is registered, and get the possibly modified scn
+    (_, scn) <- do
+        scn <- liftIO $ takeMVar scnVar
+        (`runStateT` scn) $ getOrMkListenerRef obj k "ref"
+
+    let ret = scn ^? (_plan._reactants.ix k._reactRef._Just)
+        tryAgain = u $ execGetReactRef executor obj k f
+        tryAgainScn = scn & _plan._renderedOnceListener %~ (*> tryAgain)
+
+        -- This puts back the mvar
+        putBackAndTryAgain = liftIO $ do
             liftIO $ putStrLn "LOUISDEBUG: triggerTryAgain"
             -- save the tryAgain handler when nextRendered
-            atomicWriteIORef scnRef scn'
-            putMVar scnVar scn'
+            atomicWriteIORef scnRef tryAgainScn
+            putMVar scnVar tryAgainScn
             -- trigger a rerender immediately
             -- Note: componentRef should be set
             -- since it is part of the shimComponent wrapper
@@ -690,58 +699,58 @@ execGetReactRef executor obj k f = (`evalMaybeT` ()) $ do
             -- In the very unlikely case it is not set
             -- (eg still initializing?) then there is nothing
             -- we can do for now.
-            -- But as soon as the initialzation finishes, and renders
-            -- the tryAgain callback will be called.
-            case scn' ^. _plan._shimRef of
+            -- But as soon as the initialzation finishes, and renders,
+            -- then the tryAgain callback will be called.
+            case tryAgainScn ^. _plan._shimRef of
                 Nothing -> pure ()
                 Just j -> rerenderShim j
-    case refFreshness of
-        Fresh -> do
-            liftIO $ putStrLn "LOUISDEBUG: Fresh"
-            triggerTryAgain
-        Existing -> case ret of
-            Nothing -> do
-                liftIO $ putStrLn "LOUISDEBUG: Existing Nothing"
-                triggerTryAgain
-            Just ret' -> do
-                liftIO $ putStrLn "LOUISDEBUG: Existing Just"
-                liftIO $ putMVar scnVar scn
-                lift . executor $ f ret'
+    case ret of
+        Nothing -> do
+            liftIO $ putStrLn "LOUISDEBUG: Existing Nothing"
+            putBackAndTryAgain
+        Just ret' ->do
+            liftIO $ do
+                atomicWriteIORef scnRef scn
+                putMVar scnVar scn
+            lift . executor $ f ret'
 
-getOrRegisterRefCoreListener :: (MonadIO m)
+getOrMkListenerRef :: (MonadIO m)
     => WeakObj s
     -> ReactId
-    -> Plan
-    -> m (Freshness, Plan)
-getOrRegisterRefCoreListener obj k pln = do
-    liftIO $ putStrLn "LOUISDEBUG: getOrRegisterRefCoreListener"
-    liftIO $ do
-        -- first get or make the target
-        (freshness, eventHdl) <-
-            case pln ^. _reactants.at k.to (fromMaybe (Reactant Nothing mempty))._reactListeners.at n of
-                Nothing -> do
-                    liftIO $ putStrLn $ "LOUISDEBUG: RefCore Nothing " <> show k
-                    listenerRef <- newIORef mempty
-                    cb <- mkEventCallback listenerRef
-                    -- update listenerRef with new event listener
-                    -- only do this once (when for first ref listener)
-                    addEventHandler (pure . JE.fromJSRep) hdlRef listenerRef
-                    pure (Fresh, (cb, listenerRef))
-                Just eventHdl -> do
-                    liftIO $ putStrLn $ "LOUISDEBUG: RefCore Just " <> show k
-                    pure (Existing, eventHdl)
-        -- prepare the updated state
-        let pln' = pln & _reactants.at k %~ (Just . addElem . initElem)
-            initElem = fromMaybe (Reactant Nothing mempty)
-            addElem = _reactListeners.at n %~ addListener
-            addListener = Just . maybe eventHdl (const eventHdl)
-        case freshness of
-            Fresh -> pure (Fresh, pln')
-            Existing -> pure (Existing, pln)
+    -> J.JSString
+    -> StateT (Scene s) m (IORef (J.JSVal -> IO (), IO ()))
+getOrMkListenerRef obj k n = do
+    liftIO $ putStrLn $ "LOUISDEBUG: getOrRegisterListener " <> J.unpack n
+    scn <- get
+    -- return the new eventHandler if it is new
+    case scn ^. _plan._reactants.at k.anon emptyRectant isEmptyReactant._reactListeners.at n of
+        Nothing -> do
+            eventHdl@(_, listenerRef) <- liftIO $ do
+                listenerRef <- newIORef mempty
+                cb <- mkEventCallback listenerRef
+                pure (cb, listenerRef)
+
+            -- Special case for "ref" listener.
+            -- creates a "ref" listener to to set the react ref to 'reactRef'
+            -- This is to support 'GetReactRef', in addition to explicit
+            -- register callback to "ref" for user-defined purposes.
+            -- The invariant is that if the "ref" listener is empty then
+            -- GetReactRef was not called for the reactant.
+            -- Else if the "ref" listener is non-empty then there must
+            -- have been one registered to set the 'reactRef'.
+            -- Then it is safe to add user defined "ref" callbacks.
+            if (n == (J.pack "ref"))
+                then liftIO $ addEventHandler (pure . JE.fromJSRep) hdlReactRef listenerRef
+                else pure ()
+
+            -- update the scene with the new handler
+            put $ scn & _plan._reactants.at k.anon emptyRectant isEmptyReactant._reactListeners.at n .~ Just eventHdl
+            pure listenerRef
+        Just (_, listenerRef) -> pure listenerRef
   where
-    n = J.pack "ref"
-    -- hdlRef x = command' $ Mutate obj (command_ <$> (_plan._reactants.ix k._elementalRef .= x))
-    hdlRef x = void . runMaybeT $ do
+    emptyRectant = Reactant Nothing mempty
+    isEmptyReactant (Reactant r ls) = isNothing r && M.null ls
+    hdlReactRef x = void . runMaybeT $ do
         obj' <- benignDeRefWeakObj obj
         let scnRef = sceneRef obj'
             scnVar = sceneVar obj'
@@ -766,30 +775,9 @@ execRegisterReactListener executor obj k n goStrict goLazy = void . runMaybeT $ 
     let scnRef = sceneRef obj'
         scnVar = sceneVar obj'
     UnliftIO u <- lift askUnliftIO
-    scn_ <- liftIO $ takeMVar scnVar
-    -- special logic for ref, where the first ref handler must be 'registerRefCoreListener'
-    scn <- if (n == (J.pack "ref"))
-        then do
-            (refFreshness, pln) <- getOrRegisterRefCoreListener obj k (plan scn_)
-            case refFreshness of
-                Existing -> pure scn_
-                Fresh -> pure (scn_ & _plan .~ pln)
-        else pure scn_
+    scn <- liftIO $ takeMVar scnVar
+    (listenerRef, scn') <- (`runStateT` scn) $ getOrMkListenerRef obj k n
     liftIO $ do
-        -- get or make the target
-        (freshness, eventHdl@(_, listenerRef)) <-
-            case scn ^. _plan._reactants.at k.to (fromMaybe (Reactant Nothing mempty))._reactListeners.at n of
-                Nothing -> do
-                    listenerRef <- newIORef mempty
-                    cb <- mkEventCallback listenerRef
-                    pure (Fresh, (cb, listenerRef))
-                Just eventHdl -> pure (Existing, eventHdl)
-        let scn' = case freshness of
-                Fresh -> scn & _plan._reactants.at k %~ (Just . addElem . initElem)
-                Existing -> scn
-            initElem = fromMaybe (Reactant Nothing mempty)
-            addElem = _reactListeners.at n %~ addListener
-            addListener = Just . maybe eventHdl (const eventHdl)
         -- update listenerRef with new event listener
         addEventHandler goStrict (u . executor . goLazy) listenerRef
         -- Update the subject
