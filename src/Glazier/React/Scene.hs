@@ -19,6 +19,7 @@ module Glazier.React.Scene where
 
 import Control.Lens
 import Control.Lens.Misc
+import Control.Monad.Benign
 import Data.Foldable
 import Data.IORef
 import qualified Data.Map.Strict as M
@@ -27,7 +28,6 @@ import qualified Data.Set as S
 import qualified GHC.Generics as G
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
-import Glazier.Benign
 import Glazier.Logger
 import Glazier.React.EventTarget
 import Glazier.React.ReactId

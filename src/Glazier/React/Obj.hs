@@ -22,19 +22,20 @@ module Glazier.React.Obj
 , sceneRef
 , sceneVar
 , weakObj
--- , benignDeRefWeakObj
-, benignReadWeakObjScene
-, benignReadObjScene
+, deRefWeakObj
+
+, readWeakObjScene
+, readObjScene
 ) where
 
 -- import Data.Diverse.Lens
+import Control.Monad.Benign
+import Control.Monad.Morph
 import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
-import Control.Monad.Morph
-import Glazier.Benign
+import Glazier.Logger
 import Glazier.React.Obj.Internal
 import Glazier.React.Scene
-import Glazier.Logger
 
 -- | Get a 'Lens' to a 'WeakObj'.
 -- The 'Setter' in the 'Lens' is useful to be used in a 'MonadReader' environment
@@ -95,13 +96,13 @@ import Glazier.Logger
 -- _obj :: forall s t. Has (Obj s) t => Lens' t (Obj s)
 -- _obj = hasLens @(Obj s)
 
-benignReadWeakObjScene :: MonadBenignIO m => WeakObj o -> m (Maybe (Scene o))
-benignReadWeakObjScene obj = runMaybeT $ do
+readWeakObjScene :: MonadBenignIO m => WeakObj o -> m (Maybe (Scene o))
+readWeakObjScene obj = runMaybeT $ do
     scnRef <- MaybeT . liftBenignIO . benignDeRefWeak $ sceneWeakRef obj
     liftBenignIO $ benignReadIORef scnRef
 
-benignReadObjScene :: MonadBenignIO m => Obj o -> m (Scene o)
-benignReadObjScene obj = liftBenignIO $ benignReadIORef $ sceneRef obj
+readObjScene :: MonadBenignIO m => Obj o -> m (Scene o)
+readObjScene obj = liftBenignIO $ benignReadIORef $ sceneRef obj
 
 -----------------------------------------------
 

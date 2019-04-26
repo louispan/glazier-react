@@ -2,7 +2,6 @@
 -- It is up to the user to import the Event modules as required.
 module Glazier.React
     ( module Glazier.Command
-    , module Glazier.Benign
     , module Glazier.Command.Exec
     , module Glazier.React.Element
     , module Glazier.React.EventTarget
@@ -23,6 +22,7 @@ module Glazier.React
     , module Glazier.React.Window
     , module Control.Also
     , module Control.Monad
+    , module Control.Monad.Benign
     , module Control.Monad.Trans
     , module Control.Monad.Delegate
     , module Control.Monad.Reader
@@ -36,6 +36,7 @@ module Glazier.React
 
 import Control.Also
 import Control.Monad
+import Control.Monad.Benign
 import Control.Monad.Delegate
 import Control.Monad.Except
 import Control.Monad.Reader
@@ -45,7 +46,6 @@ import Control.Monad.Trans
 import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
 import GHC.Stack
-import Glazier.Benign
 import Glazier.Command
 import Glazier.Command.Exec
 import Glazier.React.Element

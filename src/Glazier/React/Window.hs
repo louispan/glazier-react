@@ -11,17 +11,17 @@
 module Glazier.React.Window where
 
 import Control.Lens
+import Control.Monad.Benign
 import Control.Monad.Reader
 import Control.Monad.State.Strict
-import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Extras
+import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.RWS.Strict
 import qualified Data.DList as DL
 import qualified Data.JSString as J
 import qualified Data.Map.Strict as M
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
-import Glazier.Benign
 import Glazier.React.Markup
 import Glazier.React.Obj
 import Glazier.React.ReactId
@@ -71,7 +71,7 @@ bindListenerContext = js_bindListenerContext
 
 displayWeakObj :: (MonadBenignIO m, MonadState (DL.DList ReactMarkup) m) => WeakObj o -> m ()
 displayWeakObj obj = (`evalMaybeT` ()) $ do
-    scn <- MaybeT $ benignReadWeakObjScene obj
+    scn <- MaybeT $ readWeakObjScene obj
     let scb = scn ^. _plan._shimCallbacks
         renderCb = shimOnRender scb
         mountedCb = shimOnMounted scb

@@ -5,10 +5,10 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE FunctionalDependencies #-}
 -- {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
@@ -20,6 +20,7 @@ import Control.Also
 import Control.DeepSeq
 import Control.Lens
 import Control.Lens.Misc
+import Control.Monad.Benign
 import Control.Monad.Cont
 import Control.Monad.Delegate
 import Control.Monad.Except
@@ -30,7 +31,6 @@ import Control.Monad.Trans.Maybe
 import Data.Diverse.Lens
 import qualified Data.JSString as J
 import GHC.Stack
-import Glazier.Benign
 import Glazier.Command
 #ifdef DEBUGIO
 import Glazier.DebugIO
@@ -39,8 +39,8 @@ import Glazier.Logger
 import Glazier.React.EventTarget
 import Glazier.React.Notice
 import Glazier.React.Obj
-import Glazier.React.Scene
 import Glazier.React.ReactId
+import Glazier.React.Scene
 -- import Glazier.React.Widget
 import Glazier.React.Window
 import qualified JavaScript.Extras as JE
@@ -284,7 +284,7 @@ getModel :: (HasCallStack, AsReactor c, MonadGadget' c o m) => Traversal' o s ->
 getModel sbj = do
     obj <- askWeakObj
     ms <- runMaybeT $ do
-        o <- MaybeT $ invoke (id @(Benign IO _) (fmap model <$> benignReadWeakObjScene obj))
+        o <- MaybeT $ invoke (id @(Benign IO _) (fmap model <$> readWeakObjScene obj))
         MaybeT $ pure $ preview sbj o
     fireJust ms
 

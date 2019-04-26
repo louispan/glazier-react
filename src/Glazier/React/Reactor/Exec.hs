@@ -42,8 +42,10 @@ import Control.Concurrent.STM
 import Control.DeepSeq
 import Control.Lens
 import Control.Lens.Misc
+import Control.Monad.Benign
 import Control.Monad.Delegate
 import Control.Monad.IO.Unlift
+import Control.Monad.Morph
 import Control.Monad.Reader
 import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Except
@@ -69,7 +71,6 @@ import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Foreign.Callback.Internal as J
 import qualified GHCJS.Foreign.Export as J
 import qualified GHCJS.Types as J
-import Glazier.Benign
 import Glazier.Command
 import Glazier.Logger
 import Glazier.Logger.Exec
@@ -268,170 +269,172 @@ startApp executor m logname o root = mkApp executor m logname o >>= startObj roo
 -- --             , show srcLocStartCol
 -- --             ]
 
--- execMkReactId ::
---     ( MonadIO m
---     , Has ReactorEnv r
---     , MonadReader r m
---     )
---     => J.JSString
---     -> m ReactId
--- execMkReactId n = do
---     v <- view ((hasLens @ReactorEnv)._reactIdVar)
---     liftIO $ do
---         i <- takeMVar v
---         let i' = JE.safeIncrement i
---         putMVar v i'
---         pure $ ReactId (n, i')
+execMkReactId ::
+    ( MonadIO m
+    , Has ReactorEnv r
+    , MonadReader r m
+    )
+    => J.JSString
+    -> m ReactId
+execMkReactId n = do
+    v <- view ((hasLens @ReactorEnv)._reactIdVar)
+    liftIO $ do
+        i <- takeMVar v
+        let i' = JE.safeIncrement i
+        putMVar v i'
+        pure $ ReactId (n, i')
 
--- execSetRender :: MonadIO m => WeakObj s -> Window s () -> m ()
--- execSetRender obj win = void . runMaybeT $ do
---     liftIO $ putStrLn "LOUISDEBUG: execSetRender"
---     obj' <- deRefWeakObj obj
---     let scnRef = sceneRef obj'
---         scnVar = sceneVar obj'
---     -- create the callbacks
---     liftIO $ do
---         renderCb <- J.syncCallback' (renderCb obj win)
---         -- Replace the existing ShimCallbacks
---         scn <- takeMVar scnVar
---         -- replace the rendering function
---         let origRenderCb = scn ^. _plan._shimCallbacks._shimOnRender
---             scn' = scn & _plan._shimCallbacks._shimOnRender .~ renderCb
---         atomicWriteIORef scnRef scn'
---         putMVar scnVar scn'
---         J.releaseCallback origRenderCb
---   where
---     renderCb :: WeakObj s -> Window s () -> IO J.JSVal
---     renderCb obj win = (`evalMaybeT` J.nullRef) $ do
---         obj' <- deRefWeakObj obj
---         let scnRef = sceneRef obj'
---         lift $ do
---             -- render using from scnRef (doesn't block)
---             scn <- readIORef scnRef
---             (mrkup, _) <- getBenign (RWS.execRWST win scn mempty) -- ignore unit writer output
---             a <- JE.toJS <$> toElement mrkup
---             pure a
+execSetRender :: MonadIO m => WeakObj s -> Window s () -> m ()
+execSetRender obj win = void . runMaybeT $ do
+    liftIO $ putStrLn "LOUISDEBUG: execSetRender"
+    obj' <- hoist (liftIO . getBenign) $ deRefWeakObj obj
+    let scnRef = sceneRef obj'
+        scnVar = sceneVar obj'
+    -- create the callbacks
+    liftIO $ do
+        renderCb <- J.syncCallback' (renderCb obj win)
+        -- Replace the existing ShimCallbacks
+        scn <- takeMVar scnVar
+        -- replace the rendering function
+        let origRenderCb = scn ^. _plan._shimCallbacks._shimOnRender
+            scn' = scn & _plan._shimCallbacks._shimOnRender .~ renderCb
+        atomicWriteIORef scnRef scn'
+        putMVar scnVar scn'
+        J.releaseCallback origRenderCb
+  where
+    renderCb :: WeakObj s -> Window s () -> IO J.JSVal
+    renderCb obj win = (`evalMaybeT` J.nullRef) $ do
+        obj' <- deRefWeakObj obj
+        let scnRef = sceneRef obj'
+        lift $ do
+            -- render using from scnRef (doesn't block)
+            scn <- readIORef scnRef
+            (mrkup, _) <- getBenign (RWS.execRWST win scn mempty) -- ignore unit writer output
+            a <- JE.toJS <$> toElement mrkup
+            pure a
 
--- -- | Make an initialized 'Obj' for a given model using the given
--- -- 'Window' rendering function.
--- -- The original window should be dropped and the 'Widget' reduced to just a
--- -- 'Gadget' to emphasis the fact that the 'Window' was used up.
--- -- 'displayObj' should be used to render the subject.
--- execMkObj ::
---     ( MonadIO m
---     , Has ReactorEnv r
---     , MonadReader r m
---     , AsReactor c
---     )
---     => (c -> m ())
---     -> Widget c s s ()
---     -> J.JSString
---     -> s
---     -> m (Obj s)
--- execMkObj executor wid logname s = do
---     liftIO $ putStrLn "LOUISDEBUG: execMkObj"
---     defLogLvlRef <- view ((hasLens @ReactorEnv)._defaultLogLevel)
---     logLvlOverridesRef <- view ((hasLens @ReactorEnv)._logLevelOverrides)
---     k <- execMkReactId logname
---     (obj, cs) <- liftIO $ do
---         namedLogLvl <- namedLogLevel defLogLvlRef logLvlOverridesRef (J.textFromJSString logname)
---         -- create shim with fake callbacks for now
---         let newPlan = Plan
---                 k
---                 namedLogLvl
---                 Nothing
---                 (ShimCallbacks (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef))
---                 mempty
---                 mempty
---                 mempty
---                 mempty
---                 mempty
---                 mempty
---                 mempty
---                 S.empty
---                 RerenderNotRequired
---             scn = Model newPlan s
+-- | Make an initialized 'Obj' for a given model using the given
+-- 'Window' rendering function.
+-- The original window should be dropped and the 'Widget' reduced to just a
+-- 'Gadget' to emphasis the fact that the 'Window' was used up.
+-- 'displayObj' should be used to render the subject.
+execMkObj ::
+    ( MonadIO m
+    , Has ReactorEnv r
+    , MonadReader r m
+    , AsReactor c
+    )
+    => (c -> m ())
+    -> Widget c o o ()
+    -> J.JSString
+    -> o
+    -> m (Obj o)
+execMkObj executor wid logname s = do
+    liftIO $ putStrLn "LOUISDEBUG: execMkObj"
+    defLogLvlRef <- view ((hasLens @ReactorEnv)._defaultLogLevel)
+    logLvlOverridesRef <- view ((hasLens @ReactorEnv)._logLevelOverrides)
+    k <- execMkReactId logname
+    (obj, cs) <- liftIO $ do
+        namedLogLvl <- namedLogLevel defLogLvlRef logLvlOverridesRef (J.textFromJSString logname)
+        -- create shim with fake callbacks for now
+        let newPlan = Plan
+                k
+                namedLogLvl
+                Nothing
+                (ShimCallbacks (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef))
+                mempty
+                mempty
+                mempty
+                mempty
+                mempty
+                mempty
+                mempty
+                S.empty
+                RerenderNotRequired
+            scn = Scene newPlan s
 
---         scnRef <- newIORef scn
---         scnVar <- newEmptyMVar
+        scnRef <- newIORef scn
+        scnVar <- newEmptyMVar
 
---         mdlWkRef <- mkWeakIORef scnRef $
---             putStrLn "LOUISDEBUG: release scnRef"
+        mdlWkRef <- mkWeakIORef scnRef $
+            putStrLn "LOUISDEBUG: release scnRef"
 
---         -- Create automatic garbage collection of the callbacks
---         -- that will run when the Obj is garbage collected.
---         mdlWkVar <- mkWeakMVar scnVar $ do
---             putStrLn "LOUISDEBUG: release scnVar"
---             scn' <- readIORef scnRef
---             scn' ^. _plan._finalCleanup
---             releasePlanCallbacks (scn' ^. _plan)
+        -- Create automatic garbage collection of the callbacks
+        -- that will run when the Obj is garbage collected.
+        mdlWkVar <- mkWeakMVar scnVar $ do
+            putStrLn "LOUISDEBUG: release scnVar"
+            scn' <- readIORef scnRef
+            scn' ^. _plan._finalCleanup
+            releasePlanCallbacks (scn' ^. _plan)
 
---         let obj = WeakObj mdlWkRef mdlWkVar
---         -- Create callbacks for now
---         renderCb <- J.syncCallback' (pure J.nullRef) -- dummy render for now
---         refCb <- J.syncCallback1 J.ContinueAsync (onRefCb obj)
---         mountedCb <- J.syncCallback J.ContinueAsync (onMountedCb obj)
---         renderedCb <- J.syncCallback J.ContinueAsync (onRenderedCb obj)
+        let obj = WeakObj mdlWkRef mdlWkVar
+        -- Create callbacks for now
+        renderCb <- J.syncCallback' (pure J.nullRef) -- dummy render for now
+        refCb <- J.syncCallback1 J.ContinueAsync (onRefCb obj)
+        mountedCb <- J.syncCallback J.ContinueAsync (onMountedCb obj)
+        renderedCb <- J.syncCallback J.ContinueAsync (onRenderedCb obj)
 
---         -- Now we have enough to make a subject
---         let gad = runExceptT wid
---             gad' = gad >>= either (fmap Left . setRndr) (pure . Right)
---             gad'' = (either id id) <$> gad'
---             tick = runProgramT $ runGadget gad'' (Entity id obj) pure
---             cs = execState tick mempty
---             -- update the model to include the real shimcallbacks
---             scn' = scn & _plan._shimCallbacks .~ ShimCallbacks renderCb mountedCb renderedCb refCb
---         -- update the mutable variables with the initialzed model
---         atomicWriteIORef scnRef scn'
---         putMVar scnVar scn'
---         pure (Obj obj scnRef scnVar, cs)
---     -- execute additional commands
---     -- one of these commands will be 'SetRender' which will
---     -- update the dummy render with the real render function.
---     executor (command' $ DL.toList cs)
---     -- return the subject
---     pure obj
---   where
---     -- Use the obj from the env to avoid keeping obj alive
---     setRndr win = do
---         obj <- view _weakObj
---         exec' $ SetRender obj win
+        -- Now we have enough to make a subject
+        let gad = runExceptT wid
+            gad' = do
+                e <- gad
+                case e of
+                    Left win -> setRndr win
+                    Right () -> pure ()
+            cs = execProgram' $ evalContT $ (`runReaderT` k) $ (`runReaderT` obj) $ gad'
+            -- update the model to include the real shimcallbacks
+            scn' = scn & _plan._shimCallbacks .~ ShimCallbacks renderCb mountedCb renderedCb refCb
+        -- update the mutable variables with the initialzed model
+        atomicWriteIORef scnRef scn'
+        putMVar scnVar scn'
+        pure (Obj obj scnRef scnVar, cs)
+    -- execute additional commands
+    -- one of these commands will be 'SetRender' which will
+    -- update the dummy render with the real render function.
+    executor (command' $ DL.toList cs)
+    -- return the subject
+    pure obj
+  where
+    -- Use the obj from the env to avoid keeping obj alive
+    setRndr win = do
+        obj <- askWeakObj
+        exec' $ SetRender obj win
 
---     onRefCb :: WeakObj s -> J.JSVal -> IO ()
---     onRefCb obj j = (`evalMaybeT` ()) $ do
---         obj' <- deRefWeakObj obj
---         let scnRef = sceneRef obj'
---             scnVar = sceneVar obj'
---         lift $ do
---             -- update componentRef held in the Plan
---             scn <- takeMVar scnVar
---             let scn' = scn & _plan._componentRef .~ (JE.fromJS j)
---             atomicWriteIORef scnRef scn'
---             putMVar scnVar scn'
+    onRefCb :: WeakObj s -> J.JSVal -> IO ()
+    onRefCb obj j = (`evalMaybeT` ()) $ do
+        obj' <- deRefWeakObj obj
+        let scnRef = sceneRef obj'
+            scnVar = sceneVar obj'
+        lift $ do
+            -- update componentRef held in the Plan
+            scn <- takeMVar scnVar
+            let scn' = scn & _plan._shimRef .~ (JE.fromJS j)
+            atomicWriteIORef scnRef scn'
+            putMVar scnVar scn'
 
---     onRenderedCb :: WeakObj s -> IO ()
---     onRenderedCb obj = (`evalMaybeT` ()) $ do
---         obj' <- deRefWeakObj obj
---         let scnRef = sceneRef obj'
---             scnVar = sceneVar obj'
---         lift $ do
---             -- update renderedOnceListener held in the Plan
---             scn <- takeMVar scnVar
---             let scn' = scn & _plan._renderedOnceListener .~ mempty
---                 nxt = scn ^. _plan._renderedOnceListener
---                 cb = scn ^. _plan._renderedListener
+    onRenderedCb :: WeakObj s -> IO ()
+    onRenderedCb obj = (`evalMaybeT` ()) $ do
+        obj' <- deRefWeakObj obj
+        let scnRef = sceneRef obj'
+            scnVar = sceneVar obj'
+        lift $ do
+            -- update renderedOnceListener held in the Plan
+            scn <- takeMVar scnVar
+            let scn' = scn & _plan._renderedOnceListener .~ mempty
+                nxt = scn ^. _plan._renderedOnceListener
+                cb = scn ^. _plan._renderedListener
 
---             atomicWriteIORef scnRef scn'
---             putMVar scnVar scn'
---             nxt
---             cb
+            atomicWriteIORef scnRef scn'
+            putMVar scnVar scn'
+            nxt
+            cb
 
---     onMountedCb :: WeakObj s -> IO ()
---     onMountedCb obj = (`evalMaybeT` ()) $ do
---         scnRef <- MaybeT . deRefWeak $ sceneWeakRef obj
---         lift $ do
---             scn <- readIORef scnRef
---             scn ^. _plan._mountedListener
+    onMountedCb :: WeakObj s -> IO ()
+    onMountedCb obj = (`evalMaybeT` ()) $ do
+        scnRef <- MaybeT . deRefWeak $ sceneWeakRef obj
+        lift $ do
+            scn <- readIORef scnRef
+            scn ^. _plan._mountedListener
 
 -- -- Schedule a rerender, only if not lalready scheduled or
 -- -- not in middle of mutation
