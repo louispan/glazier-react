@@ -53,7 +53,6 @@ import qualified Control.Monad.Trans.RWS.Strict as RWS
 import Control.Monad.Trans.State.Strict
 import Data.Diverse.Lens
 import qualified Data.DList as DL
-import Data.Foldable
 import qualified Data.HashMap.Strict as HM
 import Data.IORef
 import qualified Data.JSString as J
@@ -126,45 +125,6 @@ namedLogLevel defLogLvlRef logLvlOverridesRef logname = do
     findOrInsert :: (At t, Eq (IxValue t)) => Index t -> IxValue t -> t -> (IxValue t, t)
     findOrInsert k v = at k . non v <%~ id
 
--- | An example of starting an app using the glazier-react framework
--- WARN: A different @Obj o@ will be create everytime this function is used,
--- however, each time running this may execute arbitrary commands in the given
--- @m@ in order to initialize the app object.
--- This function requires a @IO c@ executor to create an MVar to store the app object.
--- However, this function can be made to be the only function that requires the @IO c@
--- executor.
--- This function will return the application object @Obj o@
--- It is recommend to store or 'J.export' (requires @Typeable o@)
--- the obj to prevent it from being garbage collected.
--- @void $ J.export obj@
--- See 'startApp'
-mkApp ::
-    ( MonadIO m
-    , MonadUnliftWidget c s s m
-    , LogLevelReader m
-    , AsReactor c
-    , AsFacet (IO c) c
-    )
-    => (c -> m ()) -> m () -> J.JSString -> s -> m (Obj s)
-mkApp executor m logname s = do
-    logLvl <- askLogLevel
-    u <- askUnliftWidget
-    -- create a mvar to store the app object
-    objVar <- liftIO $ newEmptyMVar
-    let wid = unliftWidget u m
-        -- setupApp :: ReaderT (Benign IO (Maybe LogLevel)) (ContT () (Program c)) ()
-        setupApp = do
-            obj <- mkObj' wid logname s
-            -- Create an 'IO c' to store the created object into an mvar
-            exec' (command_ <$> (putMVar objVar obj))
-        cs = (`execProgram` mempty) $ evalContT $ (`runReaderT` logLvl) setupApp
-
-    -- run the initial commands, this will store the app obj into objVar
-    traverse_ executor cs
-
-    -- Now return the obj created, objVar can fall out of scope
-    liftIO $ takeMVar objVar
-
 -- | renders the given obj onto the given javascript dom
 -- and exports the obj to prevent it from being garbage collected
 -- which means the "main" haskell thread can exit.
@@ -177,16 +137,19 @@ startObj root obj = liftIO $ do
     -- Export obj to prevent it from being garbage collected
     J.export obj
 
-startApp ::
+-- | An example of starting an app using the glazier-react framework
+-- WARN: A different @Obj o@ will be create everytime this function is used,
+-- however, each time running this may execute arbitrary commands in the given
+-- widget in order to initialize the widget object.
+startWidget ::
     ( MonadIO m
-    , MonadUnliftWidget c s s m
-    , LogLevelReader m
+    , Has ReactorEnv r
+    , MonadReader r m
     , AsReactor c
-    , AsFacet (IO c) c
     , Typeable s
     )
-    => (c -> m ()) -> m () -> J.JSString -> s -> JE.JSRep -> m (J.Export (Obj s))
-startApp executor m logname s root = mkApp executor m logname s >>= startObj root
+    => (c -> m ()) -> Widget c s s () -> J.JSString -> s -> JE.JSRep -> m (J.Export (Obj s))
+startWidget executor wid logname s root = execMkObj executor wid logname s >>= startObj root
 
 -- | Returns commands that need to be processed last
 execReactorCmd ::
@@ -324,10 +287,10 @@ execMkObj ::
     , AsReactor c
     )
     => (c -> m ())
-    -> Widget c o o ()
+    -> Widget c s s ()
     -> J.JSString
-    -> o
-    -> m (Obj o)
+    -> s
+    -> m (Obj s)
 execMkObj executor wid logname s = do
     liftIO $ putStrLn "LOUISDEBUG: execMkObj"
     defLogLvlRef <- view ((hasLens @ReactorEnv)._defaultLogLevel)

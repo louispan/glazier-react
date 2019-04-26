@@ -69,6 +69,7 @@ type MonadWidget' c s s' m = (MonadGadget' c s m, MonadError (Window s ()) m)
 
 type MonadWidget c s s' m = (MonadWidget' c s s' m, ReactIdReader m)
 
+-- | 'Widget' is an instance of 'MonadWidget'
 type Widget c s s' = ExceptT (Window s' ())
     (ReaderT (WeakObj s)
     (ReaderT (ReactId)
@@ -232,6 +233,7 @@ mkObj' wid logname s = delegatify $ \f -> do
 ------------------------------------------------------
 
 -- | Convenient variation of 'mkObj' where the widget is unlifted from the given monad.
+-- This is useful for transformer stacks that require addition MonadReader-like effects.
 unliftMkObj :: (HasCallStack, AsReactor c, MonadCommand c m, LogLevelReader m, MonadUnliftWidget c s s m)
     => m a -> J.JSString -> s -> m (Either a (Obj s))
 unliftMkObj m logname s = do
@@ -239,6 +241,7 @@ unliftMkObj m logname s = do
     mkObj (unliftWidget u m) logname s
 
 -- | Convenient variation of 'mkObj'' where the widget is unlifted from the given monad.
+-- This is useful for transformer stacks that require addition MonadReader-like effects.
 unliftMkObj' :: (HasCallStack, AsReactor c, MonadCommand c m, LogLevelReader m, MonadUnliftWidget c s s m)
     => m () -> J.JSString -> s -> m (Obj s)
 unliftMkObj' m logname s = do
