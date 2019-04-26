@@ -96,29 +96,29 @@ import Glazier.React.Scene
 -- _obj :: forall s t. Has (Obj s) t => Lens' t (Obj s)
 -- _obj = hasLens @(Obj s)
 
-benignReadWeakObjScene :: MonadBenignIO m => WeakObj o -> m (Maybe (Scene o))
+benignReadWeakObjScene :: MonadBenignIO m => WeakObj s -> m (Maybe (Scene s))
 benignReadWeakObjScene obj = runMaybeT $ do
     scnRef <- MaybeT . liftBenignIO . benignDeRefWeak $ sceneWeakRef obj
     liftBenignIO $ benignReadIORef scnRef
 
-benignReadObjScene :: MonadBenignIO m => Obj o -> m (Scene o)
+benignReadObjScene :: MonadBenignIO m => Obj s -> m (Scene s)
 benignReadObjScene obj = liftBenignIO $ benignReadIORef $ sceneRef obj
 
 -----------------------------------------------
 
-class Monad m => WeakObjReader o m | m -> o where
-    askWeakObj :: m (WeakObj o)
-    localWeakObj :: (WeakObj o -> WeakObj o) -> m a -> m a
+class Monad m => WeakObjReader s m | m -> s where
+    askWeakObj :: m (WeakObj s)
+    localWeakObj :: (WeakObj s -> WeakObj s) -> m a -> m a
 
-instance {-# OVERLAPPABLE #-} (Monad (t m), MonadTrans t, MFunctor t, WeakObjReader o m) => WeakObjReader o (t m) where
+instance {-# OVERLAPPABLE #-} (Monad (t m), MonadTrans t, MFunctor t, WeakObjReader s m) => WeakObjReader s (t m) where
     askWeakObj = lift askWeakObj
     localWeakObj f m = hoist (localWeakObj f) m
 
-instance {-# OVERLAPPABLE #-} Monad m => WeakObjReader o (ReaderT (WeakObj o) m) where
+instance {-# OVERLAPPABLE #-} Monad m => WeakObjReader s (ReaderT (WeakObj s) m) where
     askWeakObj = ask
     localWeakObj = local
 
-instance Monad m => LogLevelReader (ReaderT (WeakObj o) m) where
+instance Monad m => LogLevelReader (ReaderT (WeakObj s) m) where
     -- logLevel :: m (Benign IO (Maybe LogLevel))
     askLogLevel = do
         obj <- askWeakObj

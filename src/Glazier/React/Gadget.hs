@@ -7,9 +7,9 @@ import Glazier.Logger
 import Glazier.React.Obj
 import Glazier.React.ReactId
 
--- type MonadGadget' c o m = (Logger c m, WeakObjReader o m)
+-- type MonadGadget' c s m= (Logger c m, WeakObjReader o m)
 
--- type MonadGadget c o m = (MonadGadget c o m, ReactIdReader m)
+-- type MonadGadget c s m= (MonadGadget c s m, ReactIdReader m)
 
 -- -- | Wrap ReaderTs around Gadget for instances of WeakObjReader and ReactIdReader
 -- type Gadget c = ContT () (Program c)

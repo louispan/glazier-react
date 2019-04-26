@@ -140,13 +140,13 @@ namedLogLevel defLogLvlRef logLvlOverridesRef logname = do
 -- See 'startApp'
 mkApp ::
     ( MonadIO m
-    , MonadUnliftWidget c o o m
+    , MonadUnliftWidget c s s m
     , LogLevelReader m
     , AsReactor c
     , AsFacet (IO c) c
     )
-    => (c -> m ()) -> m () -> J.JSString -> o -> m (Obj o)
-mkApp executor m logname o = do
+    => (c -> m ()) -> m () -> J.JSString -> s -> m (Obj s)
+mkApp executor m logname s = do
     logLvl <- askLogLevel
     u <- askUnliftWidget
     -- create a mvar to store the app object
@@ -154,7 +154,7 @@ mkApp executor m logname o = do
     let wid = unliftWidget u m
         -- setupApp :: ReaderT (Benign IO (Maybe LogLevel)) (ContT () (Program c)) ()
         setupApp = do
-            obj <- mkObj' wid logname o
+            obj <- mkObj' wid logname s
             -- Create an 'IO c' to store the created object into an mvar
             exec' (command_ <$> (putMVar objVar obj))
         cs = (`execProgram` mempty) $ evalContT $ (`runReaderT` logLvl) setupApp
@@ -168,7 +168,7 @@ mkApp executor m logname o = do
 -- | renders the given obj onto the given javascript dom
 -- and exports the obj to prevent it from being garbage collected
 -- which means the "main" haskell thread can exit.
-startObj :: (MonadIO m, Typeable o) => JE.JSRep -> Obj o -> m (J.Export (Obj o))
+startObj :: (MonadIO m, Typeable s) => JE.JSRep -> Obj s -> m (J.Export (Obj s))
 startObj root obj = liftIO $ do
     markup <- getBenign $ (`execStateT` mempty) $ displayWeakObj $ weakObj obj
     e <- toElement markup
@@ -179,14 +179,14 @@ startObj root obj = liftIO $ do
 
 startApp ::
     ( MonadIO m
-    , MonadUnliftWidget c o o m
+    , MonadUnliftWidget c s s m
     , LogLevelReader m
     , AsReactor c
     , AsFacet (IO c) c
-    , Typeable o
+    , Typeable s
     )
-    => (c -> m ()) -> m () -> J.JSString -> o -> JE.JSRep -> m (J.Export (Obj o))
-startApp executor m logname o root = mkApp executor m logname o >>= startObj root
+    => (c -> m ()) -> m () -> J.JSString -> s -> JE.JSRep -> m (J.Export (Obj s))
+startApp executor m logname s root = mkApp executor m logname s >>= startObj root
 
 -- | Returns commands that need to be processed last
 execReactorCmd ::
