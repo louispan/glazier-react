@@ -43,9 +43,7 @@ import Control.DeepSeq
 import Control.Lens
 import Control.Lens.Misc
 import Control.Monad.Benign
-import Control.Monad.Delegate
 import Control.Monad.IO.Unlift
-import Control.Monad.Morph
 import Control.Monad.Reader
 import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Except
@@ -60,20 +58,17 @@ import qualified Data.HashMap.Strict as HM
 import Data.IORef
 import qualified Data.JSString as J
 import qualified Data.JSString.Text as J
-import Data.List
 import Data.Maybe
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Tuple
 import Data.Typeable
-import GHC.Stack
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Foreign.Callback.Internal as J
 import qualified GHCJS.Foreign.Export as J
 import qualified GHCJS.Types as J
 import Glazier.Command
 import Glazier.Logger
-import Glazier.Logger.Exec
 import Glazier.React.EventTarget
 import Glazier.React.Markup
 import Glazier.React.Obj
@@ -189,36 +184,36 @@ startApp ::
     => (c -> m ()) -> m () -> J.JSString -> o -> JE.JSRep -> m (J.Export (Obj o))
 startApp executor m logname o root = mkApp executor m logname o >>= startObj root
 
--- -- | Returns commands that need to be processed last
--- execReactorCmd ::
---     ( MonadUnliftIO m
---     , MonadReader r m
---     , AsReactor c
---     , Has ReactorEnv r
---     )
---     => (c -> m ()) -> ReactorCmd c -> m [c]
--- execReactorCmd executor c = case c of
---     MkReactId n k -> done $ execMkReactId n >>= (executor . k)
---     SetRender obj w -> done $ execSetRender obj w
---     MkObj wid logname s k -> done $ execMkObj executor wid logname s >>= (executor . k)
---     GetReactRef obj k f -> done $ execGetReactRef executor obj k f
---     ScheduleRerender obj -> execScheduleRerender obj
---     RerenderNow obj -> done $ execRerenderNow obj
---     Mutate obj k tick -> (`evalMaybeT` []) $ do
---         (lastCmds, nextCmd) <- execMutate obj k tick
---         lift $ executor nextCmd
---         pure lastCmds
---     NotifyMutated obj k -> execNotifyMutated obj k
---     ResetMutation obj k -> execResetMutation obj k
---     RegisterDOMListener obj j n goStrict goLazy -> done $ execRegisterDOMListener executor obj j n goStrict goLazy
---     RegisterReactListener obj k n goStrict goLazy -> done $ execRegisterReactListener executor obj k n goStrict goLazy
---     RegisterMountedListener obj k -> done $ execRegisterMountedListener executor obj k
---     RegisterRenderedListener obj k -> done $ execRegisterRenderedListener executor obj k
---     RegisterRenderedOnceListener obj k -> done $ execRegisterRenderedOnceListener executor obj k
---     RegisterMutatedListener obj k -> done $ execRegisterMutatedListener executor obj k
---   where
---     done f = (\() -> []) <$> f
-
+-- | Returns commands that need to be processed last
+execReactorCmd ::
+    ( MonadUnliftIO m
+    , MonadBenignIO m
+    , MonadReader r m
+    , AsReactor c
+    , Has ReactorEnv r
+    )
+    => (c -> m ()) -> ReactorCmd c -> m [c]
+execReactorCmd executor c = case c of
+    MkReactId n k -> done $ execMkReactId n >>= (executor . k)
+    SetRender obj w -> done $ execSetRender obj w
+    MkObj wid logname s k -> done $ execMkObj executor wid logname s >>= (executor . k)
+    GetReactRef obj k f -> done $ execGetReactRef executor obj k f
+    ScheduleRerender obj -> execScheduleRerender obj
+    RerenderNow obj -> done $ execRerenderNow obj
+    Mutate obj k tick -> (`evalMaybeT` []) $ do
+        (lastCmds, nextCmd) <- execMutate obj k tick
+        lift $ executor nextCmd
+        pure lastCmds
+    NotifyMutated obj k -> execNotifyMutated obj k
+    ResetMutation obj k -> execResetMutation obj k
+    RegisterDOMListener obj j n goStrict goLazy -> done $ execRegisterDOMListener executor obj j n goStrict goLazy
+    RegisterReactListener obj k n goStrict goLazy -> done $ execRegisterReactListener executor obj k n goStrict goLazy
+    RegisterMountedListener obj k -> done $ execRegisterMountedListener executor obj k
+    RegisterRenderedListener obj k -> done $ execRegisterRenderedListener executor obj k
+    RegisterRenderedOnceListener obj k -> done $ execRegisterRenderedOnceListener executor obj k
+    RegisterMutatedListener obj k -> done $ execRegisterMutatedListener executor obj k
+  where
+    done f = (\() -> []) <$> f
 
 -- -- -----------------------------------------------------------------
 -- -- execLogLn ::
@@ -284,32 +279,32 @@ execMkReactId n = do
         putMVar v i'
         pure $ ReactId (n, i')
 
-execSetRender :: MonadIO m => WeakObj s -> Window s () -> m ()
+execSetRender :: (MonadIO m, MonadBenignIO m) => WeakObj s -> Window s () -> m ()
 execSetRender obj win = void . runMaybeT $ do
     liftIO $ putStrLn "LOUISDEBUG: execSetRender"
-    obj' <- hoist (liftIO . getBenign) $ deRefWeakObj obj
+    obj' <- benignDeRefWeakObj obj
     let scnRef = sceneRef obj'
         scnVar = sceneVar obj'
     -- create the callbacks
     liftIO $ do
-        renderCb <- J.syncCallback' (renderCb obj win)
+        cb <- J.syncCallback' (renderCb obj win)
         -- Replace the existing ShimCallbacks
         scn <- takeMVar scnVar
         -- replace the rendering function
         let origRenderCb = scn ^. _plan._shimCallbacks._shimOnRender
-            scn' = scn & _plan._shimCallbacks._shimOnRender .~ renderCb
+            scn' = scn & _plan._shimCallbacks._shimOnRender .~ cb
         atomicWriteIORef scnRef scn'
         putMVar scnVar scn'
         J.releaseCallback origRenderCb
   where
     renderCb :: WeakObj s -> Window s () -> IO J.JSVal
-    renderCb obj win = (`evalMaybeT` J.nullRef) $ do
-        obj' <- deRefWeakObj obj
+    renderCb o wn = (`evalMaybeT` J.nullRef) $ do
+        obj' <- benignDeRefWeakObj o
         let scnRef = sceneRef obj'
         lift $ do
             -- render using from scnRef (doesn't block)
             scn <- readIORef scnRef
-            (mrkup, _) <- getBenign (RWS.execRWST win scn mempty) -- ignore unit writer output
+            (mrkup, _) <- getBenign (RWS.execRWST wn scn mempty) -- ignore unit writer output
             a <- JE.toJS <$> toElement mrkup
             pure a
 
@@ -374,14 +369,10 @@ execMkObj executor wid logname s = do
         mountedCb <- J.syncCallback J.ContinueAsync (onMountedCb obj)
         renderedCb <- J.syncCallback J.ContinueAsync (onRenderedCb obj)
 
-        -- Now we have enough to make a subject
-        let gad = runExceptT wid
-            gad' = do
-                e <- gad
-                case e of
-                    Left win -> setRndr win
-                    Right () -> pure ()
-            cs = execProgram' $ evalContT $ (`runReaderT` k) $ (`runReaderT` obj) $ gad'
+        -- Now we have enough to run the widget
+        -- On the 'Window ()' event, handle it with 'setRender'
+        let gad = runExceptT wid >>= either setRender pure
+            cs = execProgram' $ evalContT $ (`runReaderT` k) $ (`runReaderT` obj) $ gad
             -- update the model to include the real shimcallbacks
             scn' = scn & _plan._shimCallbacks .~ ShimCallbacks renderCb mountedCb renderedCb refCb
         -- update the mutable variables with the initialzed model
@@ -395,14 +386,9 @@ execMkObj executor wid logname s = do
     -- return the subject
     pure obj
   where
-    -- Use the obj from the env to avoid keeping obj alive
-    setRndr win = do
-        obj <- askWeakObj
-        exec' $ SetRender obj win
-
     onRefCb :: WeakObj s -> J.JSVal -> IO ()
     onRefCb obj j = (`evalMaybeT` ()) $ do
-        obj' <- deRefWeakObj obj
+        obj' <- benignDeRefWeakObj obj
         let scnRef = sceneRef obj'
             scnVar = sceneVar obj'
         lift $ do
@@ -414,7 +400,7 @@ execMkObj executor wid logname s = do
 
     onRenderedCb :: WeakObj s -> IO ()
     onRenderedCb obj = (`evalMaybeT` ()) $ do
-        obj' <- deRefWeakObj obj
+        obj' <- benignDeRefWeakObj obj
         let scnRef = sceneRef obj'
             scnVar = sceneVar obj'
         lift $ do
@@ -436,490 +422,496 @@ execMkObj executor wid logname s = do
             scn <- readIORef scnRef
             scn ^. _plan._mountedListener
 
--- -- Schedule a rerender, only if not lalready scheduled or
--- -- not in middle of mutation
--- execScheduleRerender ::
---     ( MonadIO m
---     , AsReactor c
---     )
---     => WeakObj s -> m [c]
--- execScheduleRerender obj = (`evalMaybeT` []) $ do
---     liftIO $ putStrLn "LOUISDEBUG: execScheduleRerender"
---     obj' <- deRefWeakObj obj
---     let scnVar = sceneVar obj'
---     liftIO $ do
---         scn <- takeMVar scnVar
---         liftIO $ putStrLn "LOUISDEBUG: execScheduleRerender2"
---         let (cs, scn') = (`runState` scn) $ scheduleRerender obj
---         putMVar scnVar scn'
---         pure cs
+-- Schedule a rerender, only if not lalready scheduled or
+-- not in middle of mutation
+execScheduleRerender ::
+    ( MonadIO m
+    , MonadBenignIO m
+    , AsReactor c
+    )
+    => WeakObj s -> m [c]
+execScheduleRerender obj = (`evalMaybeT` []) $ do
+    liftIO $ putStrLn "LOUISDEBUG: execScheduleRerender"
+    obj' <- benignDeRefWeakObj obj
+    let scnVar = sceneVar obj'
+    liftIO $ do
+        scn <- takeMVar scnVar
+        liftIO $ putStrLn "LOUISDEBUG: execScheduleRerender2"
+        let (cs, scn') = (`runState` scn) $ scheduleRerender obj
+        putMVar scnVar scn'
+        pure cs
 
--- scheduleRerender ::
---     ( AsReactor c
---     )
---     => WeakObj s -> State (Scene s) [c]
--- scheduleRerender alsoRerenderSuppressed obj = do
---     scn <- get
---     -- don't rerender straight away, but schedule a rerender
---     -- so multiple rerender requests will be naturally throttled
---     if scn ^. _plan._rerendering == RerenderNotRequired
---         && scn ^. _plan._mutations.to S.null
---         then do
---             put $ scn & _plan._rerendering .~ RerenderRequired
---             -- Schedule a rerender
---             pure [command' $ RerenderNow obj]
---         -- rerender has already been scheduled
---         else pure []
+scheduleRerender ::
+    ( AsReactor c
+    )
+    => WeakObj s -> State (Scene s) [c]
+scheduleRerender obj = do
+    scn <- get
+    -- don't rerender straight away, but schedule a rerender
+    -- so multiple rerender requests will be naturally throttled
+    if scn ^. _plan._rerendering == RerenderNotRequired
+        && scn ^. _plan._mutations.to S.null
+        then do
+            put $ scn & _plan._rerendering .~ RerenderScheduled
+            -- Schedule a rerender
+            pure [command' $ RerenderNow obj]
+        -- rerender has already been scheduled
+        else pure []
 
--- execRerenderNow :: MonadIO m => WeakObj s -> m ()
--- execRerenderNow obj = (`evalMaybeT` ()) $ do
---     liftIO $ putStrLn "LOUISDEBUG: execRerenderNow"
---     obj' <- deRefWeakObj obj
---     let scnRef = sceneRef obj'
---         scnVar = sceneVar obj'
---     liftIO $ do
---         scn <- takeMVar scnVar
---         liftIO $ putStrLn "LOUISDEBUG: execRerenderNow2"
---         -- don't render if in the middle of a mutation
---         -- (the ResetMutation will render)
---         -- Or if rerenderScheduled is false - it means rerender has been called
---         if scn ^. _plan._rerendering == RerenderRequired
---             && scn ^. _plan._mutations.to S.null
---             then do
---                 let scn' = scn & _plan._rerendering .~ RerenderNotRequired
---                 -- Update the back buffer
---                 atomicWriteIORef scnRef scn'
---                 putMVar scnVar scn'
---                 putStrLn $ "LOUISDEBUG: execRerenderNow3a "
---                 case scn ^. _plan._componentRef of
---                     Nothing -> pure ()
---                     Just j -> rerenderShim j
---             -- rerender not required (eg. already processed, or in the middle of mutation)
---             else do
---                 putMVar scnVar scn
---                 putStrLn $ "LOUISDEBUG: execRerenderNow3b "
+execRerenderNow :: (MonadIO m, MonadBenignIO m) => WeakObj s -> m ()
+execRerenderNow obj = (`evalMaybeT` ()) $ do
+    liftIO $ putStrLn "LOUISDEBUG: execRerenderNow"
+    obj' <- benignDeRefWeakObj obj
+    let scnRef = sceneRef obj'
+        scnVar = sceneVar obj'
+    liftIO $ do
+        scn <- takeMVar scnVar
+        liftIO $ putStrLn "LOUISDEBUG: execRerenderNow2"
+        -- don't render if in the middle of a mutation
+        -- (the ResetMutation will render)
+        -- Or if RerenderScheduled is false - it means rerender has been already called
+        if scn ^. _plan._rerendering == RerenderScheduled
+            && scn ^. _plan._mutations.to S.null
+            then do
+                let scn' = scn & _plan._rerendering .~ RerenderNotRequired
+                -- Update the back buffer
+                atomicWriteIORef scnRef scn'
+                putMVar scnVar scn'
+                putStrLn $ "LOUISDEBUG: execRerenderNow3a "
+                case scn ^. _plan._shimRef of
+                    Nothing -> pure ()
+                    Just j -> rerenderShim j
+            -- rerender not required (eg. already processed, or in the middle of mutation)
+            else do
+                putMVar scnVar scn
+                putStrLn $ "LOUISDEBUG: execRerenderNow3b "
 
--- -- | No need to run in a separate thread because it should never block for a significant amount of time.
--- -- Update the model 'MVar' with the given action. Also triggers a rerender.
--- -- Returns (cmds to process last, cmds to process first)
--- execMutate ::
---     ( MonadIO m
---     , AsReactor c
---     )
---     => WeakObj s
---     -> ReactId
---     -> SceneState s c
---     -> MaybeT m ([c], c)
--- execMutate obj k tick = do
---     liftIO $ putStrLn $ "LOUISDEBUG: execMutate " <> J.unpack (reactIdKey k)
---     obj' <- deRefWeakObj obj
---     let scnRef = sceneRef obj'
---         scnVar = sceneVar obj'
---     -- q <- view ((hasLens @ReactorEnv)._reactorBackgroundEnv)
---     liftIO $ do
---         scn <- takeMVar scnVar
---         putStrLn $ "LOUISDEBUG: execMutate2 " <> J.unpack (reactIdKey k)
---         let s = scn ^. _model
---         (c, s') <- getBenign $ runStateT tick s
---         let scn' = scn & _model .~ s'
---         -- don't notify ticked listener straight away, but schedule it like rerender.
---         -- This is so that if there are multiple mutates, it will try to only fire
---         -- the notified callback as late as possible.
---         -- 'execResetMutation' is now responsible for triggering a rerender,
---         -- so suppress rerender until after 'execResetMutation' is called.
---         let scn'' = scn' & _plan._rerendering .~ RerenderSuppressed
---             notifyCmd = [command' $ NotifyMutated obj k]
---             -- Only fire NotifyMutated once for the same ReactId in processing cycle.
---             (c', scn''') = case S.member k (scn' ^. _plan._mutations) of
---                 False -> (notifyCmd, scn'' & _plan._mutations %~ (S.insert k))
---                 True -> ([], scn'')
---         -- LOUISFIXME: remove debug
---         case S.member k (scn' ^. _plan._mutations) of
---             False -> putStrLn $ "new mutation"
---             True -> putStrLn $ "old mutation"
---         -- Update the back buffer
---         atomicWriteIORef scnRef scn'''
---         putMVar scnVar scn'''
---         putStrLn $ "LOUISDEBUG: execMutate3 " <> J.unpack (reactIdKey k)
---         pure (c', c)
+-- | No need to run in a separate thread because it should never block for a significant amount of time.
+-- Update the model 'MVar' with the given action. Also triggers a rerender.
+-- Returns (cmds to process last, cmds to process first)
+execMutate ::
+    ( MonadIO m
+    , MonadBenignIO m
+    , AsReactor c
+    )
+    => WeakObj s
+    -> ReactId
+    -> SceneState s c
+    -> MaybeT m ([c], c)
+execMutate obj k tick = do
+    liftIO $ putStrLn $ "LOUISDEBUG: execMutate " <> show k
+    obj' <- benignDeRefWeakObj obj
+    let scnRef = sceneRef obj'
+        scnVar = sceneVar obj'
+    -- q <- view ((hasLens @ReactorEnv)._reactorBackgroundEnv)
+    liftIO $ do
+        scn <- takeMVar scnVar
+        putStrLn $ "LOUISDEBUG: execMutate2 " <> show k
+        let s = scn ^. _model
+        (c, s') <- getBenign $ runStateT tick s
+        let scn' = scn & _model .~ s'
+        -- don't notify ticked listener straight away, but schedule it like rerender.
+        -- This is so that if there are multiple mutates, it will try to only fire
+        -- the notified callback as late as possible.
+        -- 'execResetMutation' is now responsible for triggering a rerender,
+        -- so suppress rerender until after 'execResetMutation' is called.
+        let scn'' = scn' & _plan._rerendering .~ RerenderScheduled
+            notifyCmd = [command' $ NotifyMutated obj k]
+            -- Only fire NotifyMutated once for the same ReactId in processing cycle.
+            (c', scn''') = case S.member k (scn' ^. _plan._mutations) of
+                False -> (notifyCmd, scn'' & _plan._mutations %~ (S.insert k))
+                True -> ([], scn'')
+        -- LOUISFIXME: remove debug
+        case S.member k (scn' ^. _plan._mutations) of
+            False -> putStrLn $ "new mutation"
+            True -> putStrLn $ "old mutation"
+        -- Update the back buffer
+        atomicWriteIORef scnRef scn'''
+        putMVar scnVar scn'''
+        putStrLn $ "LOUISDEBUG: execMutate3 " <> show k
+        pure (c', c)
 
--- -- LOUISFIXME: Document tickNotified/renderRequired lifecycle
--- -- ensuring that the mutatedListener callback is called.
--- -- at most once per reactorBackgroundBatch
--- -- We want to cater for the case if two obj ticked and listen to each other
--- -- then we won't get infinite work
--- -- to also schedule a rerender
--- -- Returns commands to process last
--- -- There should only be one execNotifyMutated per ReactId from multiple Mutate with the same ReactId
--- execNotifyMutated ::
---     ( MonadIO m
---     , AsReactor c
---     )
---     => WeakObj s -> ReactId -> m [c]
--- execNotifyMutated obj k = (`evalMaybeT` []) $ do
---     liftIO $ putStrLn $ "LOUISDEBUG: execNotifyMutated " <> J.unpack (reactIdKey k)
---     obj' <- deRefWeakObj obj
---     let scnVar = sceneVar obj'
---     liftIO $ do
---         scn <- readMVar scnVar
---         putStrLn $ "LOUISDEBUG: execNotifyMutated2 " <> J.unpack (reactIdKey k)
---         if S.member k (scn ^. _plan._mutations)
---             then do
---                 -- Don't reset back to NotMutated to avoid
---                 -- infinite loops if the mutatedListener mutates this same object
---                 let cb = scn ^. _plan._mutatedListener
---                 -- run mutatedListener
---                 cb k
---                 -- schedule reset mutation and rerendering
---                 pure [command' $ ResetMutation obj k]
---             -- notify not required (eg. already processed)
---             else pure []
+-- LOUISFIXME: Document tickNotified/renderRequired lifecycle
+-- ensuring that the mutatedListener callback is called.
+-- at most once per reactorBackgroundBatch
+-- We want to cater for the case if two obj ticked and listen to each other
+-- then we won't get infinite work
+-- to also schedule a rerender
+-- Returns commands to process last
+-- There should only be one execNotifyMutated per ReactId from multiple Mutate with the same ReactId
+execNotifyMutated ::
+    ( MonadIO m
+    , MonadBenignIO m
+    , AsReactor c
+    )
+    => WeakObj s -> ReactId -> m [c]
+execNotifyMutated obj k = (`evalMaybeT` []) $ do
+    liftIO $ putStrLn $ "LOUISDEBUG: execNotifyMutated " <> show k
+    obj' <- benignDeRefWeakObj obj
+    let scnVar = sceneVar obj'
+    liftIO $ do
+        scn <- readMVar scnVar
+        putStrLn $ "LOUISDEBUG: execNotifyMutated2 " <> show k
+        if S.member k (scn ^. _plan._mutations)
+            then do
+                -- Don't reset back to NotMutated to avoid
+                -- infinite loops if the mutatedListener mutates this same object
+                let cb = scn ^. _plan._mutatedListener
+                -- run mutatedListener
+                cb k
+                -- schedule reset mutation and rerendering
+                pure [command' $ ResetMutation obj k]
+            -- notify not required (eg. already processed)
+            else pure []
 
--- -- LOUISFIXME: Document tickNotified/renderRequired lifecycle
--- -- There should only be one execNotifyMutated per ReactId from multiple Mutate with the same ReactId
--- execResetMutation ::
---     ( MonadIO m
---     , AsReactor c
---     )
---     => WeakObj s -> ReactId -> m [c]
--- execResetMutation obj k = (`evalMaybeT` []) $ do
---     liftIO $ putStrLn $ "LOUISDEBUG: execResetMutation " <> J.unpack (reactIdKey k)
---     obj' <- deRefWeakObj obj
---     let scnRef = sceneRef obj'
---         scnVar = sceneVar obj'
---     liftIO $ do
---         scn <- takeMVar scnVar
---         putStrLn $ "LOUISDEBUG: execResetMutation2 " <> J.unpack (reactIdKey k)
---         let scn' = scn & _plan._mutations %~ (S.delete k)
---             -- If this was the last ResetMutation, then rerender
---             (cs, scn'') = if scn' ^. _plan._mutations.to S.null
---                 then (`runState` scn') $ scheduleRerender obj
---                 else ([], scn')
---         -- Update the back buffer
---         atomicWriteIORef scnRef scn''
---         putMVar scnVar scn''
---         putStrLn $ "LOUISDEBUG: execResetMutation3 " <> J.unpack (reactIdKey k)
---         pure cs
+-- LOUISFIXME: Document tickNotified/renderRequired lifecycle
+-- There should only be one execNotifyMutated per ReactId from multiple Mutate with the same ReactId
+execResetMutation ::
+    ( MonadIO m
+    , MonadBenignIO m
+    , AsReactor c
+    )
+    => WeakObj s -> ReactId -> m [c]
+execResetMutation obj k = (`evalMaybeT` []) $ do
+    liftIO $ putStrLn $ "LOUISDEBUG: execResetMutation " <> show k
+    obj' <- benignDeRefWeakObj obj
+    let scnRef = sceneRef obj'
+        scnVar = sceneVar obj'
+    liftIO $ do
+        scn <- takeMVar scnVar
+        putStrLn $ "LOUISDEBUG: execResetMutation2 " <> show k
+        let scn' = scn & _plan._mutations %~ (S.delete k)
+            -- If this was the last ResetMutation, then rerender
+            (cs, scn'') = if scn' ^. _plan._mutations.to S.null
+                then (`runState` scn') $ scheduleRerender obj
+                else ([], scn')
+        -- Update the back buffer
+        atomicWriteIORef scnRef scn''
+        putMVar scnVar scn''
+        putStrLn $ "LOUISDEBUG: execResetMutation3 " <> show k
+        pure cs
 
--- mkEventCallback ::
---     (MonadIO m)
---     => IORef (J.JSVal -> IO (), IO ())
---     -> m (J.Callback (J.JSVal -> IO ()))
--- mkEventCallback hdlRef = do
---     liftIO $ J.syncCallback1 J.ContinueAsync $ \evt -> do
---         (preprocessor, postprocessor) <- readIORef hdlRef
---         -- first run all the non-blocking preprocessors
---         preprocessor evt
---         -- then run all the possibly blocking postprocessors
---         postprocessor
+mkEventCallback ::
+    (MonadIO m)
+    => IORef (J.JSVal -> IO (), IO ())
+    -> m (J.Callback (J.JSVal -> IO ()))
+mkEventCallback hdlRef = do
+    liftIO $ J.syncCallback1 J.ContinueAsync $ \evt -> do
+        (preprocessor, postprocessor) <- readIORef hdlRef
+        -- first run all the non-blocking preprocessors
+        preprocessor evt
+        -- then run all the possibly blocking postprocessors
+        postprocessor
 
--- -- | Using the NFData idea from React/Flux/PropertiesAndEvents.hs
--- -- React re-uses Notice from a pool, which means it may no longer be valid if we lazily
--- -- parse it. However, we still want lazy parsing so we don't parse unnecessary fields.
--- -- Additionally, we don't want to block during the event handling.The reason this is a problem is
--- -- because Javascript is single threaded, but Haskell is lazy.
--- -- Therefore GHCJS threads are a strange mixture of synchronous and asynchronous threads,
--- -- where a synchronous thread might be converted to an asynchronous thread if a "black hole" is encountered.
--- -- See https://github.com/ghcjs/ghcjs-base/blob/master/GHCJS/Concurrent.hs
--- -- This safe interface requires two input functions:
--- -- 1. a function to reduce Notice to a NFData. The handleEvent will ensure that the
--- -- NFData is forced which will ensure all the required fields from Synthetic event has been parsed.
--- -- This function must not block.
--- -- 2. a second function that uses the NFData. This function is allowed to block.
--- -- handleEvent results in a function that you can safely pass into 'GHC.Foreign.Callback.syncCallback1'
--- -- with 'GHCJS.Foreign.Callback.ContinueAsync'.
--- -- I have innovated further with the NFData idea to return two functions:
--- -- 1. (evt -> IO ()) function to preprocess the event, which is guaranteed to be non blocking.
--- -- 2. An IO () postprocessor function which may block.
--- -- This allows for multiple handlers for the same event to be processed safely,
--- -- by allowing a way for all the preprocessor handlers to run first before
--- -- running all of the postprocessor handlers.
--- mkEventHandler :: (NFData a) => (evt -> MaybeT IO a) -> IO (evt -> IO (), MaybeT IO a)
--- mkEventHandler goStrict = do
---     liftIO $ putStrLn "LOUISDEBUG: mkEventHandler"
---     -- create a channel to write preprocessed data for the postprocessor
---     -- 'Chan' guarantees that the writer is never blocked by the reader.
---     -- There is only one reader/writer per channel.
---     c <- newTQueueIO
---     let preprocess evt = (`evalMaybeT` ()) $ do
---             r <- goStrict evt
---             -- This is guaranteed never to block
---             lift $ atomically $ writeTQueue c $!! r
---         -- there might not be a value in the chan
---         -- because the preprocessor might not have produced any values
---         postprocess = MaybeT $ atomically $ tryReadTQueue c
---     pure (preprocess, postprocess)
+-- | Using the NFData idea from React/Flux/PropertiesAndEvents.hs
+-- React re-uses Notice from a pool, which means it may no longer be valid if we lazily
+-- parse it. However, we still want lazy parsing so we don't parse unnecessary fields.
+-- Additionally, we don't want to block during the event handling.The reason this is a problem is
+-- because Javascript is single threaded, but Haskell is lazy.
+-- Therefore GHCJS threads are a strange mixture of synchronous and asynchronous threads,
+-- where a synchronous thread might be converted to an asynchronous thread if a "black hole" is encountered.
+-- See https://github.com/ghcjs/ghcjs-base/blob/master/GHCJS/Concurrent.hs
+-- This safe interface requires two input functions:
+-- 1. a function to reduce Notice to a NFData. The handleEvent will ensure that the
+-- NFData is forced which will ensure all the required fields from Synthetic event has been parsed.
+-- This function must not block.
+-- 2. a second function that uses the NFData. This function is allowed to block.
+-- handleEvent results in a function that you can safely pass into 'GHC.Foreign.Callback.syncCallback1'
+-- with 'GHCJS.Foreign.Callback.ContinueAsync'.
+-- I have innovated further with the NFData idea to return two functions:
+-- 1. (evt -> IO ()) function to preprocess the event, which is guaranteed to be non blocking.
+-- 2. An IO () postprocessor function which may block.
+-- This allows for multiple handlers for the same event to be processed safely,
+-- by allowing a way for all the preprocessor handlers to run first before
+-- running all of the postprocessor handlers.
+mkEventHandler :: (NFData a) => (evt -> MaybeT IO a) -> IO (evt -> IO (), MaybeT IO a)
+mkEventHandler goStrict = do
+    liftIO $ putStrLn "LOUISDEBUG: mkEventHandler"
+    -- create a channel to write preprocessed data for the postprocessor
+    -- 'Chan' guarantees that the writer is never blocked by the reader.
+    -- There is only one reader/writer per channel.
+    c <- newTQueueIO
+    let preprocess evt = (`evalMaybeT` ()) $ do
+            r <- goStrict evt
+            -- This is guaranteed never to block
+            lift $ atomically $ writeTQueue c $!! r
+        -- there might not be a value in the chan
+        -- because the preprocessor might not have produced any values
+        postprocess = MaybeT $ atomically $ tryReadTQueue c
+    pure (preprocess, postprocess)
 
--- addEventHandler :: (NFData a)
---     => (JE.JSRep -> MaybeT IO a)
---     -> (a -> IO ())
---     -> IORef (J.JSVal -> IO (), IO ())
---     -> IO ()
--- addEventHandler goStrict goLazy listenerRef = do
---     -- update the ioref with the new handler
---     (preprocessor, postprocessor) <- mkEventHandler (goStrict . JE.toJSRep)
---     let postprocessor' = (`evalMaybeT` ()) (postprocessor >>= (lift . goLazy))
---     atomicModifyIORef' listenerRef $ \hdl -> (hdl `mappendListener` (preprocessor, postprocessor'), ())
+addEventHandler :: (NFData a)
+    => (JE.JSRep -> MaybeT IO a)
+    -> (a -> IO ())
+    -> IORef (J.JSVal -> IO (), IO ())
+    -> IO ()
+addEventHandler goStrict goLazy listenerRef = do
+    -- update the ioref with the new handler
+    (preprocessor, postprocessor) <- mkEventHandler (goStrict . JE.toJSRep)
+    let postprocessor' = (`evalMaybeT` ()) (postprocessor >>= (lift . goLazy))
+    atomicModifyIORef' listenerRef $ \hdl -> (hdl `mappendListener` (preprocessor, postprocessor'), ())
+  where
+    mappendListener :: (J.JSVal -> IO (), IO ()) -> (J.JSVal -> IO (), IO ()) -> (J.JSVal -> IO (), IO ())
+    mappendListener (f1, g1) (f2, g2) = (\x -> f1 x *> f2 x, g1 *> g2)
 
--- -- | Create ref handler to assign 'elementalRef'
--- data Freshness = Existing | Fresh
+-- | Create ref handler to assign 'elementalRef'
+data Freshness = Existing | Fresh
 
--- execGetReactRef ::
---     ( MonadUnliftIO m
---     )
---     => (c -> m ())
---     -> WeakObj s
---     -> ReactId
---     -> (EventTarget -> c)
---     -> m ()
--- execGetReactRef executor obj k f = (`evalMaybeT` ()) $ do
---     liftIO $ putStrLn "LOUISDEBUG: execGetReactRef"
---     obj' <- deRefWeakObj obj
---     let scnRef = sceneRef obj'
---         scnVar = sceneVar obj'
---     UnliftIO u <- lift askUnliftIO
---     scn <- liftIO $ takeMVar scnVar
---     (refFreshness, pln) <- lift $ getOrRegisterRefCoreListener obj k (plan scn)
---     let tryAgain = u $ execGetReactRef executor obj k f
---         scn' = scn & _plan .~ pln -- to save the core listener
---                 & _plan._renderedOnceListener %~ (*> tryAgain)
---         ret = pln ^? (_elementals.ix k._elementalRef._Just)
---         triggerTryAgain = liftIO $ do
---             liftIO $ putStrLn "LOUISDEBUG: triggerTryAgain"
---             -- save the tryAgain handler when nextRendered
---             atomicWriteIORef scnRef scn'
---             putMVar scnVar scn'
---             -- trigger a rerender immediately
---             -- Note: componentRef should be set
---             -- since it is part of the shimComponent wrapper
---             -- which should have been initialized by now.
---             -- In the very unlikely case it is not set
---             -- (eg still initializing?) then there is nothing
---             -- we can do for now.
---             -- But as soon as the initialzation finishes, and renders
---             -- the tryAgain callback will be called.
---             case scn' ^. _plan._componentRef of
---                 Nothing -> pure ()
---                 Just j -> rerenderShim j
---     case refFreshness of
---         Fresh -> do
---             liftIO $ putStrLn "LOUISDEBUG: Fresh"
---             triggerTryAgain
---         Existing -> case ret of
---             Nothing -> do
---                 liftIO $ putStrLn "LOUISDEBUG: Existing Nothing"
---                 triggerTryAgain
---             Just ret' -> do
---                 liftIO $ putStrLn "LOUISDEBUG: Existing Just"
---                 liftIO $ putMVar scnVar scn
---                 lift . executor $ f ret'
+execGetReactRef ::
+    ( MonadUnliftIO m
+    , MonadBenignIO m
+    )
+    => (c -> m ())
+    -> WeakObj s
+    -> ReactId
+    -> (EventTarget -> c)
+    -> m ()
+execGetReactRef executor obj k f = (`evalMaybeT` ()) $ do
+    liftIO $ putStrLn "LOUISDEBUG: execGetReactRef"
+    obj' <- benignDeRefWeakObj obj
+    let scnRef = sceneRef obj'
+        scnVar = sceneVar obj'
+    UnliftIO u <- lift askUnliftIO
+    scn <- liftIO $ takeMVar scnVar
+    (refFreshness, pln) <- lift $ getOrRegisterRefCoreListener obj k (plan scn)
+    let tryAgain = u $ execGetReactRef executor obj k f
+        scn' = scn & _plan .~ pln -- to save the core listener
+                & _plan._renderedOnceListener %~ (*> tryAgain)
+        ret = pln ^? (_reactants.ix k._reactRef._Just)
+        triggerTryAgain = liftIO $ do
+            liftIO $ putStrLn "LOUISDEBUG: triggerTryAgain"
+            -- save the tryAgain handler when nextRendered
+            atomicWriteIORef scnRef scn'
+            putMVar scnVar scn'
+            -- trigger a rerender immediately
+            -- Note: componentRef should be set
+            -- since it is part of the shimComponent wrapper
+            -- which should have been initialized by now.
+            -- In the very unlikely case it is not set
+            -- (eg still initializing?) then there is nothing
+            -- we can do for now.
+            -- But as soon as the initialzation finishes, and renders
+            -- the tryAgain callback will be called.
+            case scn' ^. _plan._shimRef of
+                Nothing -> pure ()
+                Just j -> rerenderShim j
+    case refFreshness of
+        Fresh -> do
+            liftIO $ putStrLn "LOUISDEBUG: Fresh"
+            triggerTryAgain
+        Existing -> case ret of
+            Nothing -> do
+                liftIO $ putStrLn "LOUISDEBUG: Existing Nothing"
+                triggerTryAgain
+            Just ret' -> do
+                liftIO $ putStrLn "LOUISDEBUG: Existing Just"
+                liftIO $ putMVar scnVar scn
+                lift . executor $ f ret'
 
--- getOrRegisterRefCoreListener :: (MonadIO m)
---     => WeakObj s
---     -> ReactId
---     -> Plan
---     -> m (Freshness, Plan)
--- getOrRegisterRefCoreListener obj k pln = do
---     liftIO $ putStrLn "LOUISDEBUG: getOrRegisterRefCoreListener"
---     liftIO $ do
---         -- first get or make the target
---         (freshness, eventHdl) <-
---             case pln ^. _elementals.at k.to (fromMaybe (Elemental Nothing mempty))._reactListeners.at n of
---                 Nothing -> do
---                     liftIO $ putStrLn $ "LOUISDEBUG: RefCore Nothing " <> J.unpack (reactIdKey k)
---                     listenerRef <- newIORef mempty
---                     cb <- mkEventCallback listenerRef
---                     -- update listenerRef with new event listener
---                     -- only do this once (when for first ref listener)
---                     addEventHandler (pure . JE.fromJSRep) hdlRef listenerRef
---                     pure (Fresh, (cb, listenerRef))
---                 Just eventHdl -> do
---                     liftIO $ putStrLn $ "LOUISDEBUG: RefCore Just " <> J.unpack (reactIdKey k)
---                     pure (Existing, eventHdl)
---         -- prepare the updated state
---         let pln' = pln & _elementals.at k %~ (Just . addElem . initElem)
---             initElem = fromMaybe (Elemental Nothing mempty)
---             addElem = _reactListeners.at n %~ addListener
---             addListener = Just . maybe eventHdl (const eventHdl)
---         case freshness of
---             Fresh -> pure (Fresh, pln')
---             Existing -> pure (Existing, pln)
---   where
---     n = J.pack "ref"
---     -- hdlRef x = command' $ Mutate obj (command_ <$> (_plan._elementals.ix k._elementalRef .= x))
---     hdlRef x = void . runMaybeT $ do
---         obj' <- deRefWeakObj obj
---         let scnRef = sceneRef obj'
---             scnVar = sceneVar obj'
---         lift $ do
---             scn <- takeMVar scnVar
---             let scn' = scn & _plan._elementals.ix k._elementalRef .~ x
---             -- Update the back buffer
---             atomicWriteIORef scnRef scn'
---             putMVar scnVar scn'
+getOrRegisterRefCoreListener :: (MonadIO m)
+    => WeakObj s
+    -> ReactId
+    -> Plan
+    -> m (Freshness, Plan)
+getOrRegisterRefCoreListener obj k pln = do
+    liftIO $ putStrLn "LOUISDEBUG: getOrRegisterRefCoreListener"
+    liftIO $ do
+        -- first get or make the target
+        (freshness, eventHdl) <-
+            case pln ^. _reactants.at k.to (fromMaybe (Reactant Nothing mempty))._reactListeners.at n of
+                Nothing -> do
+                    liftIO $ putStrLn $ "LOUISDEBUG: RefCore Nothing " <> show k
+                    listenerRef <- newIORef mempty
+                    cb <- mkEventCallback listenerRef
+                    -- update listenerRef with new event listener
+                    -- only do this once (when for first ref listener)
+                    addEventHandler (pure . JE.fromJSRep) hdlRef listenerRef
+                    pure (Fresh, (cb, listenerRef))
+                Just eventHdl -> do
+                    liftIO $ putStrLn $ "LOUISDEBUG: RefCore Just " <> show k
+                    pure (Existing, eventHdl)
+        -- prepare the updated state
+        let pln' = pln & _reactants.at k %~ (Just . addElem . initElem)
+            initElem = fromMaybe (Reactant Nothing mempty)
+            addElem = _reactListeners.at n %~ addListener
+            addListener = Just . maybe eventHdl (const eventHdl)
+        case freshness of
+            Fresh -> pure (Fresh, pln')
+            Existing -> pure (Existing, pln)
+  where
+    n = J.pack "ref"
+    -- hdlRef x = command' $ Mutate obj (command_ <$> (_plan._reactants.ix k._elementalRef .= x))
+    hdlRef x = void . runMaybeT $ do
+        obj' <- benignDeRefWeakObj obj
+        let scnRef = sceneRef obj'
+            scnVar = sceneVar obj'
+        lift $ do
+            scn <- takeMVar scnVar
+            let scn' = scn & _plan._reactants.ix k._reactRef .~ x
+            -- Update the back buffer
+            atomicWriteIORef scnRef scn'
+            putMVar scnVar scn'
 
--- execRegisterReactListener :: (NFData a, MonadUnliftIO m)
---     => (c -> m ())
---     -> WeakObj s
---     -> ReactId
---     -> J.JSString
---     -> (JE.JSRep -> MaybeT IO a)
---     -> (a -> c)
---     -> m ()
--- execRegisterReactListener executor obj k n goStrict goLazy = void . runMaybeT $ do
---     liftIO $ putStrLn $ "LOUISDEBUG: execRegisterReactListener " <> J.unpack (reactIdKey k)
---     obj' <- deRefWeakObj obj
---     let scnRef = sceneRef obj'
---         scnVar = sceneVar obj'
---     UnliftIO u <- lift askUnliftIO
---     scn_ <- liftIO $ takeMVar scnVar
---     -- special logic for ref, where the first ref handler must be 'registerRefCoreListener'
---     scn <- if (n == (J.pack "ref"))
---         then do
---             (refFreshness, pln) <- getOrRegisterRefCoreListener obj k (plan scn_)
---             case refFreshness of
---                 Existing -> pure scn_
---                 Fresh -> pure (scn_ & _plan .~ pln)
---         else pure scn_
---     liftIO $ do
---         -- get or make the target
---         (freshness, eventHdl@(_, listenerRef)) <-
---             case scn ^. _plan._elementals.at k.to (fromMaybe (Elemental Nothing mempty))._reactListeners.at n of
---                 Nothing -> do
---                     listenerRef <- newIORef mempty
---                     cb <- mkEventCallback listenerRef
---                     pure (Fresh, (cb, listenerRef))
---                 Just eventHdl -> pure (Existing, eventHdl)
---         let scn' = case freshness of
---                 Fresh -> scn & _plan._elementals.at k %~ (Just . addElem . initElem)
---                 Existing -> scn
---             initElem = fromMaybe (Elemental Nothing mempty)
---             addElem = _reactListeners.at n %~ addListener
---             addListener = Just . maybe eventHdl (const eventHdl)
---         -- update listenerRef with new event listener
---         addEventHandler goStrict (u . executor . goLazy) listenerRef
---         -- Update the subject
---         atomicWriteIORef scnRef scn'
---         putMVar scnVar scn'
+execRegisterReactListener :: (NFData a, MonadUnliftIO m, MonadBenignIO m)
+    => (c -> m ())
+    -> WeakObj s
+    -> ReactId
+    -> J.JSString
+    -> (JE.JSRep -> MaybeT IO a)
+    -> (a -> c)
+    -> m ()
+execRegisterReactListener executor obj k n goStrict goLazy = void . runMaybeT $ do
+    liftIO $ putStrLn $ "LOUISDEBUG: execRegisterReactListener " <> show k
+    obj' <- benignDeRefWeakObj obj
+    let scnRef = sceneRef obj'
+        scnVar = sceneVar obj'
+    UnliftIO u <- lift askUnliftIO
+    scn_ <- liftIO $ takeMVar scnVar
+    -- special logic for ref, where the first ref handler must be 'registerRefCoreListener'
+    scn <- if (n == (J.pack "ref"))
+        then do
+            (refFreshness, pln) <- getOrRegisterRefCoreListener obj k (plan scn_)
+            case refFreshness of
+                Existing -> pure scn_
+                Fresh -> pure (scn_ & _plan .~ pln)
+        else pure scn_
+    liftIO $ do
+        -- get or make the target
+        (freshness, eventHdl@(_, listenerRef)) <-
+            case scn ^. _plan._reactants.at k.to (fromMaybe (Reactant Nothing mempty))._reactListeners.at n of
+                Nothing -> do
+                    listenerRef <- newIORef mempty
+                    cb <- mkEventCallback listenerRef
+                    pure (Fresh, (cb, listenerRef))
+                Just eventHdl -> pure (Existing, eventHdl)
+        let scn' = case freshness of
+                Fresh -> scn & _plan._reactants.at k %~ (Just . addElem . initElem)
+                Existing -> scn
+            initElem = fromMaybe (Reactant Nothing mempty)
+            addElem = _reactListeners.at n %~ addListener
+            addListener = Just . maybe eventHdl (const eventHdl)
+        -- update listenerRef with new event listener
+        addEventHandler goStrict (u . executor . goLazy) listenerRef
+        -- Update the subject
+        atomicWriteIORef scnRef scn'
+        putMVar scnVar scn'
 
--- mappendListener :: (J.JSVal -> IO (), IO ()) -> (J.JSVal -> IO (), IO ()) -> (J.JSVal -> IO (), IO ())
--- mappendListener (f1, g1) (f2, g2) = (\x -> f1 x *> f2 x, g1 *> g2)
+execRegisterMutatedListener :: (MonadUnliftIO m, MonadBenignIO m)
+    => (c -> m ())
+    -> WeakObj s
+    -> (ReactId -> c)
+    -> m ()
+execRegisterMutatedListener executor obj f = void . runMaybeT $ do
+    liftIO $ putStrLn "LOUISDEBUG: execRegisterMutatedListener"
+    obj' <- benignDeRefWeakObj obj
+    let scnRef = sceneRef obj'
+        scnVar = sceneVar obj'
+    UnliftIO u <- lift askUnliftIO
+    let hdl = u . executor . f
+    liftIO $ do
+        scn <- takeMVar scnVar
+        let scn' = scn & _plan._mutatedListener %~ (\g -> \k -> g k *> hdl k)
+        atomicWriteIORef scnRef scn'
+        putMVar scnVar scn'
 
--- execRegisterMutatedListener :: (MonadUnliftIO m)
---     => (c -> m ())
---     -> WeakObj s
---     -> (ReactId -> c)
---     -> m ()
--- execRegisterMutatedListener executor obj f = void . runMaybeT $ do
---     liftIO $ putStrLn "LOUISDEBUG: execRegisterMutatedListener"
---     obj' <- deRefWeakObj obj
---     let scnRef = sceneRef obj'
---         scnVar = sceneVar obj'
---     UnliftIO u <- lift askUnliftIO
---     let hdl = u . executor . f
---     liftIO $ do
---         scn <- takeMVar scnVar
---         let scn' = scn & _plan._mutatedListener %~ (\g -> \k -> g k *> hdl k)
---         atomicWriteIORef scnRef scn'
---         putMVar scnVar scn'
+execRegisterMountedListener :: (MonadUnliftIO m, MonadBenignIO m)
+    => (c -> m ())
+    -> WeakObj s
+    -> c
+    -> m ()
+execRegisterMountedListener executor obj c = void . runMaybeT $ do
+    liftIO $ putStrLn "LOUISDEBUG: execRegisterMountedListener"
+    obj' <- benignDeRefWeakObj obj
+    let scnRef = sceneRef obj'
+        scnVar = sceneVar obj'
+    UnliftIO u <- lift askUnliftIO
+    let hdl = u $ executor c
+    liftIO $ do
+        scn <- takeMVar scnVar
+        let scn' = scn & _plan._mountedListener %~ (*> hdl)
+        atomicWriteIORef scnRef scn'
+        putMVar scnVar scn'
 
--- execRegisterMountedListener :: (MonadUnliftIO m)
---     => (c -> m ())
---     -> WeakObj s
---     -> c
---     -> m ()
--- execRegisterMountedListener executor obj c = void . runMaybeT $ do
---     liftIO $ putStrLn "LOUISDEBUG: execRegisterMountedListener"
---     obj' <- deRefWeakObj obj
---     let scnRef = sceneRef obj'
---         scnVar = sceneVar obj'
---     UnliftIO u <- lift askUnliftIO
---     let hdl = u $ executor c
---     liftIO $ do
---         scn <- takeMVar scnVar
---         let scn' = scn & _plan._mountedListener %~ (*> hdl)
---         atomicWriteIORef scnRef scn'
---         putMVar scnVar scn'
+execRegisterRenderedListener :: (MonadUnliftIO m, MonadBenignIO m)
+    => (c -> m ())
+    -> WeakObj s
+    -> c
+    -> m ()
+execRegisterRenderedListener executor obj c = void . runMaybeT $ do
+    liftIO $ putStrLn "LOUISDEBUG: execRegisterRenderedListener"
+    obj' <- benignDeRefWeakObj obj
+    let scnRef = sceneRef obj'
+        scnVar = sceneVar obj'
+    UnliftIO u <- lift askUnliftIO
+    let hdl = u $ executor c
+    liftIO $ do
+        scn <- takeMVar scnVar
+        let scn' = scn & _plan._renderedListener %~ (*> hdl)
+        atomicWriteIORef scnRef scn'
+        putMVar scnVar scn'
 
--- execRegisterRenderedListener :: (MonadUnliftIO m)
---     => (c -> m ())
---     -> WeakObj s
---     -> c
---     -> m ()
--- execRegisterRenderedListener executor obj c = void . runMaybeT $ do
---     liftIO $ putStrLn "LOUISDEBUG: execRegisterRenderedListener"
---     obj' <- deRefWeakObj obj
---     let scnRef = sceneRef obj'
---         scnVar = sceneVar obj'
---     UnliftIO u <- lift askUnliftIO
---     let hdl = u $ executor c
---     liftIO $ do
---         scn <- takeMVar scnVar
---         let scn' = scn & _plan._renderedListener %~ (*> hdl)
---         atomicWriteIORef scnRef scn'
---         putMVar scnVar scn'
+execRegisterRenderedOnceListener :: (MonadUnliftIO m, MonadBenignIO m)
+    => (c -> m ())
+    -> WeakObj s
+    -> c
+    -> m ()
+execRegisterRenderedOnceListener executor obj c = void . runMaybeT $ do
+    liftIO $ putStrLn "LOUISDEBUG: execRegisterRenderedOnceListener"
+    obj' <- benignDeRefWeakObj obj
+    let scnRef = sceneRef obj'
+        scnVar = sceneVar obj'
+    UnliftIO u <- lift askUnliftIO
+    let hdl = u $ executor c
+    liftIO $ do
+        scn <- takeMVar scnVar
+        let scn' = scn & _plan._renderedOnceListener %~ (*> hdl)
+        atomicWriteIORef scnRef scn'
+        putMVar scnVar scn'
 
--- execRegisterRenderedOnceListener :: (MonadUnliftIO m)
---     => (c -> m ())
---     -> WeakObj s
---     -> c
---     -> m ()
--- execRegisterRenderedOnceListener executor obj c = void . runMaybeT $ do
---     liftIO $ putStrLn "LOUISDEBUG: execRegisterRenderedOnceListener"
---     obj' <- deRefWeakObj obj
---     let scnRef = sceneRef obj'
---         scnVar = sceneVar obj'
---     UnliftIO u <- lift askUnliftIO
---     let hdl = u $ executor c
---     liftIO $ do
---         scn <- takeMVar scnVar
---         let scn' = scn & _plan._renderedOnceListener %~ (*> hdl)
---         atomicWriteIORef scnRef scn'
---         putMVar scnVar scn'
+execRegisterDOMListener ::
+    ( NFData a
+    , MonadUnliftIO m
+    , MonadBenignIO m
+    , Has ReactorEnv r
+    , MonadReader r m
+    )
+    => (c -> m ())
+    -> WeakObj s
+    -> JE.JSRep
+    -> J.JSString
+    -> (JE.JSRep -> MaybeT IO a)
+    -> (a -> c)
+    -> m ()
+execRegisterDOMListener executor obj j n goStrict goLazy = void . runMaybeT $ do
+    liftIO $ putStrLn "LOUISDEBUG: execRegisterDOMListener"
+    obj' <- benignDeRefWeakObj obj
+    let scnRef = sceneRef obj'
+        scnVar = sceneVar obj'
+    -- Add the handler to the state
+    UnliftIO u <- lift askUnliftIO
+    -- generate a unique id
+    k <- execMkReactId n
+    liftIO $ do
+        scn <- takeMVar scnVar
+        -- since k is unique, it'll always be a new map item
+        -- update the ioref with the new handler
+        listenerRef <- newIORef mempty
+        cb <- mkEventCallback listenerRef
+        addEventHandler goStrict (u . executor . goLazy) listenerRef
+        -- prepare the updated state,
+        let scn' = scn & _plan._domlListeners.at k .~ (Just (cb, listenerRef))
+                & _plan._finalCleanup %~ (*> removeDomListener j n cb)
+        -- Update the subject
+        atomicWriteIORef scnRef scn'
+        putMVar scnVar scn'
+        -- now add the domListener to the javascript target
+        addDomListener j n cb
 
--- execRegisterDOMListener ::
---     ( NFData a
---     , MonadUnliftIO m
---     , Has ReactorEnv r
---     , MonadReader r m
---     )
---     => (c -> m ())
---     -> WeakObj s
---     -> JE.JSRep
---     -> J.JSString
---     -> (JE.JSRep -> MaybeT IO a)
---     -> (a -> c)
---     -> m ()
--- execRegisterDOMListener executor obj j n goStrict goLazy = void . runMaybeT $ do
---     liftIO $ putStrLn "LOUISDEBUG: execRegisterDOMListener"
---     obj' <- deRefWeakObj obj
---     let scnRef = sceneRef obj'
---         scnVar = sceneVar obj'
---     -- Add the handler to the state
---     UnliftIO u <- lift askUnliftIO
---     -- generate a unique id
---     k <- execMkReactId n
---     liftIO $ do
---         scn <- takeMVar scnVar
---         -- since k is unique, it'll always be a new map item
---         -- update the ioref with the new handler
---         listenerRef <- newIORef mempty
---         cb <- mkEventCallback listenerRef
---         addEventHandler goStrict (u . executor . goLazy) listenerRef
---         -- prepare the updated state,
---         let scn' = scn & _plan._domlListeners.at k .~ (Just (cb, listenerRef))
---                 & _plan._finalCleanup %~ (*> removeDomListener j n cb)
---         -- Update the subject
---         atomicWriteIORef scnRef scn'
---         putMVar scnVar scn'
---         -- now add the domListener to the javascript target
---         addDomListener j n cb
+addDomListener :: JE.JSRep -> J.JSString -> J.Callback (J.JSVal -> IO ()) -> IO ()
+addDomListener j n cb = js_addDomListener (JE.toJS j) n (JE.toJS cb)
 
--- addDomListener :: JE.JSRep -> J.JSString -> J.Callback (J.JSVal -> IO ()) -> IO ()
--- addDomListener j n cb = js_addDomListener (JE.toJS j) n (JE.toJS cb)
-
--- removeDomListener :: JE.JSRep -> J.JSString -> J.Callback (J.JSVal -> IO ()) -> IO ()
--- removeDomListener j n cb = js_removeDomListener (JE.toJS j) n (JE.toJS cb)
+removeDomListener :: JE.JSRep -> J.JSString -> J.Callback (J.JSVal -> IO ()) -> IO ()
+removeDomListener j n cb = js_removeDomListener (JE.toJS j) n (JE.toJS cb)
 
 #ifdef __GHCJS__
 

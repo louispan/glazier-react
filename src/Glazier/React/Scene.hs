@@ -74,7 +74,7 @@ releaseShimCallbacks (ShimCallbacks a b c d) = do
 
 data Rerendering
     = RerenderNotRequired
-    | RerenderRequired
+    | RerenderScheduled
     deriving (Show, Eq)
 
 -- | Interactivity data for a react component

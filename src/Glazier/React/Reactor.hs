@@ -284,7 +284,7 @@ getModel :: (HasCallStack, AsReactor c, MonadGadget' c o m) => Traversal' o s ->
 getModel sbj = do
     obj <- askWeakObj
     ms <- runMaybeT $ do
-        o <- MaybeT $ invoke (id @(Benign IO _) (fmap model <$> readWeakObjScene obj))
+        o <- MaybeT $ invoke (id @(Benign IO _) (fmap model <$> benignReadWeakObjScene obj))
         MaybeT $ pure $ preview sbj o
     fireJust ms
 

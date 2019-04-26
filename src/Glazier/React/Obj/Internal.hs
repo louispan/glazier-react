@@ -56,13 +56,13 @@ sceneVar (Obj _ _ v) = v
 weakObj :: Obj s -> WeakObj s
 weakObj (Obj w _ _) = w
 
-deRefWeakObj :: MonadBenignIO m => WeakObj s -> MaybeT m (Obj s)
-deRefWeakObj obj = Obj obj <$> scnRef <*> scnVar
+benignDeRefWeakObj :: MonadBenignIO m => WeakObj s -> MaybeT m (Obj s)
+benignDeRefWeakObj obj = Obj obj <$> scnRef <*> scnVar
   where
     mdlWkRef = sceneWeakRef obj
     mdlWkVar = sceneWeakVar obj
     scnRef = MaybeT . liftBenignIO . benignDeRefWeak $ mdlWkRef
     scnVar = MaybeT . liftBenignIO . benignDeRefWeak $ mdlWkVar
 
--- benignDeRefWeakObj :: MonadIO m => WeakObj s -> Benign m (Maybe (Obj s))
--- benignDeRefWeakObj = Benign . deRefWeakObj
+-- benignbenignDeRefWeakObj :: MonadIO m => WeakObj s -> Benign m (Maybe (Obj s))
+-- benignbenignDeRefWeakObj = Benign . benignDeRefWeakObj

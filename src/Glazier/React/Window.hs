@@ -71,7 +71,7 @@ bindListenerContext = js_bindListenerContext
 
 displayWeakObj :: (MonadBenignIO m, MonadState (DL.DList ReactMarkup) m) => WeakObj o -> m ()
 displayWeakObj obj = (`evalMaybeT` ()) $ do
-    scn <- MaybeT $ readWeakObjScene obj
+    scn <- MaybeT $ benignReadWeakObjScene obj
     let scb = scn ^. _plan._shimCallbacks
         renderCb = shimOnRender scb
         mountedCb = shimOnMounted scb
