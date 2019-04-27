@@ -15,29 +15,6 @@
 
 module Glazier.React.Reactor.Exec where
 
-    -- ( ReactorEnv(..)
-    -- , mkReactorEnvIO
-    -- , mkApp
-    -- , startObj
-    -- , startApp
-    -- , execReactorCmd
-    -- , execMkReactId
-    -- , execSetRender
-    -- , execMkObj
-    -- , execGetElementalRef
-    -- , execRerender
-    -- , execRerenderNow
-    -- , execMutate
-    -- , execNotifyMutated
-    -- , execResetMutation
-    -- , execRegisterDOMListener
-    -- , execRegisterReactListener
-    -- , execRegisterMountedListener
-    -- , execRegisterRenderedListener
-    -- , execRegisterRenderedOnceListener
-    -- , execRegisterMutatedListener
-    -- ) where
-
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.DeepSeq

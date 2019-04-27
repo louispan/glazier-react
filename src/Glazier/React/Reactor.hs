@@ -1,5 +1,5 @@
-{-# OPTIONS_GHC -Wno-redundant-constraints #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
+-- {-# OPTIONS_GHC -Wno-redundant-constraints #-}
+-- {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE ConstraintKinds #-}
@@ -286,7 +286,7 @@ rerender = do
 getModel :: (HasCallStack, AsReactor c, MonadGadget' c s m) => Traversal' s s' -> m s'
 getModel sbj = do
     obj <- askWeakObj
-    ms <- invoke (id @(Benign IO _) (go <$> benignReadWeakObjScene obj))
+    ms <- logInvoke TRACE callStack (id @(Benign IO _) (go <$> benignReadWeakObjScene obj))
     fireJust ms
   where
     go scn = scn ^? (_Just._model.sbj)
@@ -448,7 +448,7 @@ trigger n goStrict = do
 
 -- | A variation of 'trigger' which ignores the event but fires the given arg instead.
 trigger_ ::
-    (HasCallStack, NFData a, AsReactor c, MonadGadget c s m)
+    (HasCallStack, AsReactor c, MonadGadget c s m)
     => J.JSString
     -> a
     -> m a
@@ -470,6 +470,10 @@ trigger_ n a = do
 -- --                 s <- ms
 -- --                 mkObj wid s
 -- --         pure (ExceptT meobj)
+
+-- wack v = do
+--     wid <-
+--     unliftMkObj'
 
 -- -- -- | Specify a default widget for a model type
 -- -- -- to be used in AFromJSON instances.
