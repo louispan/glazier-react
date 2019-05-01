@@ -51,6 +51,7 @@ library
                        Glazier.React.Window
   build-depends:       base >= 4.9.0 && < 5
                      , aeson >= 1.4.2.0
+                     , aeson-applicative >= 1.4
                      , async >= 2.2
                      , alternators >= 2.0
                      , containers >= 0.5

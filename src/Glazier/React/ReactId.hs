@@ -1,15 +1,10 @@
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DerivingVia #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ConstraintKinds #-}
 
 module Glazier.React.ReactId where
 
-import Control.Monad.Reader
-import Control.Monad.Morph
+import Control.Monad.Env
 import qualified Data.Aeson as A
 import qualified Data.JSString as J
 import qualified GHC.Generics as G
@@ -35,14 +30,6 @@ instance A.FromJSONKey ReactId
 
 -----------------------------------------------
 
-class Monad m => ReactIdReader m where
-    askReactId :: m ReactId
-    localReactId :: (ReactId -> ReactId) -> m a -> m a
-
-instance {-# OVERLAPPABLE #-} (Monad (t m), MonadTrans t, MFunctor t, ReactIdReader m) => ReactIdReader (t m) where
-    askReactId = lift askReactId
-    localReactId f m = hoist (localReactId f) m
-
-instance {-# OVERLAPPABLE #-} Monad m => ReactIdReader (ReaderT ReactId m) where
-    askReactId = ask
-    localReactId = local
+type ReactIdReader = MonadEnv ReactId
+askReactId :: ReactIdReader m => m ReactId
+askReactId = askEnv

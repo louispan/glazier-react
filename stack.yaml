@@ -55,6 +55,7 @@ extra-deps:
 - '/Users/louis/repo/js/ghcjs-base-stub'
 - '/Users/louis/repo/hs/glazier'
 - '/Users/louis/repo/hs/alternators'
+- '/Users/louis/repo/hs/aeson-applicative'
 # - glazier-1.0.0.0
 
 - async-2.2.1

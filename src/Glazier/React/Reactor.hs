@@ -457,26 +457,17 @@ trigger_ n a = do
     trigger' n (const $ pure ())
     pure a
 
--- -- -- | Orphan instance because it requires AsReactor
--- -- instance (MonadIO m, A.AToJSON (Benign m) s) => A.AToJSON (Benign m) (Obj s) where
--- --     atoEncoding o = (model <$> benignReadObj o) >>= A.atoEncoding
-
--- -- -- | Orphan instance because it requires AsReactor
--- -- instance (MonadReactor c m, A.AFromJSON m s) => A.AFromJSON (ExceptT a (ReaderT (Widget c s s a) m)) (Obj s) where
--- --     aparseJSON v = do
--- --         ms <- fmap lift (A.aparseJSON v)
--- --         let meobj = do
--- --                 wid <- ask
--- --                 s <- ms
--- --                 mkObj wid s
--- --         pure (ExceptT meobj)
-
--- wack v = do
---     wid <-
---     unliftMkObj'
-
--- -- -- | Specify a default widget for a model type
--- -- -- to be used in AFromJSON instances.
--- -- -- Use @Tagged t s@ to add other instances, which can be `coerce`d back to @s@.
--- -- class DefaultWidget s where
--- --     defaultWidget :: Widget c s s ()
+-- | Orphan instance because it requires AsReactor
+-- LOUISFIXME: Think about this, use ReaderT (s -> Either e Obj s)?
+-- Use a new typeclass?
+-- instance (A.AFromJSON m s, AsReactor c, MonadCommand c m, LogLevelEnv m, MonadTrans t, MonadReader (Widget c s s a, J.JSString) (t m), MonadError a (t m)) => A.AFromJSON (t m) (Obj s) where
+--     aparseJSON v = do
+--         ms <- fmap lift (A.aparseJSON v)
+--         let meobj = do
+--                 (wid, logname) <- ask
+--                 s <- ms
+--                 e <- lift $ mkObj wid logname s
+--                 case e of
+--                     Left e' -> throwError e'
+--                     Right obj -> pure obj
+--         pure meobj

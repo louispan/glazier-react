@@ -7,6 +7,7 @@ module Glazier.React.Obj.Internal where
 import Control.Concurrent
 import Control.Monad.Benign
 import Control.Monad.Trans.Maybe
+import qualified Data.Aeson.Applicative as A
 import Data.IORef
 import Glazier.React.Scene
 import System.Mem.Weak
@@ -66,3 +67,8 @@ benignDeRefWeakObj obj = Obj obj <$> scnRef <*> scnVar
 
 -- benignbenignDeRefWeakObj :: MonadIO m => WeakObj s -> Benign m (Maybe (Obj s))
 -- benignbenignDeRefWeakObj = Benign . benignDeRefWeakObj
+benignReadObjScene :: MonadBenignIO m => Obj s -> m (Scene s)
+benignReadObjScene obj = liftBenignIO $ benignReadIORef $ sceneRef obj
+
+instance (MonadBenignIO m, A.AToJSON m s) => A.AToJSON m (Obj s) where
+    atoEncoding o = (model <$> benignReadObjScene o) >>= A.atoEncoding

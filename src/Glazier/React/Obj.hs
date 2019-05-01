@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
@@ -10,7 +11,8 @@
 
 module Glazier.React.Obj
 ( WeakObj
-, WeakObjReader(..)
+, WeakObjReader
+, askWeakObj
 -- , HasWeakObj(..)
 -- , GetWeakObj(..)
 , sceneWeakRef
@@ -30,6 +32,7 @@ module Glazier.React.Obj
 
 -- import Data.Diverse.Lens
 import Control.Monad.Benign
+import Control.Monad.Env
 import Control.Monad.Morph
 import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
@@ -101,26 +104,53 @@ benignReadWeakObjScene obj = runMaybeT $ do
     scnRef <- MaybeT . liftBenignIO . benignDeRefWeak $ sceneWeakRef obj
     liftBenignIO $ benignReadIORef scnRef
 
-benignReadObjScene :: MonadBenignIO m => Obj s -> m (Scene s)
-benignReadObjScene obj = liftBenignIO $ benignReadIORef $ sceneRef obj
-
 -----------------------------------------------
 
-class Monad m => WeakObjReader s m | m -> s where
-    askWeakObj :: m (WeakObj s)
-    localWeakObj :: (WeakObj s -> WeakObj s) -> m a -> m a
+-- class Monad m => WeakObjReader s m | m -> s where
+--     askWeakObj :: m (WeakObj s)
+--     localWeakObj :: (WeakObj s -> WeakObj s) -> m a -> m a
 
-instance {-# OVERLAPPABLE #-} (Monad (t m), MonadTrans t, MFunctor t, WeakObjReader s m) => WeakObjReader s (t m) where
-    askWeakObj = lift askWeakObj
-    localWeakObj f m = hoist (localWeakObj f) m
+-- instance {-# OVERLAPPABLE #-} (Monad (t m), MonadTrans t, MFunctor t, WeakObjReader s m) => WeakObjReader s (t m) where
+--     askWeakObj = lift askWeakObj
+--     localWeakObj f m = hoist (localWeakObj f) m
 
-instance {-# OVERLAPPABLE #-} Monad m => WeakObjReader s (ReaderT (WeakObj s) m) where
-    askWeakObj = ask
-    localWeakObj = local
+-- instance {-# OVERLAPPABLE #-} Monad m => WeakObjReader s (ReaderT (WeakObj s) m) where
+--     askWeakObj = ask
+--     localWeakObj = local
 
-instance Monad m => LogLevelReader (ReaderT (WeakObj s) m) where
+-- instance Monad m => LogLevelReader (ReaderT (WeakObj s) m) where
+--     -- logLevel :: m (Benign IO (Maybe LogLevel))
+--     askLogLevel = do
+--         obj <- askWeakObj
+--         pure . go . sceneWeakRef $ obj
+--       where
+--         go wk = runMaybeT $ do
+--             ref <- MaybeT $ benignDeRefWeak wk
+--             s <- lift $ benignReadIORef ref
+--             MaybeT . planLogLevel . plan $ s
+
+type WeakObjReader s = MonadEnv' WeakObj s
+askWeakObj :: WeakObjReader s m => m (WeakObj s)
+askWeakObj = askEnv'
+
+-- askWeakObj' :: WeakObjReader s m => (WeakObj s -> a) -> m (WeakObj s)
+-- askWeakObj' = const askEnv
+
+-- class Monad m => WeakObjReader s m | m -> s where
+--     askWeakObj :: m (WeakObj s)
+--     localWeakObj :: (WeakObj s -> WeakObj s) -> m a -> m a
+
+-- instance {-# OVERLAPPABLE #-} (Monad (t m), MonadTrans t, MFunctor t, WeakObjReader s m) => WeakObjReader s (t m) where
+--     askWeakObj = lift askWeakObj
+--     localWeakObj f m = hoist (localWeakObj f) m
+
+-- instance {-# OVERLAPPABLE #-} Monad m => WeakObjReader s (ReaderT (WeakObj s) m) where
+--     askWeakObj = ask
+--     localWeakObj = local
+
+instance Monad m => MonadEnv (Benign IO (Maybe LogLevel)) (ReaderT (WeakObj s) m) where
     -- logLevel :: m (Benign IO (Maybe LogLevel))
-    askLogLevel = do
+    askEnv = do
         obj <- askWeakObj
         pure . go . sceneWeakRef $ obj
       where
