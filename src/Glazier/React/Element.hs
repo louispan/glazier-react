@@ -9,7 +9,7 @@ module Glazier.React.Element
     , unsafeCoerceElement
     , mkBranchElement
     , mkLeafElement
-    , textElement
+    , rawTextElement
     , mkCombinedElements
     ) where
 
@@ -49,8 +49,8 @@ mkLeafElement n props =
     js_mkLeafElement n (JE.propertiesToObject props)
 
 -- | Not an IO action because JSString is immutable
-textElement :: J.JSString -> ReactElement
-textElement = js_textElement
+rawTextElement :: J.JSString -> ReactElement
+rawTextElement = js_rawTextElement
 
 -- | React only allows a single top most element.
 -- Provide a handly function to wrap a list of ReactElements inside a 'div' if required.
@@ -73,7 +73,7 @@ foreign import javascript unsafe
 
 foreign import javascript unsafe
     "$r = $1;"
-    js_textElement :: J.JSString -> ReactElement
+    js_rawTextElement :: J.JSString -> ReactElement
 
 -- | Wrap a list of ReactElements inside a 'div'
 foreign import javascript unsafe
@@ -91,8 +91,8 @@ js_mkBranchElement _ _ _ = pure (ReactElement $ JE.JSRep J.nullRef)
 js_mkLeafElement :: JE.JSRep -> JO.Object -> IO ReactElement
 js_mkLeafElement _ _ =  pure (ReactElement $ JE.JSRep J.nullRef)
 
-js_textElement :: J.JSString -> ReactElement
-js_textElement _ = ReactElement $ JE.JSRep J.nullRef
+js_rawTextElement :: J.JSString -> ReactElement
+js_rawTextElement _ = ReactElement $ JE.JSRep J.nullRef
 
 js_mkCombinedElements :: JA.JSArray -> IO ReactElement
 js_mkCombinedElements _ = pure (ReactElement $ JE.JSRep J.nullRef)

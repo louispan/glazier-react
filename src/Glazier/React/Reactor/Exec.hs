@@ -15,6 +15,7 @@
 
 module Glazier.React.Reactor.Exec where
 
+import Control.Also
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.DeepSeq
@@ -24,7 +25,6 @@ import Control.Monad.Benign
 import Control.Monad.IO.Unlift
 import Control.Monad.Reader
 import Control.Monad.Trans.Cont
-import Control.Monad.Trans.Except
 import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
 import qualified Control.Monad.Trans.RWS.Strict as RWS
@@ -34,7 +34,7 @@ import qualified Data.DList as DL
 import qualified Data.HashMap.Strict as HM
 import Data.IORef
 import qualified Data.JSString as J
-import qualified Data.JSString.Text as J
+import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as M
 import Data.Maybe
 import qualified Data.Set as S
@@ -86,6 +86,9 @@ mkReactorEnvIO logLvl overrides = ReactorEnv <$> (newMVar (0 :: Int))
     <*> (newIORef logLvl)
     <*> (newIORef overrides)
 
+reactIdLogName :: ReactId -> T.Text
+reactIdLogName (ReactId (n NE.:| ns, _)) = T.intercalate "." . reverse $ (T.pack . J.unpack) <$> (n : ns)
+
 namedLogLevel :: IORef (Maybe LogLevel) -> IORef (HM.HashMap T.Text (IORef (Maybe (Maybe LogLevel))))
     -> T.Text -> IO (Benign IO (Maybe LogLevel))
 namedLogLevel defLogLvlRef logLvlOverridesRef logname = do
@@ -131,7 +134,7 @@ startWidget ::
     -- redundant contraint, but ensures no @IO c@ commands can be executed
     , CmdTypes c c ~ CmdTypes (NoIOCmd c) c
     )
-    => (c -> m ()) -> Widget c s s () -> J.JSString -> s -> JE.JSRep -> m (J.Export (Obj s))
+    => (c -> m ()) -> Widget c s s () -> NE.NonEmpty J.JSString -> s -> JE.JSRep -> m (J.Export (Obj s))
 startWidget executor wid logname s root = execMkObj executor wid logname s >>= startObj root
 
 -- | Returns commands that need to be processed last
@@ -219,7 +222,7 @@ execMkReactId ::
     , Has ReactorEnv r
     , MonadReader r m
     )
-    => J.JSString
+    => NE.NonEmpty J.JSString
     -> m ReactId
 execMkReactId n = do
     v <- view ((hasLens @ReactorEnv)._reactIdVar)
@@ -271,16 +274,17 @@ execMkObj ::
     )
     => (c -> m ())
     -> Widget c s s ()
-    -> J.JSString
+    -> NE.NonEmpty J.JSString
     -> s
     -> m (Obj s)
-execMkObj executor wid logname s = do
+execMkObj executor wid n s = do
     liftIO $ putStrLn "LOUISDEBUG: execMkObj"
     defLogLvlRef <- view ((hasLens @ReactorEnv)._defaultLogLevel)
     logLvlOverridesRef <- view ((hasLens @ReactorEnv)._logLevelOverrides)
-    k <- execMkReactId logname
+    k <- execMkReactId n
+    let logname = reactIdLogName k
     (obj, cs) <- liftIO $ do
-        namedLogLvl <- namedLogLevel defLogLvlRef logLvlOverridesRef (J.textFromJSString logname)
+        namedLogLvl <- namedLogLevel defLogLvlRef logLvlOverridesRef logname
         -- create shim with fake callbacks for now
         let newPlan = Plan
                 k
@@ -320,9 +324,14 @@ execMkObj executor wid logname s = do
         renderedCb <- J.syncCallback J.ContinueAsync (onRenderedCb obj)
 
         -- Now we have enough to run the widget
-        -- On the 'Window ()' event, handle it with 'setRender'
-        let gad = runExceptT wid >>= either setRender pure
-            cs = execProgram' $ evalContT $ (`runReaderT` k) $ (`runReaderT` obj) $ gad
+        let wid' = do
+                -- get the window out of wid and set the rendering function
+                obj' <- askWeakObj
+                wid `also` (pure ())
+                win <- askWindow
+                exec' $ SetRender obj' win
+
+            cs = execProgram' $ (`evalStateT` (pure ())) $ (`evalStateT` k) $ evalContT $ (`runReaderT` obj) $ wid'
             -- update the model to include the real shimcallbacks
             scn' = scn & _plan._shimCallbacks .~ ShimCallbacks renderCb mountedCb renderedCb refCb
         -- update the mutable variables with the initialzed model
@@ -824,7 +833,7 @@ execRegisterDOMListener executor obj j n goStrict goLazy = void . runMaybeT $ do
     -- Add the handler to the state
     UnliftIO u <- lift askUnliftIO
     -- generate a unique id
-    k <- execMkReactId n
+    k <- execMkReactId (n NE.:| [])
     liftIO $ do
         scn <- takeMVar scnVar
         -- since k is unique, it'll always be a new map item

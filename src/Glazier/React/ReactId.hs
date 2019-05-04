@@ -1,17 +1,18 @@
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE ConstraintKinds #-}
 
 module Glazier.React.ReactId where
 
-import Control.Monad.Env
+import Control.Monad.Context
+import Control.Newtype.Generics
 import qualified Data.Aeson as A
+import qualified Data.List.NonEmpty as NE
 import qualified Data.JSString as J
 import qualified GHC.Generics as G
-import qualified JavaScript.Extras()
-import Control.Newtype.Generics
+import qualified JavaScript.Extras ()
 
-newtype ReactId = ReactId { unReactId :: (J.JSString, Int) }
+newtype ReactId = ReactId { unReactId :: (NE.NonEmpty J.JSString, Int) }
     deriving (G.Generic, Read, Show, Eq, Ord)
 
 instance Newtype ReactId
@@ -30,6 +31,22 @@ instance A.FromJSONKey ReactId
 
 -----------------------------------------------
 
-type ReactIdReader = MonadEnv ReactId
-askReactId :: ReactIdReader m => m ReactId
-askReactId = askEnv
+type AskReactId = MonadAsk ReactId
+askReactId :: AskReactId m => m ReactId
+askReactId = askContext
+
+type PutReactId = MonadPut ReactId
+putReactId :: PutReactId m => ReactId -> m ()
+putReactId = putContext
+
+modifyReactId :: PutReactId m => (ReactId -> ReactId) -> m ()
+modifyReactId = modifyContext
+
+-- newtype ReactName = ReactName { unReactName :: J.JSString }
+--     deriving (G.Generic, Read, Show, Eq, Ord)
+
+-- instance Newtype ReactName
+
+-- type ReactNameReader = MonadAsk ReactName
+-- askReactName :: ReactNameReader m => m ReactName
+-- askReactName = askContext

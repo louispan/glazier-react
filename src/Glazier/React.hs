@@ -1,8 +1,15 @@
+{-# LANGUAGE CPP #-}
+
 -- | NB. Glazier.React.Event.* are not exported due to duplicate record fields
 -- It is up to the user to import the Event modules as required.
 module Glazier.React
     ( module Glazier.Command
     , module Glazier.Command.Exec
+#ifdef DEBUGIO
+    , module Glazier.DebugIO
+    , module Glazier.DebugIO.Exec
+#endif
+    , module Glazier.Logger
     , module Glazier.React.Element
     , module Glazier.React.EventTarget
     -- , module Glazier.React.Gadget
@@ -23,12 +30,15 @@ module Glazier.React
     , module Control.Also
     , module Control.Monad
     , module Control.Monad.Benign
-    , module Control.Monad.Trans
+    , module Control.Monad.Benign.Exec
     , module Control.Monad.Delegate
+    , module Control.Monad.Context
+    , module Control.Monad.Observer
     , module Control.Monad.Reader
     , module Control.Monad.Except
     , module Control.Monad.RWS.Strict
     , module Control.Monad.State.Strict
+    , module Control.Monad.Trans
     , module Control.Monad.Trans.Extras
     , module Control.Monad.Trans.Maybe
     , module GHC.Stack
@@ -37,7 +47,10 @@ module Glazier.React
 import Control.Also
 import Control.Monad
 import Control.Monad.Benign
+import Control.Monad.Benign.Exec
 import Control.Monad.Delegate
+import Control.Monad.Context
+import Control.Monad.Observer
 import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.RWS.Strict
@@ -48,6 +61,11 @@ import Control.Monad.Trans.Maybe
 import GHC.Stack
 import Glazier.Command
 import Glazier.Command.Exec
+#ifdef DEBUGIO
+import Glazier.DebugIO
+import Glazier.DebugIO.Exec
+#endif
+import Glazier.Logger
 import Glazier.React.Element
 -- import Glazier.React.Entity
 import Glazier.React.EventTarget

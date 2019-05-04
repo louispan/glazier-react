@@ -32,7 +32,7 @@ module Glazier.React.Obj
 
 -- import Data.Diverse.Lens
 import Control.Monad.Benign
-import Control.Monad.Env
+import Control.Monad.Context
 import Control.Monad.Morph
 import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
@@ -118,7 +118,7 @@ benignReadWeakObjScene obj = runMaybeT $ do
 --     askWeakObj = ask
 --     localWeakObj = local
 
--- instance Monad m => LogLevelReader (ReaderT (WeakObj s) m) where
+-- instance Monad m => AskLogLevel (ReaderT (WeakObj s) m) where
 --     -- logLevel :: m (Benign IO (Maybe LogLevel))
 --     askLogLevel = do
 --         obj <- askWeakObj
@@ -129,12 +129,12 @@ benignReadWeakObjScene obj = runMaybeT $ do
 --             s <- lift $ benignReadIORef ref
 --             MaybeT . planLogLevel . plan $ s
 
-type WeakObjReader s = MonadEnv' WeakObj s
+type WeakObjReader s = MonadAsk' WeakObj s
 askWeakObj :: WeakObjReader s m => m (WeakObj s)
-askWeakObj = askEnv'
+askWeakObj = askContext'
 
 -- askWeakObj' :: WeakObjReader s m => (WeakObj s -> a) -> m (WeakObj s)
--- askWeakObj' = const askEnv
+-- askWeakObj' = const askContext
 
 -- class Monad m => WeakObjReader s m | m -> s where
 --     askWeakObj :: m (WeakObj s)
@@ -148,9 +148,9 @@ askWeakObj = askEnv'
 --     askWeakObj = ask
 --     localWeakObj = local
 
-instance Monad m => MonadEnv (Benign IO (Maybe LogLevel)) (ReaderT (WeakObj s) m) where
+instance Monad m => MonadAsk (Benign IO (Maybe LogLevel)) (ReaderT (WeakObj s) m) where
     -- logLevel :: m (Benign IO (Maybe LogLevel))
-    askEnv = do
+    askContext = do
         obj <- askWeakObj
         pure . go . sceneWeakRef $ obj
       where

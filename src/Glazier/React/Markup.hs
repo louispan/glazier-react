@@ -14,9 +14,9 @@ module Glazier.React.Markup
     , fromElement
     , toElements
     , toElement
-    , txt
-    , lf
-    , bh
+    , rawText
+    , leaf
+    , branch
     , withMarkup
     , modifyMarkup
     , overSurfaceProperties
@@ -32,17 +32,17 @@ import qualified JavaScript.Extras as JE
 -- | The parameters required to create a branch ReactElement with children
 data BranchParam = BranchParam
     JE.JSRep
-    (DL.DList JE.Property)
+    [JE.Property]
     (DL.DList ReactMarkup)
 
 -- | The parameters required to create a leaf ReactElement (no children)
 data LeafParam = LeafParam
     JE.JSRep
-    (DL.DList JE.Property)
+    [JE.Property]
 
 data ReactMarkup
     = ElementMarkup Z.ReactElement
-    | TextMarkup J.JSString
+    | RawTextMarkup J.JSString
     | BranchMarkup BranchParam
     | LeafMarkup LeafParam
 
@@ -50,12 +50,12 @@ data ReactMarkup
 fromMarkup :: ReactMarkup -> IO Z.ReactElement
 fromMarkup (BranchMarkup (BranchParam n props xs)) = do
     xs' <- sequenceA $ fromMarkup <$> (DL.toList xs)
-    Z.mkBranchElement n (DL.toList props) xs'
+    Z.mkBranchElement n props xs'
 
 fromMarkup (LeafMarkup (LeafParam n props)) =
-    Z.mkLeafElement n (DL.toList props)
+    Z.mkLeafElement n props
 
-fromMarkup (TextMarkup str) = pure $ Z.textElement str
+fromMarkup (RawTextMarkup str) = pure $ Z.rawTextElement str
 
 fromMarkup (ElementMarkup e) = pure e
 
@@ -79,9 +79,9 @@ toElement xs = toElements xs >>= Z.mkCombinedElements
 
 -------------------------------------------------
 
--- | For text content
-txt :: MonadState (DL.DList ReactMarkup) m => J.JSString -> m ()
-txt n = modify' (`DL.snoc` TextMarkup n)
+-- | For raw text content
+rawText :: MonadState (DL.DList ReactMarkup) m => J.JSString -> m ()
+rawText n = modify' (`DL.snoc` RawTextMarkup n)
 
 -- | For the contentless elements: eg 'br_'.
 -- Memonic: lf for leaf.
@@ -89,11 +89,11 @@ txt n = modify' (`DL.snoc` TextMarkup n)
 -- if the same key is used across listeners and props.
 -- "If an attribute/prop is duplicated the last one defined wins."
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
-lf :: (MonadState (DL.DList ReactMarkup) m)
+leaf :: (MonadState (DL.DList ReactMarkup) m)
     => JE.JSRep
-    -> (DL.DList JE.Property)
+    -> [JE.Property]
     -> m ()
-lf n props = modify' (`DL.snoc` LeafMarkup (LeafParam n props))
+leaf n props = modify' (`DL.snoc` LeafMarkup (LeafParam n props))
 
 -- | Create a MonadState that run the given given a combining function
 -- where the first arg is the state from running the markup producing MonadState with mempty,
@@ -120,12 +120,12 @@ withMarkup f childs = do
 -- if the same key is used across listeners and props.
 -- "If an attribute/prop is duplicated the last one defined wins."
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
-bh :: (MonadState (DL.DList ReactMarkup) m)
+branch :: (MonadState (DL.DList ReactMarkup) m)
     => JE.JSRep
-    -> (DL.DList JE.Property)
+    -> [JE.Property]
     -> m a
     -> m a
-bh n props = withMarkup (\childs' ms -> ms `DL.snoc` BranchMarkup (BranchParam n props childs'))
+branch n props = withMarkup (\childs' ms -> ms `DL.snoc` BranchMarkup (BranchParam n props childs'))
 
 -- Given a mapping function, apply it to children of the markup
 modifyMarkup :: MonadState (DL.DList ReactMarkup) m
@@ -136,7 +136,7 @@ modifyMarkup f = withMarkup (\childs' ms -> ms `DL.append` f childs')
 -- Given a mapping function, apply it to all child BranchMarkup or LeafMarkup (if possible)
 -- Does not recurse into decendants.
 overSurfaceProperties ::
-    (DL.DList JE.Property -> DL.DList JE.Property)
+    ([JE.Property] -> [JE.Property])
     -> (DL.DList ReactMarkup -> DL.DList ReactMarkup)
 overSurfaceProperties f childs = DL.fromList $ case DL.toList childs of
     LeafMarkup (LeafParam j ps) : bs ->
@@ -148,7 +148,7 @@ overSurfaceProperties f childs = DL.fromList $ case DL.toList childs of
 -- Given a mapping function, apply it to all child BranchMarkup or LeafMarkup (if possible)
 -- Recurse into decendants.
 overAllProperties ::
-    (DL.DList JE.Property -> DL.DList JE.Property)
+    ([JE.Property] -> [JE.Property])
     -> (DL.DList ReactMarkup -> DL.DList ReactMarkup)
 overAllProperties f childs = DL.fromList $ case DL.toList childs of
     LeafMarkup (LeafParam j ps) : bs ->
