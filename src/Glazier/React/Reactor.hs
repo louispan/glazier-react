@@ -17,6 +17,7 @@
 module Glazier.React.Reactor where
 
 import Control.Also
+import Control.Applicative
 import Control.DeepSeq
 import Control.Lens
 import Control.Lens.Misc
@@ -59,59 +60,37 @@ type AsReactor c =
 
 type SceneState s = StateT s (Benign IO)
 
-type MonadGadget' c s m = (MonadCommand c m, AskLogLevel m, WeakObjReader s m)
+type MonadGadget' c s m = (Alternative m, MonadCommand c m, AskLogLevel m, AskWeakObj s m, Also () m)
 
 type MonadGadget c s m = (MonadGadget' c s m, AskReactId m)
 
-type MonadWidget c s s' m = (MonadGadget' c s m, PutReactId m, PutWindow s' m)
+type MonadWidget c s m = (MonadGadget' c s m, PutReactId m, PutWindow s m)
 
 -- | 'Widget' is an instance of 'MonadWidget'
-type Widget c s s' =
-    ReaderT (WeakObj s)
-    (ContT ()
-    (StateT (ReactId)
-    (StateT (Window s' ())
-    (Program c))))
-
-wack :: ( PutWindow s m
-    , PutReactId m
-    , Also () m
-    ) => m ()
-wack = lf' (J.pack "hi") [] []
-
-wock :: ( PutWindow s m
-    , PutReactId m
-    , Also () m
-    , MonadDelegate m
-    ) => m ()
-wock = bh (J.pack "ho") [] wack
-
-type Widget2 c s s' =
-    ReaderT (WeakObj s)
-    (ContT ()
-    (StateT (ReactId)
-    (StateT (Window s' ())
-    (Program c))))
-
-wock' :: Widget2 c s s' ()
-wock' = wock
+type Widget c s =
+    ReaderT (WeakObj s) -- 'AskWeakObj'
+    (MaybeT -- 'Alternative'
+    (ContT () -- 'MonadDelegate'
+    (StateT (ReactId) -- 'PutReactId'
+    (StateT (Window s ()) -- 'PutWindow'
+    (Program c))))) -- 'MonadComand'
 
 -- | Like 'Control.Monad.IO.Unlift.UnliftIO', newtype wrapper prevents impredicative types.
-newtype UniftWidget c s s' m = UniftWidget { unliftWidget :: forall a. m a -> Widget c s s' a }
+newtype UniftWidget c s m = UniftWidget { unliftWidget :: forall a. m a -> Widget c s a }
 
 -- | Like 'Control.Monad.IO.Unlift.MonadUnliftIO', limits transformers stack of 'ReaderT'
 -- and 'IdentityT' on top of @Widget c s m@
-class Monad m => MonadUnliftWidget c s s' m | m -> c s s' where
-    askUnliftWidget :: m (UniftWidget c s s' m)
+class Monad m => MonadUnliftWidget c s m | m -> c s where
+    askUnliftWidget :: m (UniftWidget c s m)
 
-instance MonadUnliftWidget c s s' (Widget c s s') where
+instance MonadUnliftWidget c s (Widget c s) where
     askUnliftWidget = pure (UniftWidget id)
 
-instance MonadUnliftWidget c s s' m => MonadUnliftWidget c s s' (ReaderT r m) where
+instance MonadUnliftWidget c s m => MonadUnliftWidget c s (ReaderT r m) where
     askUnliftWidget = ReaderT $ \r ->
         (\u -> UniftWidget (unliftWidget u . flip runReaderT r)) <$> askUnliftWidget
 
-instance MonadUnliftWidget c s s' m => MonadUnliftWidget c s s' (IdentityT m) where
+instance MonadUnliftWidget c s m => MonadUnliftWidget c s (IdentityT m) where
     askUnliftWidget = IdentityT $
         (\u -> UniftWidget (unliftWidget u . runIdentityT)) <$> askUnliftWidget
 
@@ -123,7 +102,7 @@ data ReactorCmd c where
     MkReactId :: NE.NonEmpty J.JSString -> (ReactId -> c) -> ReactorCmd c
     -- | Make a fully initialized object from a widget and model
     -- MkObj :: Widget c s s () -> J.JSString -> s -> (Obj s -> c) -> ReactorCmd c
-    MkObj :: Widget c s s () -> NE.NonEmpty J.JSString -> s -> (Obj s -> c) -> ReactorCmd c
+    MkObj :: Widget c s () -> NE.NonEmpty J.JSString -> s -> (Obj s -> c) -> ReactorCmd c
     -- | Set the the rendering function in a Obj, replace any existing render callback
     SetRender :: WeakObj s -> Window s () -> ReactorCmd c
     -- Get the event target
@@ -236,7 +215,7 @@ mkReactId n = delegatify $ \f ->
 -- | Make an initialized 'Obj' for a given model using the given 'Widget'.
 -- Unlike 'unliftMkObj', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
 mkObj :: (HasCallStack, AsReactor c, MonadCommand c m, AskLogLevel m)
-    => Widget c s s a -> NE.NonEmpty J.JSString -> s -> m (Either a (Obj s))
+    => Widget c s a -> NE.NonEmpty J.JSString -> s -> m (Either a (Obj s))
 mkObj wid logname s = delegatify $ \f -> do
     let wid' = wid >>= (instruct . f . Left)
     logExec' TRACE callStack $ MkObj wid' logname s (f . Right)
@@ -244,7 +223,7 @@ mkObj wid logname s = delegatify $ \f -> do
 -- | Make an initialized 'Obj' for a given model using the given 'Widget'.
 -- Unlike 'unliftMkObj'', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
 mkObj' :: (HasCallStack, AsReactor c, MonadCommand c m, AskLogLevel m)
-    => Widget c s s () -> NE.NonEmpty J.JSString -> s -> m (Obj s)
+    => Widget c s () -> NE.NonEmpty J.JSString -> s -> m (Obj s)
 mkObj' wid logname s = delegatify $ \f -> do
     logExec' TRACE callStack $ MkObj wid logname s f
 
@@ -254,7 +233,7 @@ mkObj' wid logname s = delegatify $ \f -> do
 
 -- | Convenient variation of 'mkObj' where the widget is unlifted from the given monad.
 -- This is useful for transformer stacks that require addition MonadReader-like effects.
-unliftMkObj :: (HasCallStack, AsReactor c, MonadCommand c m, AskLogLevel m, MonadUnliftWidget c s s m)
+unliftMkObj :: (HasCallStack, AsReactor c, MonadCommand c m, AskLogLevel m, MonadUnliftWidget c s m)
     => m a -> NE.NonEmpty J.JSString -> s -> m (Either a (Obj s))
 unliftMkObj m logname s = do
     u <- askUnliftWidget
@@ -262,7 +241,7 @@ unliftMkObj m logname s = do
 
 -- | Convenient variation of 'mkObj'' where the widget is unlifted from the given monad.
 -- This is useful for transformer stacks that require addition MonadReader-like effects.
-unliftMkObj' :: (HasCallStack, AsReactor c, MonadCommand c m, AskLogLevel m, MonadUnliftWidget c s s m)
+unliftMkObj' :: (HasCallStack, AsReactor c, MonadCommand c m, AskLogLevel m, MonadUnliftWidget c s m)
     => m () -> NE.NonEmpty J.JSString -> s -> m (Obj s)
 unliftMkObj' m logname s = do
     u <- askUnliftWidget
@@ -301,14 +280,14 @@ rerender = do
 -- | Get the 'Model' using the given 'WeakObj'
 -- Use 'magnify' to get parts of the model.
 -- If magnifying the model with a 'Traversal' you'll need to
--- `Control.Monad.Delegate.fireJust' the 'Maybe s' to get the just the 's'.
+-- `Control.Monad.Delegate.onJust' the 'Maybe s' to get the just the 's'.
 -- Consider using 'Control.Monad.Bind.bind1' to bind the 'WeakObj' arg.
 -- class GetModel s obj m | obj -> s where
 getModel :: (HasCallStack, AsReactor c, MonadGadget' c s m) => Traversal' s s' -> m s'
 getModel sbj = do
     obj <- askWeakObj
     ms <- logInvoke TRACE callStack (id @(Benign IO _) (go <$> benignReadWeakObjScene obj))
-    fireJust ms
+    onJust ms
   where
     go scn = scn ^? (_Just._model.sbj)
 

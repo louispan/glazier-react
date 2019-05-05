@@ -28,6 +28,7 @@ module Glazier.React
     -- , module Glazier.React.Widget
     , module Glazier.React.Window
     , module Control.Also
+    , module Control.Applicative
     , module Control.Monad
     , module Control.Monad.Benign
     , module Control.Monad.Benign.Exec
@@ -45,6 +46,7 @@ module Glazier.React
     ) where
 
 import Control.Also
+import Control.Applicative
 import Control.Monad
 import Control.Monad.Benign
 import Control.Monad.Benign.Exec

@@ -14,20 +14,22 @@
 
 module Glazier.React.Window where
 
-import Control.Lens
 import Control.Also
+import Control.Applicative
+import Control.Lens
 import Control.Monad.Benign
-import Control.Monad.Reader
 import Control.Monad.Delegate
+import Control.Monad.Reader
+import Control.Monad.RWS.Strict
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
-import Control.Monad.RWS.Strict
 import qualified Data.DList as DL
 import Data.Foldable
 import qualified Data.JSString as J
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as M
+import Data.Maybe
 import Glazier.React.Markup
 import Glazier.React.Obj
 import Glazier.React.ReactId
@@ -48,94 +50,6 @@ getListeners k = do
     ls <- view (_plan._reactants.ix k._reactListeners.to M.toList)
     pure $ (\(n, (cb, _)) -> (n, JE.toJSRep cb)) <$> ls
 
-rawTxt :: PutWindow s m => J.JSString -> m ()
-rawTxt n = appendWindow $ rawText n
-
-lf :: PutWindow s m
-    => J.JSString
-    -> [JE.Property]
-    -> m ()
-lf n props = appendWindow $ leaf (JE.toJSRep n) props
-
--- | Interactive version of 'lf' using listeners obtained from the 'Plan' for the local 'ReactId'.
-lf' ::
-    ( PutWindow s m
-    , PutReactId m
-    , Also () m
-    )
-    => J.JSString-- ^ eg "div" or "input"
-    -> [JE.Property]
-    -> [m ()]
-    -> m ()
-lf' n props gads = do
-    -- make sure the react id is unique amongst siblings
-    modifyReactId $ \(ReactId (_ NE.:| ns, i)) -> ReactId (n NE.:| ns, i + 1)
-    k <- askReactId
-
-    -- run through the initialization of all the gadgets
-    -- combine using 'also' with @pure ()@ to protect again 'finish'
-    foldr' also (pure ()) gads
-
-    appendWindow $ do
-        ls <- getListeners k
-        leaf (JE.toJSRep n) (props <> ls)
-
-bh :: ( PutWindow s m
-    , PutReactId m
-    , Also () m
-    , MonadDelegate m
-    )
-    => J.JSString
-    -> [JE.Property]
-    -> m a
-    -> m a
-bh n props m = bh' n props [] m
-
--- | Interactive version of 'bh' using listeners obtained from the 'Plan' for the local 'ReactId'.
-bh' ::
-    ( PutWindow s m
-    , PutReactId m
-    , Also () m
-    , MonadDelegate m
-    )
-    => J.JSString-- ^ eg "div" or "input"
-    -> [JE.Property]
-    -> [m ()]
-    -> m a
-    -> m a
-bh' n props gads childs = do
-    -- make sure the react id is unique amongst siblings
-    modifyReactId $ \(ReactId (_ NE.:| ns, i)) -> ReactId (n NE.:| ns, i + 1)
-    k <- askReactId
-
-    -- run through the initialization of all the gadgets
-    -- combine using 'also' with @pure ()@ to protect again 'finish'
-    foldr' also (pure ()) gads
-
-    -- run the children with a locally scoped modified reactid, pushing this name in the list of names
-    modifyReactId $ \(ReactId (ns, _)) -> ReactId (mempty NE.<| ns, 0)
-
-    -- now get the markup of childs
-    -- save window
-    s <- askWindow
-
-    -- run children with blank window
-    putWindow (pure ())
-
-    delegate $ \fire -> do
-        -- 'also' with @pure ()@ to protect against 'finish'
-        (childs >>= fire) `also` (pure ())
-        -- get the children's window
-        childs' <- askWindow
-        -- restore window
-        putWindow s
-        -- restore current key
-        putReactId k
-        appendWindow $ do
-            ls <- getListeners k
-            branch (JE.toJSRep n) (props <> ls) childs'
-
-
 displayWeakObj :: (MonadBenignIO m, MonadState (DL.DList ReactMarkup) m) => WeakObj o -> m ()
 displayWeakObj obj = (`evalMaybeT` ()) $ do
     scn <- MaybeT $ benignReadWeakObjScene obj
@@ -147,7 +61,6 @@ displayWeakObj obj = (`evalMaybeT` ()) $ do
         k = scn ^. _plan._planId
     -- These are the callbacks on the 'ShimComponent'
     -- See jsbits/react.js
-
     leaf (JE.toJSRep shimComponent)
         [ ("render", JE.toJSRep renderCb)
         , ("mounted", JE.toJSRep mountedCb)
@@ -155,28 +68,6 @@ displayWeakObj obj = (`evalMaybeT` ()) $ do
         , ("ref", JE.toJSRep refCb)
         , ("key", JE.toJSRep . J.pack $ show k)
         ]
-
--- keyProperty :: ReactId -> JE.Property
--- keyProperty k = ("key", JE.toJSRep . J.pack $ show k)
-
--- bindListenerContext :: JE.JSRep -> J.Callback (J.JSVal -> J.JSVal -> IO ()) -> JE.JSRep
--- bindListenerContext = js_bindListenerContext
-
--- #ifdef __GHCJS__
-
--- foreign import javascript unsafe
---     "$r = function(j) { $2($1, j) };"
---     js_bindListenerContext :: JE.JSRep -> J.Callback (J.JSVal -> J.JSVal -> IO ()) -> JE.JSRep
-
--- #else
-
--- js_bindListenerContext :: JE.JSRep -> J.Callback (J.JSVal -> J.JSVal -> IO ()) -> JE.JSRep
--- js_bindListenerContext _ _ = JE.JSRep J.nullRef
-
-
--- #endif
-
-
 
 -- | A copy of 'MonadReader' with overlapping instances
 class Monad m => AskWindow s m | m -> s where
@@ -207,6 +98,119 @@ modifyWindow f = do
 
 appendWindow :: (PutWindow s m) => Window s () -> m ()
 appendWindow a = modifyWindow (*> a)
+
+rawTxt :: PutWindow s m => J.JSString -> m ()
+rawTxt n = appendWindow $ rawText n
+
+prop :: (MonadReader s m, Alternative m, JE.ToJS a) => Traversal' s a -> m JE.JSRep
+prop = (>>= whenMaybe) . (`previews` JE.toJSRep)
+
+lf :: PutWindow s m
+    => J.JSString
+    -> [(J.JSString, MaybeT (ReaderT s (Benign IO)) JE.JSRep)]
+    -> m ()
+lf n props = appendWindow $ do
+    mdl <- view _model
+    props' <- lift $ fmap catMaybes $ (`runReaderT` mdl) $ traverse (runMaybeT . sequenceA) props
+    leaf (JE.toJSRep n) props'
+
+-- | Interactive version of 'lf' using listeners obtained from the 'Plan' for the local 'ReactId'.
+lf' ::
+    ( PutWindow s m
+    , PutReactId m
+    , Also () m
+    )
+    => J.JSString-- ^ eg "div" or "input"
+    -> [(J.JSString, MaybeT (ReaderT s (Benign IO)) JE.JSRep)]
+    -> [m ()]
+    -> m ()
+lf' n props gads = do
+    -- make sure the react id is unique amongst siblings
+    modifyReactId $ \(ReactId (_ NE.:| ns, i)) -> ReactId (n NE.:| ns, i + 1)
+    k <- askReactId
+    -- run through the initialization of all the gadgets which will use this key
+    -- combine using 'also' with @pure ()@ to protect again 'finish'
+    foldr' also (pure ()) gads
+    appendWindow $ do
+        mdl <- view _model
+        props' <- lift $ fmap catMaybes $ (`runReaderT` mdl) $ traverse (runMaybeT . sequenceA) props
+        ls <- getListeners k -- get the listeners created by gads above
+        leaf (JE.toJSRep n) (props' <> ls)
+
+bh :: ( PutWindow s m
+    , PutReactId m
+    , Also () m
+    , MonadDelegate m
+    )
+    => J.JSString
+    -> [(J.JSString, MaybeT (ReaderT s (Benign IO)) JE.JSRep)]
+    -> m a
+    -> m a
+bh n props m = bh' n props [] m
+
+-- | Interactive version of 'bh' using listeners obtained from the 'Plan' for the local 'ReactId'.
+bh' ::
+    ( PutWindow s m
+    , PutReactId m
+    , Also () m
+    , MonadDelegate m
+    )
+    => J.JSString-- ^ eg "div" or "input"
+    -> [(J.JSString, MaybeT (ReaderT s (Benign IO)) JE.JSRep)]
+    -> [m ()] -- must only use to only use AskReactId
+    -> m a
+    -> m a
+bh' n props gads childs = do
+    -- make sure the react id is unique amongst siblings
+    modifyReactId $ \(ReactId (_ NE.:| ns, i)) -> ReactId (n NE.:| ns, i + 1)
+    k <- askReactId
+    -- run through the initialization of all the gadgets which will use this key
+    -- combine using 'also' with @pure ()@ to protect again 'finish'
+    foldr' also (pure ()) gads
+    delegate $ \fire -> do
+        -- save current window
+        s <- askWindow
+        -- prepare to run children with blank window
+        putWindow (pure ())
+        -- prepare to run the children with a locally scoped modified reactid, pushing this name in the list of names
+        modifyReactId $ \(ReactId (ns, _)) -> ReactId (mempty NE.<| ns, 0)
+        -- 'also' with @pure ()@ to protect against 'finish'
+        (childs >>= fire) `also` (pure ())
+        -- get the children's window
+        childWin <- askWindow
+        -- restore original window
+        putWindow s
+        -- restore this key
+        putReactId k
+        -- now we can add the branch node with the children's window
+        appendWindow $ do
+            mdl <- view _model
+            props' <- lift $ fmap catMaybes $ (`runReaderT` mdl) $ traverse (runMaybeT . sequenceA) props
+            ls <- getListeners k -- get the listeners created by gads above
+            branch (JE.toJSRep n) (props' <> ls) childWin
+
+-- keyProperty :: ReactId -> JE.Property
+-- keyProperty k = ("key", JE.toJSRep . J.pack $ show k)
+
+-- bindListenerContext :: JE.JSRep -> J.Callback (J.JSVal -> J.JSVal -> IO ()) -> JE.JSRep
+-- bindListenerContext = js_bindListenerContext
+
+-- #ifdef __GHCJS__
+
+-- foreign import javascript unsafe
+--     "$r = function(j) { $2($1, j) };"
+--     js_bindListenerContext :: JE.JSRep -> J.Callback (J.JSVal -> J.JSVal -> IO ()) -> JE.JSRep
+
+-- #else
+
+-- js_bindListenerContext :: JE.JSRep -> J.Callback (J.JSVal -> J.JSVal -> IO ()) -> JE.JSRep
+-- js_bindListenerContext _ _ = JE.JSRep J.nullRef
+
+
+-- #endif
+
+
+
 
 -- -- | Create a MonadState that run the given given a combining function
 -- -- where the first arg is the state from running the markup producing MonadState with mempty,

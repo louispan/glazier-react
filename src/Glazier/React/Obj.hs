@@ -11,7 +11,7 @@
 
 module Glazier.React.Obj
 ( WeakObj
-, WeakObjReader
+, AskWeakObj
 , askWeakObj
 -- , HasWeakObj(..)
 -- , GetWeakObj(..)
@@ -106,15 +106,15 @@ benignReadWeakObjScene obj = runMaybeT $ do
 
 -----------------------------------------------
 
--- class Monad m => WeakObjReader s m | m -> s where
+-- class Monad m => AskWeakObj s m | m -> s where
 --     askWeakObj :: m (WeakObj s)
 --     localWeakObj :: (WeakObj s -> WeakObj s) -> m a -> m a
 
--- instance {-# OVERLAPPABLE #-} (Monad (t m), MonadTrans t, MFunctor t, WeakObjReader s m) => WeakObjReader s (t m) where
+-- instance {-# OVERLAPPABLE #-} (Monad (t m), MonadTrans t, MFunctor t, AskWeakObj s m) => AskWeakObj s (t m) where
 --     askWeakObj = lift askWeakObj
 --     localWeakObj f m = hoist (localWeakObj f) m
 
--- instance {-# OVERLAPPABLE #-} Monad m => WeakObjReader s (ReaderT (WeakObj s) m) where
+-- instance {-# OVERLAPPABLE #-} Monad m => AskWeakObj s (ReaderT (WeakObj s) m) where
 --     askWeakObj = ask
 --     localWeakObj = local
 
@@ -129,22 +129,22 @@ benignReadWeakObjScene obj = runMaybeT $ do
 --             s <- lift $ benignReadIORef ref
 --             MaybeT . planLogLevel . plan $ s
 
-type WeakObjReader s = MonadAsk' WeakObj s
-askWeakObj :: WeakObjReader s m => m (WeakObj s)
+type AskWeakObj s = MonadAsk' WeakObj s
+askWeakObj :: AskWeakObj s m => m (WeakObj s)
 askWeakObj = askContext'
 
--- askWeakObj' :: WeakObjReader s m => (WeakObj s -> a) -> m (WeakObj s)
+-- askWeakObj' :: AskWeakObj s m => (WeakObj s -> a) -> m (WeakObj s)
 -- askWeakObj' = const askContext
 
--- class Monad m => WeakObjReader s m | m -> s where
+-- class Monad m => AskWeakObj s m | m -> s where
 --     askWeakObj :: m (WeakObj s)
 --     localWeakObj :: (WeakObj s -> WeakObj s) -> m a -> m a
 
--- instance {-# OVERLAPPABLE #-} (Monad (t m), MonadTrans t, MFunctor t, WeakObjReader s m) => WeakObjReader s (t m) where
+-- instance {-# OVERLAPPABLE #-} (Monad (t m), MonadTrans t, MFunctor t, AskWeakObj s m) => AskWeakObj s (t m) where
 --     askWeakObj = lift askWeakObj
 --     localWeakObj f m = hoist (localWeakObj f) m
 
--- instance {-# OVERLAPPABLE #-} Monad m => WeakObjReader s (ReaderT (WeakObj s) m) where
+-- instance {-# OVERLAPPABLE #-} Monad m => AskWeakObj s (ReaderT (WeakObj s) m) where
 --     askWeakObj = ask
 --     localWeakObj = local
 

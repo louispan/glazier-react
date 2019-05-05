@@ -134,7 +134,7 @@ startWidget ::
     -- redundant contraint, but ensures no @IO c@ commands can be executed
     , CmdTypes c c ~ CmdTypes (NoIOCmd c) c
     )
-    => (c -> m ()) -> Widget c s s () -> NE.NonEmpty J.JSString -> s -> JE.JSRep -> m (J.Export (Obj s))
+    => (c -> m ()) -> Widget c s () -> NE.NonEmpty J.JSString -> s -> JE.JSRep -> m (J.Export (Obj s))
 startWidget executor wid logname s root = execMkObj executor wid logname s >>= startObj root
 
 -- | Returns commands that need to be processed last
@@ -273,7 +273,7 @@ execMkObj ::
     , AsReactor c
     )
     => (c -> m ())
-    -> Widget c s s ()
+    -> Widget c s ()
     -> NE.NonEmpty J.JSString
     -> s
     -> m (Obj s)
@@ -331,7 +331,7 @@ execMkObj executor wid n s = do
                 win <- askWindow
                 exec' $ SetRender obj' win
 
-            cs = execProgram' $ (`evalStateT` (pure ())) $ (`evalStateT` k) $ evalContT $ (`runReaderT` obj) $ wid'
+            cs = execProgram' $ (`evalStateT` (pure ())) $ (`evalStateT` k) $ evalContT $ (`evalMaybeT` ()) $ (`runReaderT` obj) $ wid'
             -- update the model to include the real shimcallbacks
             scn' = scn & _plan._shimCallbacks .~ ShimCallbacks renderCb mountedCb renderedCb refCb
         -- update the mutable variables with the initialzed model

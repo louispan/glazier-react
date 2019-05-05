@@ -7,11 +7,11 @@ import Glazier.Logger
 import Glazier.React.Obj
 import Glazier.React.ReactId
 
--- type MonadGadget' c s m= (Logger c m, WeakObjReader o m)
+-- type MonadGadget' c s m= (Logger c m, AskWeakObj o m)
 
 -- type MonadGadget c s m= (MonadGadget c s m, AskReactId m)
 
--- -- | Wrap ReaderTs around Gadget for instances of WeakObjReader and AskReactId
+-- -- | Wrap ReaderTs around Gadget for instances of AskWeakObj and AskReactId
 -- type Gadget c = ContT () (Program c)
 
 
