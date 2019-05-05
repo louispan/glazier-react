@@ -62,11 +62,11 @@ displayWeakObj obj = (`evalMaybeT` ()) $ do
     -- These are the callbacks on the 'ShimComponent'
     -- See jsbits/react.js
     leaf (JE.toJSRep shimComponent)
-        [ ("render", JE.toJSRep renderCb)
+        [ ("key", JE.toJSRep . J.pack $ show k)
+        , ("render", JE.toJSRep renderCb)
         , ("mounted", JE.toJSRep mountedCb)
         , ("rendered", JE.toJSRep renderedCb)
         , ("ref", JE.toJSRep refCb)
-        , ("key", JE.toJSRep . J.pack $ show k)
         ]
 
 -- | A copy of 'MonadReader' with overlapping instances
@@ -99,20 +99,40 @@ modifyWindow f = do
 appendWindow :: (PutWindow s m) => Window s () -> m ()
 appendWindow a = modifyWindow (*> a)
 
+-- | A convenience class to make using 'lf' and 'bh' properties easier.
+-- It converts monad that result into @a@ or @Maybe a@ into 'JSRep'
+class WindowProperty a m where
+    winProp :: m a -> m JE.JSRep
+
+instance {-# OVERLAPPABLE #-} (Functor m, JE.ToJS a) => WindowProperty a m where
+    winProp = fmap JE.toJSRep
+
+-- | reduce 'Maybe' using the 'Alternative' instance.
+instance {-# OVERLAPPABLE #-} (Monad m, Alternative m, JE.ToJS a) => WindowProperty (Maybe a) m where
+    winProp = winProp . maybeM
+
+-- | Helpful when using @OverloadedStrings@
+strProp :: (Applicative m, WindowProperty J.JSString m) => J.JSString -> m JE.JSRep
+strProp = winProp . pure
+
 rawTxt :: PutWindow s m => J.JSString -> m ()
 rawTxt n = appendWindow $ rawText n
 
-prop :: (MonadReader s m, Alternative m, JE.ToJS a) => Traversal' s a -> m JE.JSRep
-prop = (>>= whenMaybe) . (`previews` JE.toJSRep)
-
-lf :: PutWindow s m
+lf ::
+    ( PutWindow s m
+    , PutReactId m
+    )
     => J.JSString
     -> [(J.JSString, MaybeT (ReaderT s (Benign IO)) JE.JSRep)]
     -> m ()
-lf n props = appendWindow $ do
-    mdl <- view _model
-    props' <- lift $ fmap catMaybes $ (`runReaderT` mdl) $ traverse (runMaybeT . sequenceA) props
-    leaf (JE.toJSRep n) props'
+lf n props = do
+    -- make sure the react id is unique amongst siblings
+    modifyReactId $ \(ReactId (_ NE.:| ns, i)) -> ReactId (n NE.:| ns, i + 1)
+    k <- askReactId
+    appendWindow $ do
+        mdl <- view _model
+        props' <- lift $ fmap catMaybes $ (`runReaderT` mdl) $ traverse (runMaybeT . sequenceA) props
+        leaf (JE.toJSRep n) (("key", JE.toJSRep . J.pack $ show k) : props')
 
 -- | Interactive version of 'lf' using listeners obtained from the 'Plan' for the local 'ReactId'.
 lf' ::
@@ -135,7 +155,7 @@ lf' n props gads = do
         mdl <- view _model
         props' <- lift $ fmap catMaybes $ (`runReaderT` mdl) $ traverse (runMaybeT . sequenceA) props
         ls <- getListeners k -- get the listeners created by gads above
-        leaf (JE.toJSRep n) (props' <> ls)
+        leaf (JE.toJSRep n) (("key", JE.toJSRep . J.pack $ show k) : (props' <> ls))
 
 bh :: ( PutWindow s m
     , PutReactId m
@@ -187,7 +207,7 @@ bh' n props gads childs = do
             mdl <- view _model
             props' <- lift $ fmap catMaybes $ (`runReaderT` mdl) $ traverse (runMaybeT . sequenceA) props
             ls <- getListeners k -- get the listeners created by gads above
-            branch (JE.toJSRep n) (props' <> ls) childWin
+            branch (JE.toJSRep n) (("key", JE.toJSRep . J.pack $ show k) : props' <> ls) childWin
 
 -- keyProperty :: ReactId -> JE.Property
 -- keyProperty k = ("key", JE.toJSRep . J.pack $ show k)

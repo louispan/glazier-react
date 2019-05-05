@@ -27,6 +27,7 @@ import Control.Monad.Delegate
 import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Identity
+import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
 import Data.Diverse.Lens
 import qualified Data.JSString as J
@@ -286,8 +287,7 @@ rerender = do
 getModel :: (HasCallStack, AsReactor c, MonadGadget' c s m) => Traversal' s s' -> m s'
 getModel sbj = do
     obj <- askWeakObj
-    ms <- logInvoke TRACE callStack (id @(Benign IO _) (go <$> benignReadWeakObjScene obj))
-    onJust ms
+    maybeM $ logInvoke TRACE callStack (id @(Benign IO _) (go <$> benignReadWeakObjScene obj))
   where
     go scn = scn ^? (_Just._model.sbj)
 
