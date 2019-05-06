@@ -17,10 +17,10 @@ module Glazier.React.Markup
     , rawText
     , leaf
     , branch
-    , withMarkup
-    , modifyMarkup
-    , overSurfaceProperties
-    , overAllProperties
+    -- , withMarkup
+    -- , modifyMarkup
+    -- , overSurfaceProperties
+    -- , overAllProperties
     ) where
 
 import Control.Monad.State.Strict
@@ -32,13 +32,13 @@ import qualified JavaScript.Extras as JE
 -- | The parameters required to create a branch ReactElement with children
 data BranchParam = BranchParam
     JE.JSRep
-    [JE.Property]
+    (DL.DList (J.JSString, JE.JSRep))
     (DL.DList ReactMarkup)
 
 -- | The parameters required to create a leaf ReactElement (no children)
 data LeafParam = LeafParam
     JE.JSRep
-    [JE.Property]
+    (DL.DList (J.JSString, JE.JSRep))
 
 data ReactMarkup
     = ElementMarkup Z.ReactElement
@@ -50,10 +50,10 @@ data ReactMarkup
 fromMarkup :: ReactMarkup -> IO Z.ReactElement
 fromMarkup (BranchMarkup (BranchParam n props xs)) = do
     xs' <- sequenceA $ fromMarkup <$> (DL.toList xs)
-    Z.mkBranchElement n props xs'
+    Z.mkBranchElement n (DL.toList props) xs'
 
 fromMarkup (LeafMarkup (LeafParam n props)) =
-    Z.mkLeafElement n props
+    Z.mkLeafElement n (DL.toList props)
 
 fromMarkup (RawTextMarkup str) = pure $ Z.rawTextElement str
 
@@ -91,7 +91,7 @@ rawText n = modify' (`DL.snoc` RawTextMarkup n)
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
 leaf :: (MonadState (DL.DList ReactMarkup) m)
     => JE.JSRep
-    -> [JE.Property]
+    -> (DL.DList (J.JSString, JE.JSRep))
     -> m ()
 leaf n props = modify' (`DL.snoc` LeafMarkup (LeafParam n props))
 
@@ -122,37 +122,37 @@ withMarkup f childs = do
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
 branch :: (MonadState (DL.DList ReactMarkup) m)
     => JE.JSRep
-    -> [JE.Property]
+    -> (DL.DList (J.JSString, JE.JSRep))
     -> m a
     -> m a
 branch n props = withMarkup (\childs' ms -> ms `DL.snoc` BranchMarkup (BranchParam n props childs'))
 
--- Given a mapping function, apply it to children of the markup
-modifyMarkup :: MonadState (DL.DList ReactMarkup) m
-    => (DL.DList ReactMarkup -> DL.DList ReactMarkup)
-    -> m a -> m a
-modifyMarkup f = withMarkup (\childs' ms -> ms `DL.append` f childs')
+-- -- Given a mapping function, apply it to children of the markup
+-- modifyMarkup :: MonadState (DL.DList ReactMarkup) m
+--     => (DL.DList ReactMarkup -> DL.DList ReactMarkup)
+--     -> m a -> m a
+-- modifyMarkup f = withMarkup (\childs' ms -> ms `DL.append` f childs')
 
--- Given a mapping function, apply it to all child BranchMarkup or LeafMarkup (if possible)
--- Does not recurse into decendants.
-overSurfaceProperties ::
-    ([JE.Property] -> [JE.Property])
-    -> (DL.DList ReactMarkup -> DL.DList ReactMarkup)
-overSurfaceProperties f childs = DL.fromList $ case DL.toList childs of
-    LeafMarkup (LeafParam j ps) : bs ->
-        LeafMarkup (LeafParam j (f ps)) : bs
-    BranchMarkup (BranchParam j ps as) : bs ->
-        BranchMarkup (BranchParam j (f ps) as) : bs
-    bs -> bs
+-- -- Given a mapping function, apply it to all child BranchMarkup or LeafMarkup (if possible)
+-- -- Does not recurse into decendants.
+-- overSurfaceProperties ::
+--     ((DL.DList JE.Property) -> (DL.DList JE.Property))
+--     -> (DL.DList ReactMarkup -> DL.DList ReactMarkup)
+-- overSurfaceProperties f childs = DL.fromList $ case DL.toList childs of
+--     LeafMarkup (LeafParam j ps) : bs ->
+--         LeafMarkup (LeafParam j (f ps)) : bs
+--     BranchMarkup (BranchParam j ps as) : bs ->
+--         BranchMarkup (BranchParam j (f ps) as) : bs
+--     bs -> bs
 
--- Given a mapping function, apply it to all child BranchMarkup or LeafMarkup (if possible)
--- Recurse into decendants.
-overAllProperties ::
-    ([JE.Property] -> [JE.Property])
-    -> (DL.DList ReactMarkup -> DL.DList ReactMarkup)
-overAllProperties f childs = DL.fromList $ case DL.toList childs of
-    LeafMarkup (LeafParam j ps) : bs ->
-        LeafMarkup (LeafParam j (f ps)) : bs
-    BranchMarkup (BranchParam j ps as) : bs ->
-        BranchMarkup (BranchParam j (f ps) (overAllProperties f as)) : bs
-    bs -> bs
+-- -- Given a mapping function, apply it to all child BranchMarkup or LeafMarkup (if possible)
+-- -- Recurse into decendants.
+-- overAllProperties ::
+--     ((DL.DList JE.Property) -> (DL.DList JE.Property))
+--     -> (DL.DList ReactMarkup -> DL.DList ReactMarkup)
+-- overAllProperties f childs = DL.fromList $ case DL.toList childs of
+--     LeafMarkup (LeafParam j ps) : bs ->
+--         LeafMarkup (LeafParam j (f ps)) : bs
+--     BranchMarkup (BranchParam j ps as) : bs ->
+--         BranchMarkup (BranchParam j (f ps) (overAllProperties f as)) : bs
+--     bs -> bs

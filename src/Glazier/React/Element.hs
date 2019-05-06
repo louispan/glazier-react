@@ -39,12 +39,12 @@ unsafeCoerceElement :: J.JSVal -> ReactElement
 unsafeCoerceElement = ReactElement . JE.JSRep
 
 -- | Create a react element (with children) from a HashMap of properties
-mkBranchElement :: JE.JSRep -> [JE.Property] -> [ReactElement] -> IO ReactElement
+mkBranchElement :: JE.JSRep -> [(J.JSString, JE.JSRep)] -> [ReactElement] -> IO ReactElement
 mkBranchElement n props xs =
     js_mkBranchElement n (JE.propertiesToObject props) (JA.fromList $ JE.toJS <$> xs)
 
 -- | Create a react element (with no children) from a HashMap of properties
-mkLeafElement :: JE.JSRep -> [JE.Property] -> IO ReactElement
+mkLeafElement :: JE.JSRep -> [(J.JSString, JE.JSRep)] -> IO ReactElement
 mkLeafElement n props =
     js_mkLeafElement n (JE.propertiesToObject props)
 

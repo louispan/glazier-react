@@ -26,8 +26,8 @@ import Control.Monad.Cont
 import Control.Monad.Delegate
 import Control.Monad.Reader
 import Control.Monad.State.Strict
-import Control.Monad.Trans.Identity
 import Control.Monad.Trans.Extras
+import Control.Monad.Trans.Identity
 import Control.Monad.Trans.Maybe
 import Data.Diverse.Lens
 import qualified Data.JSString as J
@@ -271,7 +271,6 @@ unliftMkObj' m logname s = do
 
 
 -- | Rerender the ShimComponent using the current @Entity@ context
--- Consider using 'Control.Monad.Bind.bind1' to bind the 'WeakObj' arg
 rerender :: (HasCallStack, AsReactor c, MonadGadget' c s m) => m ()
 rerender = do
     obj <- askWeakObj
@@ -282,8 +281,6 @@ rerender = do
 -- Use 'magnify' to get parts of the model.
 -- If magnifying the model with a 'Traversal' you'll need to
 -- `Control.Monad.Delegate.onJust' the 'Maybe s' to get the just the 's'.
--- Consider using 'Control.Monad.Bind.bind1' to bind the 'WeakObj' arg.
--- class GetModel s obj m | obj -> s where
 getModel :: (HasCallStack, AsReactor c, MonadGadget' c s m) => Traversal' s s' -> m s'
 getModel sbj = do
     obj <- askWeakObj
@@ -429,6 +426,7 @@ trigger' n goStrict = do
     obj <- askWeakObj
     k <- askReactId
     delegatify $ \f ->
+        -- logExec' TRACE callStack $ RegisterReactListener obj k n goStrict f
         logExec' TRACE callStack $ RegisterReactListener obj k n goStrict f
 
 -- | Create a callback for a 'Notice' and add it to this elementals's dlist of listeners.
