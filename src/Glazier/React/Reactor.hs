@@ -394,17 +394,17 @@ getReactRef = do
     delegatify $ \f -> logExec' TRACE callStack $ GetReactRef obj k f
 
 -- | mutates the model for the weakObj.
--- Use 'zoom' to mutate parts of the model.
-mutate :: (HasCallStack, AsReactor c, MonadGadget c s m) => Traversal' s s' -> SceneState s' () -> m ()
-mutate sbj m = do
+mutate :: (HasCallStack, AsReactor c, MonadGadget c s m) => SceneState s () -> m ()
+mutate m = do
     obj <- askWeakObj
     k <- askReactId
-    logExec' TRACE callStack $ Mutate obj k (command_ <$> (zoom sbj m))
+    logExec' TRACE callStack $ Mutate obj k (command_ <$> m)
+--     logExec' TRACE callStack $ Mutate obj k (command_ <$> (zoom sbj m))
 
 -- | Update the 'Model' using the current @Entity@ context,
 -- and also return the next action to execute.
-mutateThen :: (Also a m, HasCallStack, AsReactor c, MonadGadget c s m) => Traversal' s s' -> SceneState s' (m a) -> m a
-mutateThen sbj m = do
+mutateThen :: (Also a m, HasCallStack, AsReactor c, MonadGadget c s m) => SceneState s (m a) -> m a
+mutateThen m = do
     obj <- askWeakObj
     k <- askReactId
     delegate $ \fire -> do
@@ -412,7 +412,8 @@ mutateThen sbj m = do
         let f n = n >>= fire
         -- f' :: m a -> c
         f' <- codify f
-        logExec' TRACE callStack $ Mutate obj k (f' <$> (zoomUnder (iso Als getAls) sbj m))
+        logExec' TRACE callStack $ Mutate obj k (f' <$> m)
+        -- logExec' TRACE callStack $ Mutate obj k (f' <$> (zoomUnder (iso Als getAls) sbj m))
 
 
 -- | Create a callback for a 'JE.JSRep' and add it to this reactant's dlist of listeners.

@@ -123,24 +123,17 @@ propM = (>>= prop)
 rawTxt :: PutWindow s m => J.JSString -> m ()
 rawTxt n = appendWindow $ rawText n
 
-lf ::
-    ( PutWindow s m
-    , PutReactId m
-    )
-    => J.JSString
-    -> DL.DList (J.JSString, Prop s)
-    -> m ()
-lf n props = do
-    -- make sure the react id is unique amongst siblings
-    modifyReactId $ \(ReactId (_ NE.:| ns, i)) -> ReactId (n NE.:| ns, i + 1)
-    k <- askReactId
-    appendWindow $ do
-        mdl <- view _model
-        props' <- lift $ fmap catMaybes $ (`runReaderT` mdl) $ traverse (runMaybeT . sequenceA) (DL.toList props)
-        leaf (JE.toJSRep n) (("key", JE.toJSRep . J.pack $ show k) `DL.cons` (DL.fromList props'))
+-- lf ::
+--     ( PutWindow s m
+--     , PutReactId m
+--     )
+--     => J.JSString
+--     -> DL.DList (J.JSString, Prop s)
+--     -> m ()
+-- lf n props = lf' n props []
 
 -- | Interactive version of 'lf' using listeners obtained from the 'Plan' for the local 'ReactId'.
-lf' ::
+lf ::
     ( PutWindow s m
     , PutReactId m
     , Also () m
@@ -149,7 +142,7 @@ lf' ::
     -> DL.DList (J.JSString, Prop s)
     -> DL.DList (m ())
     -> m ()
-lf' n props gads = do
+lf n props gads = do
     -- make sure the react id is unique amongst siblings
     modifyReactId $ \(ReactId (_ NE.:| ns, i)) -> ReactId (n NE.:| ns, i + 1)
     k <- askReactId
@@ -162,19 +155,20 @@ lf' n props gads = do
         ls <- getListeners k -- get the listeners created by gads above
         leaf (JE.toJSRep n) (("key", JE.toJSRep . J.pack $ show k) `DL.cons` DL.fromList props' <> DL.fromList ls)
 
-bh :: ( PutWindow s m
-    , PutReactId m
-    , Also () m
-    , MonadDelegate m
-    )
-    => J.JSString
-    -> DL.DList (J.JSString, Prop s)
-    -> m a
-    -> m a
-bh n props m = bh' n props [] m
+-- bh ::
+--     ( PutWindow s m
+--     , PutReactId m
+--     , Also () m
+--     , MonadDelegate m
+--     )
+--     => J.JSString
+--     -> DL.DList (J.JSString, Prop s)
+--     -> m a
+--     -> m a
+-- bh n props m = bh' n props [] m
 
 -- | Interactive version of 'bh' using listeners obtained from the 'Plan' for the local 'ReactId'.
-bh' ::
+bh ::
     ( PutWindow s m
     , PutReactId m
     , Also () m
@@ -185,7 +179,7 @@ bh' ::
     -> DL.DList (m ())
     -> m a
     -> m a
-bh' n props gads childs = do
+bh n props gads child = do
     -- make sure the react id is unique amongst siblings
     modifyReactId $ \(ReactId (_ NE.:| ns, i)) -> ReactId (n NE.:| ns, i + 1)
     k <- askReactId
@@ -200,7 +194,7 @@ bh' n props gads childs = do
         -- prepare to run the children with a locally scoped modified reactid, pushing this name in the list of names
         modifyReactId $ \(ReactId (ns, _)) -> ReactId (mempty NE.<| ns, 0)
         -- 'also' with @pure ()@ to protect against 'finish'
-        (childs >>= fire) `also` (pure ())
+        (child >>= fire) `also` (pure ())
         -- get the children's window
         childWin <- askWindow
         -- restore original window
@@ -213,6 +207,17 @@ bh' n props gads childs = do
             props' <- lift $ fmap catMaybes $ (`runReaderT` mdl) $ traverse (runMaybeT . sequenceA) (DL.toList props)
             ls <- getListeners k -- get the listeners created by gads above
             branch (JE.toJSRep n) (("key", JE.toJSRep . J.pack $ show k) `DL.cons` DL.fromList props' <> DL.fromList ls) childWin
+
+foldableWindow ::
+    ( Foldable t
+    , Monoid (t (Obj s'))
+    )
+    => (Window s () -> Window s ())
+    -> Traversal' s (t (Obj s'))
+    -> Window s ()
+foldableWindow f this = do
+    ss <- view (_model.this)
+    getAls (foldMap (Als . f . displayWeakObj . weakObj) ss)
 
 -- keyProperty :: ReactId -> JE.Property
 -- keyProperty k = ("key", JE.toJSRep . J.pack $ show k)
