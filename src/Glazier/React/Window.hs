@@ -45,10 +45,26 @@ import Data.Semigroup
 -- 'Window' is an instance of 'MonadBenignIO' and 'MonadState (DL.DList ReactMarkup)'
 type Window s = RWST (Scene s) () (DL.DList ReactMarkup) (Benign IO)
 
-getListeners :: MonadReader (Scene s) m => ReactId -> m [(J.JSString, JE.JSRep)]
-getListeners k = do
-    ls <- view (_plan._reactants.ix k._reactListeners.to M.toList)
-    pure $ (\(n, (cb, _)) -> (n, JE.toJSRep cb)) <$> ls
+type Prop s = MaybeT (ReaderT s (Benign IO)) JE.JSRep
+
+-- | A convenience class to make using 'lf' and 'bh' properties easier.
+-- It converts monad that result into @a@ or @Maybe a@ into 'JSRep'
+class ToProp a m where
+    prop :: a -> m JE.JSRep
+
+instance {-# OVERLAPPABLE #-} (Applicative m, JE.ToJS a) => ToProp a m where
+    prop = pure . JE.toJSRep
+
+-- | reduce 'Maybe' using the 'Alternative' instance.
+instance {-# OVERLAPPABLE #-} (Monad m, Alternative m, JE.ToJS a) => ToProp (Maybe a) m where
+    prop = fmap JE.toJSRep . whenJust
+
+-- | Handy when using overloaded lists
+strProp :: Applicative m => J.JSString -> m JE.JSRep
+strProp = prop
+
+propM :: (Monad m, ToProp a m) => m a -> m JE.JSRep
+propM = (>>= prop)
 
 displayWeakObj :: (MonadBenignIO m, MonadState (DL.DList ReactMarkup) m) => WeakObj o -> m ()
 displayWeakObj obj = (`evalMaybeT` ()) $ do
@@ -61,7 +77,7 @@ displayWeakObj obj = (`evalMaybeT` ()) $ do
         k = scn ^. _plan._planId
     -- These are the callbacks on the 'ShimComponent'
     -- See jsbits/react.js
-    leaf (JE.toJSRep shimComponent)
+    leafMarkup (JE.toJSRep shimComponent)
         [ ("key", JE.toJSRep . J.pack $ show k)
         , ("render", JE.toJSRep renderCb)
         , ("mounted", JE.toJSRep mountedCb)
@@ -99,38 +115,18 @@ modifyWindow f = do
 appendWindow :: (PutWindow s m) => Window s () -> m ()
 appendWindow a = modifyWindow (*> a)
 
-type Prop s = MaybeT (ReaderT s (Benign IO)) JE.JSRep
-
--- | A convenience class to make using 'lf' and 'bh' properties easier.
--- It converts monad that result into @a@ or @Maybe a@ into 'JSRep'
-class ToProp a m where
-    prop :: a -> m JE.JSRep
-
-instance {-# OVERLAPPABLE #-} (Applicative m, JE.ToJS a) => ToProp a m where
-    prop = pure . JE.toJSRep
-
--- | reduce 'Maybe' using the 'Alternative' instance.
-instance {-# OVERLAPPABLE #-} (Monad m, Alternative m, JE.ToJS a) => ToProp (Maybe a) m where
-    prop = fmap JE.toJSRep . whenJust
-
--- | Handy when using overloaded lists
-strProp :: Applicative m => J.JSString -> m JE.JSRep
-strProp = prop
-
-propM :: (Monad m, ToProp a m) => m a -> m JE.JSRep
-propM = (>>= prop)
-
 rawTxt :: PutWindow s m => J.JSString -> m ()
-rawTxt n = appendWindow $ rawText n
+rawTxt n = appendWindow $ rawTextMarkup n
 
--- lf ::
---     ( PutWindow s m
---     , PutReactId m
---     )
---     => J.JSString
---     -> DL.DList (J.JSString, Prop s)
---     -> m ()
--- lf n props = lf' n props []
+-- | More user friendly version of 'leafMarkup'  using 'Prop'
+lfWindow :: J.JSString
+    -> DL.DList (J.JSString, Prop s)
+    -> Window s ()
+lfWindow n props = do
+    mdl <- view _model
+    props' <- lift $ fmap catMaybes $ (`runReaderT` mdl) $ traverse (runMaybeT . sequenceA) (DL.toList props)
+    leafMarkup (JE.toJSRep n) (DL.fromList props')
+    -- leafMarkup (JE.toJSRep n) (("key", JE.toJSRep . J.pack $ show k) `DL.cons` DL.fromList props')
 
 -- | Interactive version of 'lf' using listeners obtained from the 'Plan' for the local 'ReactId'.
 lf ::
@@ -150,22 +146,21 @@ lf n props gads = do
     -- combine using 'also' with @pure ()@ to protect again 'finish'
     foldr' also (pure ()) gads
     appendWindow $ do
-        mdl <- view _model
-        props' <- lift $ fmap catMaybes $ (`runReaderT` mdl) $ traverse (runMaybeT . sequenceA) (DL.toList props)
-        ls <- getListeners k -- get the listeners created by gads above
-        leaf (JE.toJSRep n) (("key", JE.toJSRep . J.pack $ show k) `DL.cons` DL.fromList props' <> DL.fromList ls)
+        ls <- getReactListeners k -- get the listeners created by gads above
+        let props' = ("key", strProp . J.pack $ show k)
+                `DL.cons` props
+                <> DL.fromList ls
+        lfWindow n props'
 
--- bh ::
---     ( PutWindow s m
---     , PutReactId m
---     , Also () m
---     , MonadDelegate m
---     )
---     => J.JSString
---     -> DL.DList (J.JSString, Prop s)
---     -> m a
---     -> m a
--- bh n props m = bh' n props [] m
+-- | More user friendly version of 'branchMarkup'  using 'Prop'
+bhWindow :: J.JSString
+    -> DL.DList (J.JSString, Prop s)
+    -> Window s ()
+    -> Window s ()
+bhWindow n props childWin = do
+    mdl <- view _model
+    props' <- lift $ fmap catMaybes $ (`runReaderT` mdl) $ traverse (runMaybeT . sequenceA) (DL.toList props)
+    branchMarkup (JE.toJSRep n) (DL.fromList props') childWin
 
 -- | Interactive version of 'bh' using listeners obtained from the 'Plan' for the local 'ReactId'.
 bh ::
@@ -203,10 +198,16 @@ bh n props gads child = do
         putReactId k
         -- now we can add the branch node with the children's window
         appendWindow $ do
-            mdl <- view _model
-            props' <- lift $ fmap catMaybes $ (`runReaderT` mdl) $ traverse (runMaybeT . sequenceA) (DL.toList props)
-            ls <- getListeners k -- get the listeners created by gads above
-            branch (JE.toJSRep n) (("key", JE.toJSRep . J.pack $ show k) `DL.cons` DL.fromList props' <> DL.fromList ls) childWin
+            ls <- getReactListeners k -- get the listeners created by gads above
+            let props' = ("key", strProp . J.pack $ show k)
+                    `DL.cons` props
+                    <> DL.fromList ls
+            bhWindow n props' childWin
+
+getReactListeners :: MonadReader (Scene s) m => ReactId -> m [(J.JSString, Prop s)]
+getReactListeners k = do
+    ls <- view (_plan._reactants.ix k._reactListeners.to M.toList)
+    pure $ (\(n, (cb, _)) -> (n, pure $ JE.toJSRep cb)) <$> ls
 
 foldableWindow ::
     ( Foldable t

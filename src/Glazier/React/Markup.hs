@@ -14,9 +14,9 @@ module Glazier.React.Markup
     , fromElement
     , toElements
     , toElement
-    , rawText
-    , leaf
-    , branch
+    , rawTextMarkup
+    , leafMarkup
+    , branchMarkup
     -- , withMarkup
     -- , modifyMarkup
     -- , overSurfaceProperties
@@ -80,8 +80,8 @@ toElement xs = toElements xs >>= Z.mkCombinedElements
 -------------------------------------------------
 
 -- | For raw text content
-rawText :: MonadState (DL.DList ReactMarkup) m => J.JSString -> m ()
-rawText n = modify' (`DL.snoc` RawTextMarkup n)
+rawTextMarkup :: MonadState (DL.DList ReactMarkup) m => J.JSString -> m ()
+rawTextMarkup n = modify' (`DL.snoc` RawTextMarkup n)
 
 -- | For the contentless elements: eg 'br_'.
 -- Memonic: lf for leaf.
@@ -89,11 +89,11 @@ rawText n = modify' (`DL.snoc` RawTextMarkup n)
 -- if the same key is used across listeners and props.
 -- "If an attribute/prop is duplicated the last one defined wins."
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
-leaf :: (MonadState (DL.DList ReactMarkup) m)
+leafMarkup :: (MonadState (DL.DList ReactMarkup) m)
     => JE.JSRep
     -> (DL.DList (J.JSString, JE.JSRep))
     -> m ()
-leaf n props = modify' (`DL.snoc` LeafMarkup (LeafParam n props))
+leafMarkup n props = modify' (`DL.snoc` LeafMarkup (LeafParam n props))
 
 -- | Create a MonadState that run the given given a combining function
 -- where the first arg is the state from running the markup producing MonadState with mempty,
@@ -120,12 +120,12 @@ withMarkup f childs = do
 -- if the same key is used across listeners and props.
 -- "If an attribute/prop is duplicated the last one defined wins."
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
-branch :: (MonadState (DL.DList ReactMarkup) m)
+branchMarkup :: (MonadState (DL.DList ReactMarkup) m)
     => JE.JSRep
     -> (DL.DList (J.JSString, JE.JSRep))
     -> m a
     -> m a
-branch n props = withMarkup (\childs' ms -> ms `DL.snoc` BranchMarkup (BranchParam n props childs'))
+branchMarkup n props = withMarkup (\childs' ms -> ms `DL.snoc` BranchMarkup (BranchParam n props childs'))
 
 -- -- Given a mapping function, apply it to children of the markup
 -- modifyMarkup :: MonadState (DL.DList ReactMarkup) m

@@ -10,11 +10,11 @@ module Glazier.React
     , module Glazier.DebugIO.Exec
 #endif
     , module Glazier.Logger
-    , module Glazier.React.Element
+    -- , module Glazier.React.Element
     , module Glazier.React.EventTarget
     -- , module Glazier.React.Gadget
     -- , module Glazier.React.Entity
-    , module Glazier.React.Markup
+    -- , module Glazier.React.Markup
     , module Glazier.React.NativeEvent
     , module Glazier.React.Notice
     , module Glazier.React.ReactDOM
@@ -68,11 +68,11 @@ import Glazier.DebugIO
 import Glazier.DebugIO.Exec
 #endif
 import Glazier.Logger
-import Glazier.React.Element
+-- import Glazier.React.Element
 -- import Glazier.React.Entity
 import Glazier.React.EventTarget
 -- import Glazier.React.Gadget
-import Glazier.React.Markup
+-- import Glazier.React.Markup
 import Glazier.React.NativeEvent
 import Glazier.React.Notice
 import Glazier.React.Obj
