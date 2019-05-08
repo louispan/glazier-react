@@ -43,23 +43,33 @@ module Glazier.React
     , module Control.Monad.Trans.Extras
     , module Control.Monad.Trans.Maybe
     , module GHC.Stack
+    , module Data.Proxy
+    , module Data.Tagged
+    , module Data.Tagged.Extras
+    , module Control.Lens
+    , module Control.Lens.Misc
     ) where
 
 import Control.Also
 import Control.Applicative
+import Control.Lens
+import Control.Lens.Misc
 import Control.Monad
 import Control.Monad.Benign
 import Control.Monad.Benign.Exec
-import Control.Monad.Delegate
 import Control.Monad.Context
-import Control.Monad.Observer
+import Control.Monad.Delegate
 import Control.Monad.Except
+import Control.Monad.Observer
 import Control.Monad.Reader
 import Control.Monad.RWS.Strict
 import Control.Monad.State.Strict
 import Control.Monad.Trans
 import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
+import Data.Proxy
+import Data.Tagged
+import Data.Tagged.Extras
 import GHC.Stack
 import Glazier.Command
 import Glazier.Command.Exec

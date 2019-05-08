@@ -115,8 +115,11 @@ modifyWindow f = do
 appendWindow :: (PutWindow s m) => Window s () -> m ()
 appendWindow a = modifyWindow (*> a)
 
-rawTxt :: PutWindow s m => J.JSString -> m ()
-rawTxt n = appendWindow $ rawTextMarkup n
+rawTxt :: PutWindow s m => ReaderT s (Benign IO) J.JSString -> m ()
+rawTxt m = appendWindow $ do
+    s <- view _model
+    n <- lift $ runReaderT m s
+    rawTextMarkup n
 
 -- | More user friendly version of 'leafMarkup'  using 'Prop'
 lfWindow :: J.JSString
@@ -136,7 +139,7 @@ lf ::
     )
     => J.JSString-- ^ eg "div" or "input"
     -> DL.DList (J.JSString, Prop s)
-    -> DL.DList (m ())
+    -> DL.DList (m ()) -- These gagets shouldn't modify ReactId -- FIXME: how to enforce?
     -> m ()
 lf n props gads = do
     -- make sure the react id is unique amongst siblings
@@ -171,7 +174,7 @@ bh ::
     )
     => J.JSString-- ^ eg "div" or "input"
     -> DL.DList (J.JSString, Prop s)
-    -> DL.DList (m ())
+    -> DL.DList (m ()) -- These gagets shouldn't modify ReactId -- FIXME: how to enforce?
     -> m a
     -> m a
 bh n props gads child = do
@@ -204,21 +207,20 @@ bh n props gads child = do
                     <> DL.fromList ls
             bhWindow n props' childWin
 
+pushReactId :: (PutReactId m, MonadDelegate m, Also () m) => m a -> m a
+pushReactId m = do
+    delegate $ \fire -> do
+        k <- askReactId
+        -- prepare to run the children with a locally scoped modified reactid, pushing this name in the list of names
+        modifyReactId $ \(ReactId (ns, _)) -> ReactId (mempty NE.<| ns, 0)
+        (m >>= fire) `also` (pure ())
+        -- restore the original k
+        putReactId k
+
 getReactListeners :: MonadReader (Scene s) m => ReactId -> m [(J.JSString, Prop s)]
 getReactListeners k = do
     ls <- view (_plan._reactants.ix k._reactListeners.to M.toList)
     pure $ (\(n, (cb, _)) -> (n, pure $ JE.toJSRep cb)) <$> ls
-
-foldableWindow ::
-    ( Foldable t
-    , Monoid (t (Obj s'))
-    )
-    => (Window s () -> Window s ())
-    -> Traversal' s (t (Obj s'))
-    -> Window s ()
-foldableWindow f this = do
-    ss <- view (_model.this)
-    getAls (foldMap (Als . f . displayWeakObj . weakObj) ss)
 
 -- keyProperty :: ReactId -> JE.Property
 -- keyProperty k = ("key", JE.toJSRep . J.pack $ show k)
