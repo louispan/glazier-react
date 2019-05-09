@@ -75,11 +75,11 @@ type Gizmo c s =
     (StateT (Window s ()) -- 'PutWindow'
     (Program c))))) -- 'MonadComand'
 
--- | Like 'Control.Monad.IO.Unlift.UnliftIO', newtype wrapper prevents impredicative types.
+-- | Like 'Control.Monad.IO.Unlift.UnliftIO', this newtype wrapper prevents impredicative types.
 newtype UniftWidget c s m = UniftWidget { unliftWidget :: forall a. m a -> Widget (Gizmo c s) a }
 
--- | Like 'Control.Monad.IO.Unlift.MonadUnliftIO', limits transformers stack of 'ReaderT'
--- and 'IdentityT' on top of @Widget c s m@
+-- | Similar to 'Control.Monad.IO.Unlift.MonadUnliftIO', except we want to unlift a @Widget (Gizmo c s) a@.
+-- This limits transformers stack to 'ReaderT' and 'IdentityT' on top of @Gizmo c s m@
 class MonadUnliftWidget c s m | m -> c s where
     askUnliftWidget :: m (UniftWidget c s m)
 
@@ -215,40 +215,40 @@ mkReactId :: (HasCallStack, AsReactor c, MonadCommand c m, AskLogLevel m)
 mkReactId n = delegatify $ \f ->
     logExec' TRACE callStack $ MkReactId n f
 
+-- -- | Make an initialized 'Obj' for a given model using the given 'Widget'.
+-- -- Unlike 'unliftMkObj'', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
+-- mkObj' :: (HasCallStack, AsReactor c, MonadCommand c m, AskLogLevel m)
+--     => Widget (Gizmo c s) a -> NE.NonEmpty J.JSString -> s -> m (Either a (Obj s))
+-- mkObj' (Widget wid) logname s = delegatify $ \f -> do
+--     let wid' = wid >>= (instruct . f . Left)
+--     logExec' TRACE callStack $ MkObj (Widget wid') logname s (f . Right)
+
 -- | Make an initialized 'Obj' for a given model using the given 'Widget'.
 -- Unlike 'unliftMkObj', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
 mkObj :: (HasCallStack, AsReactor c, MonadCommand c m, AskLogLevel m)
-    => Widget (Gizmo c s) a -> NE.NonEmpty J.JSString -> s -> m (Either a (Obj s))
-mkObj (Widget wid) logname s = delegatify $ \f -> do
-    let wid' = wid >>= (instruct . f . Left)
-    logExec' TRACE callStack $ MkObj (Widget wid') logname s (f . Right)
-
--- | Make an initialized 'Obj' for a given model using the given 'Widget'.
--- Unlike 'unliftMkObj'', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
-mkObj' :: (HasCallStack, AsReactor c, MonadCommand c m, AskLogLevel m)
     => Widget (Gizmo c s) () -> NE.NonEmpty J.JSString -> s -> m (Obj s)
-mkObj' (Widget wid) logname s = delegatify $ \f -> do
+mkObj (Widget wid) logname s = delegatify $ \f -> do
     logExec' TRACE callStack $ MkObj (Widget wid) logname s f
 
 ------------------------------------------------------
 -- MonadUnliftWidget
 ------------------------------------------------------
 
+-- -- | Convenient variation of 'mkObj'' where the widget is unlifted from the given monad.
+-- -- This is useful for transformer stacks that require addition MonadReader-like effects.
+-- unliftMkObj' :: (HasCallStack, AsReactor c, MonadCommand c m, AskLogLevel m, MonadUnliftWidget c s m)
+--     => m a -> NE.NonEmpty J.JSString -> s -> m (Either a (Obj s))
+-- unliftMkObj' m logname s = do
+--     u <- askUnliftWidget
+--     mkObj' (unliftWidget u m) logname s
+
 -- | Convenient variation of 'mkObj' where the widget is unlifted from the given monad.
 -- This is useful for transformer stacks that require addition MonadReader-like effects.
 unliftMkObj :: (HasCallStack, AsReactor c, MonadCommand c m, AskLogLevel m, MonadUnliftWidget c s m)
-    => m a -> NE.NonEmpty J.JSString -> s -> m (Either a (Obj s))
+    => m () -> NE.NonEmpty J.JSString -> s -> m (Obj s)
 unliftMkObj m logname s = do
     u <- askUnliftWidget
     mkObj (unliftWidget u m) logname s
-
--- | Convenient variation of 'mkObj'' where the widget is unlifted from the given monad.
--- This is useful for transformer stacks that require addition MonadReader-like effects.
-unliftMkObj' :: (HasCallStack, AsReactor c, MonadCommand c m, AskLogLevel m, MonadUnliftWidget c s m)
-    => m () -> NE.NonEmpty J.JSString -> s -> m (Obj s)
-unliftMkObj' m logname s = do
-    u <- askUnliftWidget
-    mkObj' (unliftWidget u m) logname s
 
 -- -- | A variation of 'mkObj', with the @Right (Obj s)@ processed in a separate handler.
 -- withMkObj :: (HasCallStack, AsReactor c, MonadCommand c m, AskLogLevel m, MonadUnliftWidget c s m)
