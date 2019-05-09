@@ -57,7 +57,8 @@ import Glazier.React.ReactId
 import Glazier.React.Reactor
 import Glazier.React.Scene
 import Glazier.React.Shim
-import Glazier.React.Window
+import Glazier.React.Widget
+import Glazier.React.Widget.Internal
 import qualified JavaScript.Extras as JE
 import System.IO
 import System.Mem.Weak
@@ -134,7 +135,7 @@ startWidget ::
     -- redundant contraint, but ensures no @IO c@ commands can be executed
     , CmdTypes c c ~ CmdTypes (NoIOCmd c) c
     )
-    => (c -> m ()) -> Widget c s () -> NE.NonEmpty J.JSString -> s -> JE.JSRep -> m (J.Export (Obj s))
+    => (c -> m ()) -> Widget (Gizmo c s) () -> NE.NonEmpty J.JSString -> s -> JE.JSRep -> m (J.Export (Obj s))
 startWidget executor wid logname s root = execMkObj executor wid logname s >>= startObj root
 
 -- | Returns commands that need to be processed last
@@ -273,21 +274,21 @@ execMkObj ::
     , AsReactor c
     )
     => (c -> m ())
-    -> Widget c s ()
+    -> Widget (Gizmo c s) ()
     -> NE.NonEmpty J.JSString
     -> s
     -> m (Obj s)
-execMkObj executor wid n s = do
+execMkObj executor (Widget wid) n s = do
     liftIO $ putStrLn "LOUISDEBUG: execMkObj"
     defLogLvlRef <- view ((hasLens @ReactorEnv)._defaultLogLevel)
     logLvlOverridesRef <- view ((hasLens @ReactorEnv)._logLevelOverrides)
-    k <- execMkReactId n
-    let logname = reactIdLogName k
+    i <- execMkReactId n
+    let logname = reactIdLogName i
     (obj, cs) <- liftIO $ do
         namedLogLvl <- namedLogLevel defLogLvlRef logLvlOverridesRef logname
         -- create shim with fake callbacks for now
         let newPlan = Plan
-                k
+                i
                 namedLogLvl
                 Nothing
                 (ShimCallbacks (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef) (J.Callback J.nullRef))
@@ -331,7 +332,7 @@ execMkObj executor wid n s = do
                 win <- askWindow
                 exec' $ SetRender obj' win
 
-            cs = execProgram' $ (`evalStateT` (pure ())) $ (`evalStateT` k) $ evalContT $ (`evalMaybeT` ()) $ (`runReaderT` obj) $ wid'
+            cs = execProgram' $ (`evalStateT` (pure ())) $ (`evalStateT` i) $ evalContT $ (`evalMaybeT` ()) $ (`runReaderT` obj) $ wid'
             -- update the model to include the real shimcallbacks
             scn' = scn & _plan._shimCallbacks .~ ShimCallbacks renderCb mountedCb renderedCb refCb
         -- update the mutable variables with the initialzed model

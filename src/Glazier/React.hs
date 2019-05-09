@@ -10,11 +10,7 @@ module Glazier.React
     , module Glazier.DebugIO.Exec
 #endif
     , module Glazier.Logger
-    -- , module Glazier.React.Element
-    , module Glazier.React.EventTarget
-    -- , module Glazier.React.Gadget
-    -- , module Glazier.React.Entity
-    -- , module Glazier.React.Markup
+    , module Glazier.React.EventTarget    -- , module Glazier.React.Markup
     , module Glazier.React.NativeEvent
     , module Glazier.React.Notice
     , module Glazier.React.ReactDOM
@@ -23,10 +19,7 @@ module Glazier.React
     , module Glazier.React.Reactor.Exec
     , module Glazier.React.Obj
     , module Glazier.React.Scene
-    , module Glazier.React.Shim
-    -- , module Glazier.React.Subject
-    -- , module Glazier.React.Widget
-    , module Glazier.React.Window
+    , module Glazier.React.Widget
     , module Control.Also
     , module Control.Applicative
     , module Control.Monad
@@ -43,6 +36,8 @@ module Glazier.React
     , module Control.Monad.Trans.Extras
     , module Control.Monad.Trans.Maybe
     , module GHC.Stack
+    , module Data.Functor.Functor2
+    , module Data.Functor.Extras
     , module Data.Proxy
     , module Data.Tagged
     , module Data.Tagged.Extras
@@ -67,6 +62,8 @@ import Control.Monad.State.Strict
 import Control.Monad.Trans
 import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
+import Data.Functor.Extras
+import Data.Functor.Functor2
 import Data.Proxy
 import Data.Tagged
 import Data.Tagged.Extras
@@ -79,9 +76,7 @@ import Glazier.DebugIO.Exec
 #endif
 import Glazier.Logger
 -- import Glazier.React.Element
--- import Glazier.React.Entity
 import Glazier.React.EventTarget
--- import Glazier.React.Gadget
 -- import Glazier.React.Markup
 import Glazier.React.NativeEvent
 import Glazier.React.Notice
@@ -91,7 +86,4 @@ import Glazier.React.ReactId
 import Glazier.React.Reactor
 import Glazier.React.Reactor.Exec
 import Glazier.React.Scene
-import Glazier.React.Shim
--- import Glazier.React.Subject
--- import Glazier.React.Widget
-import Glazier.React.Window
+import Glazier.React.Widget

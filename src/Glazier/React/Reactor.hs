@@ -9,7 +9,6 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
--- {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -20,7 +19,6 @@ import Control.Also
 import Control.Applicative
 import Control.DeepSeq
 import Control.Lens
-import Control.Lens.Misc
 import Control.Monad.Benign
 import Control.Monad.Cont
 import Control.Monad.Delegate
@@ -43,7 +41,8 @@ import Glazier.React.Notice
 import Glazier.React.Obj
 import Glazier.React.ReactId
 import Glazier.React.Scene
-import Glazier.React.Window
+import Glazier.React.Widget
+import Glazier.React.Widget.Internal
 import qualified JavaScript.Extras as JE
 
 -----------------------------------------------------------------
@@ -67,9 +66,9 @@ type MonadGadget c s m = (MonadGadget' c s m, AskReactId m)
 
 type MonadWidget c s m = (MonadGadget' c s m, PutReactId m, PutWindow s m)
 
--- | 'Widget' is an instance of 'MonadWidget'
-type Widget c s =
-    ReaderT (WeakObj s) -- 'AskWeakObj'
+-- | 'Gizmo' is an instance of 'MonadWidget'
+type Gizmo c s =
+    ReaderT (WeakObj s) -- 'AskWeakObj', 'AskLogLevel'
     (MaybeT -- 'Alternative'
     (ContT () -- 'MonadDelegate'
     (StateT (ReactId) -- 'PutReactId'
@@ -77,21 +76,24 @@ type Widget c s =
     (Program c))))) -- 'MonadComand'
 
 -- | Like 'Control.Monad.IO.Unlift.UnliftIO', newtype wrapper prevents impredicative types.
-newtype UniftWidget c s m = UniftWidget { unliftWidget :: forall a. m a -> Widget c s a }
+newtype UniftWidget c s m = UniftWidget { unliftWidget :: forall a. m a -> Widget (Gizmo c s) a }
 
 -- | Like 'Control.Monad.IO.Unlift.MonadUnliftIO', limits transformers stack of 'ReaderT'
 -- and 'IdentityT' on top of @Widget c s m@
-class Monad m => MonadUnliftWidget c s m | m -> c s where
+class MonadUnliftWidget c s m | m -> c s where
     askUnliftWidget :: m (UniftWidget c s m)
 
-instance MonadUnliftWidget c s (Widget c s) where
-    askUnliftWidget = pure (UniftWidget id)
+instance MonadUnliftWidget c s (Widget (Gizmo c s)) where
+    askUnliftWidget = Widget (pure (UniftWidget id))
 
-instance MonadUnliftWidget c s m => MonadUnliftWidget c s (ReaderT r m) where
+instance MonadUnliftWidget c s (Gizmo c s) where
+    askUnliftWidget = pure (UniftWidget Widget)
+
+instance (Functor m, MonadUnliftWidget c s m) => MonadUnliftWidget c s (ReaderT r m) where
     askUnliftWidget = ReaderT $ \r ->
         (\u -> UniftWidget (unliftWidget u . flip runReaderT r)) <$> askUnliftWidget
 
-instance MonadUnliftWidget c s m => MonadUnliftWidget c s (IdentityT m) where
+instance (Functor m, MonadUnliftWidget c s m) => MonadUnliftWidget c s (IdentityT m) where
     askUnliftWidget = IdentityT $
         (\u -> UniftWidget (unliftWidget u . runIdentityT)) <$> askUnliftWidget
 
@@ -103,7 +105,7 @@ data ReactorCmd c where
     MkReactId :: NE.NonEmpty J.JSString -> (ReactId -> c) -> ReactorCmd c
     -- | Make a fully initialized object from a widget and model
     -- MkObj :: Widget c s s () -> J.JSString -> s -> (Obj s -> c) -> ReactorCmd c
-    MkObj :: Widget c s () -> NE.NonEmpty J.JSString -> s -> (Obj s -> c) -> ReactorCmd c
+    MkObj :: Widget (Gizmo c s) () -> NE.NonEmpty J.JSString -> s -> (Obj s -> c) -> ReactorCmd c
     -- | Set the the rendering function in a Obj, replace any existing render callback
     SetRender :: WeakObj s -> Window s () -> ReactorCmd c
     -- Get the event target
@@ -216,17 +218,17 @@ mkReactId n = delegatify $ \f ->
 -- | Make an initialized 'Obj' for a given model using the given 'Widget'.
 -- Unlike 'unliftMkObj', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
 mkObj :: (HasCallStack, AsReactor c, MonadCommand c m, AskLogLevel m)
-    => Widget c s a -> NE.NonEmpty J.JSString -> s -> m (Either a (Obj s))
-mkObj wid logname s = delegatify $ \f -> do
+    => Widget (Gizmo c s) a -> NE.NonEmpty J.JSString -> s -> m (Either a (Obj s))
+mkObj (Widget wid) logname s = delegatify $ \f -> do
     let wid' = wid >>= (instruct . f . Left)
-    logExec' TRACE callStack $ MkObj wid' logname s (f . Right)
+    logExec' TRACE callStack $ MkObj (Widget wid') logname s (f . Right)
 
 -- | Make an initialized 'Obj' for a given model using the given 'Widget'.
 -- Unlike 'unliftMkObj'', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
 mkObj' :: (HasCallStack, AsReactor c, MonadCommand c m, AskLogLevel m)
-    => Widget c s () -> NE.NonEmpty J.JSString -> s -> m (Obj s)
-mkObj' wid logname s = delegatify $ \f -> do
-    logExec' TRACE callStack $ MkObj wid logname s f
+    => Widget (Gizmo c s) () -> NE.NonEmpty J.JSString -> s -> m (Obj s)
+mkObj' (Widget wid) logname s = delegatify $ \f -> do
+    logExec' TRACE callStack $ MkObj (Widget wid) logname s f
 
 ------------------------------------------------------
 -- MonadUnliftWidget
@@ -288,6 +290,45 @@ getModel sbj = do
   where
     go scn = scn ^? (_Just._model.sbj)
 
+------------------------------------------------------
+-- MonadGadget
+------------------------------------------------------
+
+-- | Get the event target
+-- If a "ref" callback to update 'reactRef' has not been added;
+-- then add it, rerender, then return the EventTarget.
+getReactRef :: (HasCallStack, AsReactor c, MonadGadget c s m) => m EventTarget
+getReactRef = do
+    obj <- askWeakObj
+    i <- askReactId
+    delegatify $ \f -> logExec' TRACE callStack $ GetReactRef obj i f
+
+-- | mutates the model for the weakObj.
+mutate :: (HasCallStack, AsReactor c, MonadGadget c s m) => SceneState s () -> m ()
+mutate m = do
+    obj <- askWeakObj
+    i <- askReactId
+    logExec' TRACE callStack $ Mutate obj i (command_ <$> m)
+--     logExec' TRACE callStack $ Mutate obj k (command_ <$> (zoom sbj m))
+
+-- | Update the 'Model' using the current @Entity@ context,
+-- and also return the next action to execute.
+mutateThen :: (HasCallStack, AsReactor c, MonadGadget c s m) => SceneState s (m a) -> m a
+mutateThen m = do
+    obj <- askWeakObj
+    i <- askReactId
+    delegate $ \fire -> do
+        -- f :: m a -> m ()
+        let f n = n >>= fire
+        -- f' :: m a -> c
+        f' <- codify f
+        logExec' TRACE callStack $ Mutate obj i (f' <$> m)
+        -- logExec' TRACE callStack $ Mutate obj k (f' <$> (zoomUnder (iso Als getAls) sbj m))
+
+------------------------------------------------------
+-- Triggers - MonadGadget')
+------------------------------------------------------
+
 -- | Create a callback for a 'JE.JSRep' and add it to this elementals's dlist of listeners.
 -- 'domTrigger' does not expect a 'Notice' as it is not part of React.
 -- Contrast with 'trigger' which expects a 'Notice'.
@@ -296,8 +337,8 @@ domTrigger ::
     => JE.JSRep
     -> J.JSString
     -> (JE.JSRep -> MaybeT IO a)
-    -> m a
-domTrigger j n goStrict = do
+    -> Gadget m a
+domTrigger j n goStrict = Gadget $ do
     obj <- askWeakObj
     delegatify $ \f ->
         logExec' TRACE callStack $ RegisterDOMListener obj j n goStrict f
@@ -309,9 +350,9 @@ domTrigger_ ::
     => JE.JSRep
     -> J.JSString
     -> a
-    -> m a
-domTrigger_ j n a = do
-    domTrigger j n (const $ pure ())
+    -> Gadget m a
+domTrigger_ j n a = Gadget $ do
+    runGadget $ domTrigger j n (const $ pure ())
     pure a
 
 -- | Register actions to execute after a render.
@@ -325,8 +366,8 @@ domTrigger_ j n a = do
 onMounted ::
     (HasCallStack, AsReactor c, MonadGadget' c s m)
     => m a
-    -> m a
-onMounted m = do
+    -> Gadget m a
+onMounted m = Gadget $ do
     obj <- askWeakObj
     delegate $ \fire -> do
         c <- codify' (m >>= fire)
@@ -344,8 +385,8 @@ onMounted m = do
 onRendered ::
     (HasCallStack, AsReactor c, MonadGadget' c s m)
     => m a
-    -> m a
-onRendered m = do
+    -> Gadget m a
+onRendered m = Gadget $ do
     obj <- askWeakObj
     delegate $ \fire -> do
         f <- codify' (m >>= fire)
@@ -354,8 +395,8 @@ onRendered m = do
 -- | Same as 'onRendered' but the action only occurs once on the next rerender.
 onRenderedOnce ::
     (HasCallStack, AsReactor c, MonadGadget' c s m)
-    => m a -> m a
-onRenderedOnce m = do
+    => m a -> Gadget m a
+onRenderedOnce m = Gadget $ do
     obj <- askWeakObj
     delegate $ \fire -> do
         f <- codify' (m >>= fire)
@@ -367,8 +408,8 @@ onRenderedOnce m = do
 -- with the same 'ReactId', then another 'onMutated' callback will NOT be fired.
 onMutated ::
     (HasCallStack, AsReactor c, MonadGadget' c s m)
-    => (ReactId -> m a) -> m a
-onMutated f = do
+    => (ReactId -> m a) -> Gadget m a
+onMutated f = Gadget $ do
     obj <- askWeakObj
     delegate $ \fire -> do
         g <- codify ((fire =<<) . f)
@@ -381,40 +422,8 @@ onMutated f = do
 -- onMutated' f = onMutated (const f)
 
 ---------------------------
--- MonadGadget c s m
+-- Triggers - MonadGadget
 ---------------------------
-
--- | Get the event target
--- If a "ref" callback to update 'reactRef' has not been added;
--- then add it, rerender, then return the EventTarget.
-getReactRef :: (HasCallStack, AsReactor c, MonadGadget c s m) => m EventTarget
-getReactRef = do
-    obj <- askWeakObj
-    k <- askReactId
-    delegatify $ \f -> logExec' TRACE callStack $ GetReactRef obj k f
-
--- | mutates the model for the weakObj.
-mutate :: (HasCallStack, AsReactor c, MonadGadget c s m) => SceneState s () -> m ()
-mutate m = do
-    obj <- askWeakObj
-    k <- askReactId
-    logExec' TRACE callStack $ Mutate obj k (command_ <$> m)
---     logExec' TRACE callStack $ Mutate obj k (command_ <$> (zoom sbj m))
-
--- | Update the 'Model' using the current @Entity@ context,
--- and also return the next action to execute.
-mutateThen :: (Also a m, HasCallStack, AsReactor c, MonadGadget c s m) => SceneState s (m a) -> m a
-mutateThen m = do
-    obj <- askWeakObj
-    k <- askReactId
-    delegate $ \fire -> do
-        -- f :: m a -> m ()
-        let f n = n >>= fire
-        -- f' :: m a -> c
-        f' <- codify f
-        logExec' TRACE callStack $ Mutate obj k (f' <$> m)
-        -- logExec' TRACE callStack $ Mutate obj k (f' <$> (zoomUnder (iso Als getAls) sbj m))
-
 
 -- | Create a callback for a 'JE.JSRep' and add it to this reactant's dlist of listeners.
 -- Consider using the other callbacks because all react listeners result in 'Notice'.
@@ -422,13 +431,14 @@ trigger' ::
     (HasCallStack, NFData a, AsReactor c, MonadGadget c s m)
     => J.JSString
     -> (JE.JSRep -> MaybeT IO a)
-    -> m a
-trigger' n goStrict = do
+    -> (a -> m b)
+    -> Gadget m b
+trigger' n goStrict f = Gadget $ do
     obj <- askWeakObj
-    k <- askReactId
-    delegatify $ \f ->
-        -- logExec' TRACE callStack $ RegisterReactListener obj k n goStrict f
-        logExec' TRACE callStack $ RegisterReactListener obj k n goStrict f
+    i <- askReactId
+    a <- delegatify $ \k -> do
+        logExec' TRACE callStack $ RegisterReactListener obj i n goStrict k
+    f a
 
 -- | Create a callback for a 'Notice' and add it to this elementals's dlist of listeners.
 -- Contrast with 'domTrigger' which expects a 'JE.JSRep'.
@@ -436,23 +446,24 @@ trigger ::
     (HasCallStack, NFData a, AsReactor c, MonadGadget c s m)
     => J.JSString
     -> (Notice -> MaybeT IO a)
-    -> m a
-trigger n goStrict = do
-    trigger' n $ handlesNotice goStrict
+    -> (a -> m b)
+    -> Gadget m b
+trigger n goStrict k = trigger' n (handlesNotice goStrict) k
   where
     handlesNotice :: (Notice -> MaybeT IO a) -> (JE.JSRep -> MaybeT IO a)
     handlesNotice g j = MaybeT (pure $ JE.fromJSRep j) >>= g
 
 -- | A variation of 'trigger' which ignores the event but fires the given arg instead.
+-- Unlike 'trigger' the @a@ does not need to be @NFData a@
 trigger_ ::
     (HasCallStack, AsReactor c, MonadGadget c s m)
     => J.JSString
     -> a
-    -> m a
-trigger_ n a = do
+    -> (a -> m b)
+    -> Gadget m b
+trigger_ n a k = Gadget $
     -- using trigger' to bypass conversion to 'Notice' in 'trigger'
-    trigger' n (const $ pure ())
-    pure a
+    runGadget $ trigger' n (const $ pure ()) (const $ k a)
 
 -- | Orphan instance because it requires AsReactor
 -- LOUISFIXME: Think about this, use ReaderT (s -> Either e Obj s)?
