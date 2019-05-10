@@ -17,9 +17,10 @@ module Glazier.React.Widget
     , Widget
     , Gadget
     , AskWindow(..)
-    , PutWindow(..)
-    , Prop
-    , ToProp(..)
+    , PutWindow
+    , ModelReader
+    , classNames
+    , prop
     , strProp
     , propM
     , displayWeakObj
@@ -50,26 +51,25 @@ import Glazier.React.Scene
 import Glazier.React.Shim
 import qualified JavaScript.Extras as JE
 
-type Prop s = MaybeT (ReaderT s (Benign IO)) JE.JSRep
+type ModelReader s = MaybeT (ReaderT s (Benign IO))
 
--- | A convenience class to make using 'lf' and 'bh' properties easier.
--- It converts monad that result into @a@ or @Maybe a@ into 'JSRep'
-class ToProp a m where
-    prop :: a -> m JE.JSRep
-
-instance {-# OVERLAPPABLE #-} (Applicative m, JE.ToJS a) => ToProp a m where
-    prop = pure . JE.toJSRep
-
--- | reduce 'Maybe' using the 'Alternative' instance.
-instance {-# OVERLAPPABLE #-} (Monad m, Alternative m, JE.ToJS a) => ToProp (Maybe a) m where
-    prop = fmap JE.toJSRep . whenJust
+prop :: (Applicative m, JE.ToJS a) => a -> m JE.JSRep
+prop = pure . JE.toJSRep
 
 -- | Handy when using overloaded lists
 strProp :: Applicative m => J.JSString -> m JE.JSRep
 strProp = prop
 
-propM :: (Monad m, ToProp a m) => m a -> m JE.JSRep
-propM = (>>= prop)
+propM :: (Monad m, Alternative m, JE.ToJS a) => m (Maybe a) -> m JE.JSRep
+propM = (>>= prop) . maybeM
+
+-- | Creates a JE.JSRep single string for "className" property from a list of (JSString, Bool)
+-- Idea from https://github.com/JedWatson/classnames
+classNames :: [(J.JSString, ModelReader s Bool)] -> ModelReader s JE.JSRep
+classNames ls = do
+    mdl <- ask
+    lift $ lift $ fmap go $ (`runReaderT` mdl) $ traverse (runMaybeT . sequenceA) ls
+  where go = JE.toJSRep . J.unwords . fmap fst . filter snd . catMaybes
 
 displayWeakObj :: (MonadBenignIO m, MonadState (DL.DList ReactMarkup) m) => WeakObj o -> m ()
 displayWeakObj obj = (`evalMaybeT` ()) $ do
@@ -108,10 +108,10 @@ lf ::
     , MonadDelegate m
     )
     => J.JSString-- ^ eg "div" or "input"
-    -> DL.DList (J.JSString, Prop s)
     -> DL.DList (Gadget m ())
+    -> DL.DList (J.JSString, ModelReader s JE.JSRep)
     -> Widget m ()
-lf n props gads = Widget $ do
+lf n gads props = Widget $ do
     -- make sure the react id is unique amongst siblings
     modifyReactId $ \(ReactId (_ NE.:| ns, i)) -> ReactId (n NE.:| ns, i + 1)
     i <- askReactId
@@ -137,13 +137,13 @@ bh ::
     , MonadDelegate m
     )
     => J.JSString-- ^ eg "div" or "input"
-    -> DL.DList (J.JSString, Prop s)
+    -> DL.DList (Gadget m ())
+    -> DL.DList (J.JSString, ModelReader s JE.JSRep)
     -- Gadget are guaranteed not to 'appendWindow' or 'modifyReactId',
     -- and only contains a single trigger each.
-    -> DL.DList (Gadget m ())
     -> Widget m a
     -> Widget m a
-bh n props gads (Widget child) = Widget $ do
+bh n gads props (Widget child) = Widget $ do
     -- make sure the react id is unique amongst siblings
     modifyReactId $ \(ReactId (_ NE.:| ns, i)) -> ReactId (n NE.:| ns, i + 1)
     i <- askReactId

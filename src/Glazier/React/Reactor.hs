@@ -325,6 +325,16 @@ mutateThen m = do
         logExec' TRACE callStack $ Mutate obj i (f' <$> m)
         -- logExec' TRACE callStack $ Mutate obj k (f' <$> (zoomUnder (iso Als getAls) sbj m))
 
+-- | Same as 'onRendered' but the action only occurs once on the next rerender.
+onRenderedOnce ::
+    (HasCallStack, AsReactor c, MonadGadget' c s m)
+    => m a -> m a
+onRenderedOnce m = do
+    obj <- askWeakObj
+    delegate $ \fire -> do
+        f <- codify' (m >>= fire)
+        logExec' TRACE callStack $ RegisterRenderedOnceListener obj f
+
 ------------------------------------------------------
 -- Triggers - MonadGadget')
 ------------------------------------------------------
@@ -391,16 +401,6 @@ onRendered m = Gadget $ do
     delegate $ \fire -> do
         f <- codify' (m >>= fire)
         logExec' TRACE callStack $ RegisterRenderedListener obj f
-
--- | Same as 'onRendered' but the action only occurs once on the next rerender.
-onRenderedOnce ::
-    (HasCallStack, AsReactor c, MonadGadget' c s m)
-    => m a -> Gadget m a
-onRenderedOnce m = Gadget $ do
-    obj <- askWeakObj
-    delegate $ \fire -> do
-        f <- codify' (m >>= fire)
-        logExec' TRACE callStack $ RegisterRenderedOnceListener obj f
 
 -- | Register actions to execute after the state has been updated with 'mutate'.
 -- The callback is called` with the 'ReactId' that was passed into 'mutate'.
