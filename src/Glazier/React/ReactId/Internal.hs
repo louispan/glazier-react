@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Glazier.React.ReactId.Internal where
 
@@ -29,7 +30,7 @@ instance A.FromJSONKey ReactId
 
 type AskReactId = MonadAsk ReactId
 askReactId :: AskReactId m => m ReactId
-askReactId = askContext
+askReactId = askContext @ReactId
 
 type PutReactId = MonadPut ReactId
 putReactId :: PutReactId m => ReactId -> m ()

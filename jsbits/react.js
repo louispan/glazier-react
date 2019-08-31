@@ -36,25 +36,11 @@ function hgr$shimComponent() {
 
             constructor(props) {
                 super(props);
-                this.state = { frameNum: 0 };
+                this.state = {};
             }
 
             rerender() {
-                this.setState(function(prevState, props) {
-                    var newFrameNum = this.safeIncrement(prevState.frameNum);
-                    return {
-                        frameNum: newFrameNum
-                    };
-                });
-            }
-
-            safeIncrement(i) {
-                if (i >= Number.MAX_SAFE_INTEGER) {
-                        return Number.MIN_SAFE_INTEGER
-                    }
-                    else {
-                        return i + 1;
-                }
+                this.forceUpdate();
             }
 
             componentDidUpdate(prevProps, prevState) {
@@ -65,7 +51,7 @@ function hgr$shimComponent() {
             }
 
             componentDidMount() {
-                // Also forward to updated so it gets a callback on initial render.
+                // Also forward to rendered so it gets a callback on initial render.
                 if (this.props['mounted'])
                     this.props['mounted']();
                 if (this.props['rendered'])
@@ -76,6 +62,11 @@ function hgr$shimComponent() {
                 if (this.props['render'])
                     return this.props['render']();
                 return null;
+            }
+
+            componentWillUnmount() {
+                if (this.props['unmounted'])
+                    this.props['unmounted']();
             }
         }
         hgr$shimComponent_ = Shim;
@@ -93,7 +84,7 @@ function hgr$mkCombinedElements(elements) {
             return elements[0];
         }
         else {
-            return hgr$React().createElement('div', null, elements);
+            return hgr$React().createElement(hgr$React().Fragment, null, elements);
         }
     }
     return null;

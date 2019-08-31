@@ -10,48 +10,86 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Glazier.React.Widget
-    ( Window
-    , Widget
-    , Gadget
-    , AskWindow(..)
-    , PutWindow
-    , ModelReader
-    , classNames
-    , prop
-    , strProp
-    , propM
-    , displayWeakObj
-    , rawTxt
-    , lf
-    , bh
-    ) where
+module Glazier.React.Widget where
+    -- ( Window
+    -- , Widget
+    -- , Gadget
+    -- , AskWindow(..)
+    -- , PutWindow
+    -- , MetaReader
+    -- , classNames
+    -- , prop
+    -- , strProp
+    -- , propM
+    -- , displayWeakObj
+    -- , rawTxt
+    -- , lf
+    -- , bh
+    -- ) where
 
-import Control.Also
+-- import Control.Also
 import Control.Applicative
 import Control.Lens
 import Control.Monad.Benign
-import Control.Monad.Delegate
+import Control.Monad.Cont
+-- import Control.Monad.Delegate
 import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
 import qualified Data.DList as DL
-import Data.Foldable
+-- import Data.Foldable
+import Data.IORef
 import qualified Data.JSString as J
-import qualified Data.List.NonEmpty as NE
-import Data.Maybe
-import Glazier.React.ReactId.Internal
-import Glazier.React.Widget.Internal
+-- import qualified Data.List.NonEmpty as NE
+-- import Data.Maybe
+import Glazier.Command
 import Glazier.React.Markup
-import Glazier.React.Obj
-import Glazier.React.Scene
+import Glazier.React.Model
+import Glazier.React.ReactId.Internal
 import Glazier.React.Shim
+-- import Glazier.React.Widget.Internal
 import qualified JavaScript.Extras as JE
+import System.Mem.Weak
 
-type ModelReader s = MaybeT (ReaderT s (Benign IO))
+-- type MetaReader s = MaybeT (ReaderT s (Benign IO))
+-- type BIOReader s = ReaderT s (Benign IO)
+
+-- | 'Gizmo' is an instance of 'MonadWidget'
+-- Gizmo contains the effects (eg register listener)
+-- as well as the html for rendering.
+-- It is expected that the interpreter of the Gizmo will add a final effect
+-- which is to set the final html for the component.
+type Gizmo c s =
+    -- ReaderT (Model s) -- 'AskModel'
+    -- ReaderT Plan -- 'AskPlan'
+    ReaderT s -- 'AskMeta'
+    (ReaderT (WeakModelRef s) -- 'AskWeakModelRef', 'AskLogLevel'
+    (MaybeT -- 'Alternative'
+    (ContT () -- 'MonadDelegate'
+    (StateT (ReactId) -- 'PutReactId'
+    (StateT (DL.DList ReactMarkup) -- 'PutMarkup'
+    (ProgramT c (Benign IO))))))) -- 'MonadComand', 'MonadBenignIO'
+    -- (ProgramT c (Benign IO))))))) -- 'MonadComand', 'MonadBenignIO'
+
+newtype Widget m a = Widget (m a)
+    deriving (Monad, Functor, Applicative)
+
+wock :: (PutMarkup m, AskWeakModelRef s m) => m ()
+wock = do
+    obj <- askWeakModelRef
+    displayWeakModelRef obj
+
+wack :: Gizmo c s s
+wack = do
+   s <- askMeta
+   pure s
+
+-- FIMXE: Add instances of Gizmo for Widget wrapper
 
 prop :: (Applicative m, JE.ToJS a) => a -> m JE.JSRep
 prop = pure . JE.toJSRep
@@ -63,23 +101,43 @@ strProp = prop
 propM :: (Monad m, Alternative m, JE.ToJS a) => m (Maybe a) -> m JE.JSRep
 propM = (>>= prop) . maybeM
 
--- | Creates a JE.JSRep single string for "className" property from a list of (JSString, Bool)
--- Idea from https://github.com/JedWatson/classnames
-classNames :: [(J.JSString, ModelReader s Bool)] -> ModelReader s JE.JSRep
-classNames ls = do
-    mdl <- ask
-    lift $ lift $ fmap go $ (`runReaderT` mdl) $ traverse (runMaybeT . sequenceA) ls
-  where go = JE.toJSRep . J.unwords . fmap fst . filter snd . catMaybes
+-- -- | Creates a JE.JSRep single string for "className" property from a list of (JSString, Bool)
+-- -- Idea from https://github.com/JedWatson/classnames
+-- classNames :: [(J.JSString, ReaderT s (Benign IO) Bool)] -> ReaderT s (Benign IO) JE.JSRep
+-- classNames ls = do
+--     mdl <- ask
+--     -- lift $ lift $ fmap go $ (`runReaderT` mdl) $ traverse (runMaybeT . sequenceA) ls
+--     lift $ fmap go $ (`runReaderT` mdl) $ traverse sequenceA ls
+--   where go = JE.toJSRep . J.unwords . fmap fst . filter snd -- . catMaybes
 
-displayWeakObj :: (MonadBenignIO m, MonadState (DL.DList ReactMarkup) m) => WeakObj o -> m ()
-displayWeakObj obj = (`evalMaybeT` ()) $ do
-    scn <- MaybeT $ benignReadWeakObjScene obj
-    let scb = scn ^. _plan._shimCallbacks
+-- -- | Creates a JE.JSRep single string for "className" property from a list of (JSString, Bool)
+-- -- Idea from https://github.com/JedWatson/classnames
+-- classNames :: Monad m => [(J.JSString, m Bool)] -> m JE.JSRep
+-- classNames ls = do
+--     mdl <- ask
+--     -- lift $ lift $ fmap go $ (`runReaderT` mdl) $ traverse (runMaybeT . sequenceA) ls
+--     lift $ fmap go $ (`runReaderT` mdl) $ traverse sequenceA ls
+--   where go = JE.toJSRep . J.unwords . fmap fst . filter snd -- . catMaybes
+
+displayWeakModelRef :: (MonadBenignIO m, PutMarkup m) => WeakModelRef s -> m ()
+displayWeakModelRef that = (`evalMaybeT` ()) $ do
+    mdlRef <- MaybeT $ liftBenignIO $ Benign $ deRefWeak that
+    displayModelRef mdlRef
+
+displayModelRef :: (MonadBenignIO m, PutMarkup m) => ModelRef s -> m ()
+displayModelRef mdlRef = do
+    mdl <- liftBenignIO $ Benign $ readIORef mdlRef
+    displayModel mdl
+
+displayModel :: PutMarkup m => Model s -> m ()
+displayModel mdl = do
+    -- mdl <- liftBenignIO $ Benign $ readIORef obj
+    let scb = mdl ^. _plan._shimCallbacks
         renderCb = shimOnRender scb
         mountedCb = shimOnMounted scb
         renderedCb = shimOnRendered scb
         refCb = shimOnRef scb
-        i = scn ^. _plan._planId
+        i = mdl ^. _plan._planId
     -- These are the callbacks on the 'ShimComponent'
     -- See jsbits/react.js
     leafMarkup (JE.toJSRep shimComponent)
@@ -90,76 +148,80 @@ displayWeakObj obj = (`evalMaybeT` ()) $ do
         , ("ref", JE.toJSRep refCb)
         ]
 
-rawTxt :: PutWindow s m => ReaderT s (Benign IO) J.JSString -> Widget m ()
-rawTxt m = appendWindow $ do
-    s <- view _model
-    n <- lift $ runReaderT m s
-    rawTextMarkup n
+-- -- | write some text that can be safely obtained from the meta
+-- rawTxt :: (PutWindow m, MonadBenignIO m) => ReaderT s m J.JSString -> m ()
+-- rawTxt m = appendWindow $ do
+--     s <- view _meta
+--     n <- lift $ runReaderT m s
+--     rawTextMarkup n
 
--- | Interactive version of 'leafMarkup' using listeners obtained from the 'Plan' for the local 'ReactId'.
--- It return a 'Widget' to indicate that it contains a 'Window' or possibly modifies 'PutReactId'.
--- 'Gadget' are guaranteed to be created from 'Glazier.React.Reactor.trigger' or the like.
--- 'Gadget' must not contain any 'Widget', otherwise this function will result in nested
--- @Widget (Widget m) a@ which indicates at compile time incorrect usage,
-lf ::
-    ( PutWindow s m
-    , PutReactId m
-    , Also () m
-    , MonadDelegate m
-    )
-    => J.JSString-- ^ eg "div" or "input"
-    -> DL.DList (Gadget m ())
-    -> DL.DList (J.JSString, ModelReader s JE.JSRep)
-    -> Widget m ()
-lf n gads props = Widget $ do
-    -- make sure the react id is unique amongst siblings
-    modifyReactId $ \(ReactId (_ NE.:| ns, i)) -> ReactId (n NE.:| ns, i + 1)
-    i <- askReactId
-    -- run through the initialization of all the gadgets which will use this key
-    -- 'finish' each gadget to ensure the event handling doens't leak out
-    -- and combine using 'also' with @pure ()@ so execution will get to the next line.
-    foldr' (also . finish . runGadget) (pure ()) gads
-    runWidget $ appendWindow $ do
-        ls <- getReactListeners i -- get the listeners created by gads above
-        mdl <- view _model
-        props' <- lift $ fmap catMaybes $ (`runReaderT` mdl) $ traverse (runMaybeT . sequenceA) (DL.toList props)
-        leafMarkup (JE.toJSRep n) (("key", JE.toJSRep . J.pack $ show i) `DL.cons` DL.fromList props' <> DL.fromList ls)
+-- -- | Interactive version of 'leafMarkup' using listeners obtained from the 'Plan' for the local 'ReactId'.
+-- -- It return a 'Widget' to indicate that it contains a 'Window' or possibly modifies 'PutReactId'.
+-- -- 'Gadget' are guaranteed to be created from 'Glazier.React.Reactor.trigger' or the like.
+-- -- 'Gadget' must not contain any 'Widget', otherwise this function will result in nested
+-- -- @Widget (Widget m) a@ which indicates at compile time incorrect usage,
+-- lf ::
+--     ( PutWindow s m
+--     , PutReactId m
+--     , Also () m
+--     , MonadDelegate m
+--     )
+--     => J.JSString-- ^ eg "div" or "input"
+--     -> DL.DList (Gadget m ())
+--     -> DL.DList (J.JSString, MetaReader s JE.JSRep)
+--     -> Widget m ()
+-- lf n gads props = Widget $ do
+--     -- make sure the react id is unique amongst siblings
+--     modifyReactId $ \(ReactId (_ NE.:| ns, i)) -> ReactId (n NE.:| ns, i + 1)
+--     i <- askReactId
+--     -- run through the initialization of all the gadgets which will use this key
+--     -- 'finish' each gadget to ensure the event handling doens't leak out
+--     -- and combine using 'also' with @pure ()@ so execution will get to the next line.
+--     foldr' (also . finish . runGadget) (pure ()) gads
+--     runWidget $ appendWindow $ do
+--         ls <- getReactListeners i -- get the listeners created by gads above
+--         mdl <- view _meta
+--         props' <- lift $ fmap catMaybes $ (`runReaderT` mdl) $ traverse (runMaybeT . sequenceA) (DL.toList props)
+--         leafMarkup (JE.toJSRep n) (("key", JE.toJSRep . J.pack $ show i) `DL.cons` DL.fromList props' <> DL.fromList ls)
 
--- | Interactive version of 'branchMarkup' using listeners obtained from the 'Plan' for the local 'ReactId'.
--- It return a 'Widget' to indicate that it contains a 'Window' or possibly modifies 'PutReactId'.
--- 'Gadget' are guaranteed to be created from 'Glazier.React.Reactor.trigger' or the like.
--- 'Gadget' must not contain any 'Widget', otherwise this function will result in nested
--- @Widget (Widget m) a@ which indicates at compile time incorrect usage,
-bh ::
-    ( PutWindow s m
-    , PutReactId m
-    , Also () m
-    , MonadDelegate m
-    )
-    => J.JSString-- ^ eg "div" or "input"
-    -> DL.DList (Gadget m ())
-    -> DL.DList (J.JSString, ModelReader s JE.JSRep)
-    -- Gadget are guaranteed not to 'appendWindow' or 'modifyReactId',
-    -- and only contains a single trigger each.
-    -> Widget m a
-    -> Widget m a
-bh n gads props (Widget child) = Widget $ do
-    -- make sure the react id is unique amongst siblings
-    modifyReactId $ \(ReactId (_ NE.:| ns, i)) -> ReactId (n NE.:| ns, i + 1)
-    i <- askReactId
-    -- run through the initialization of all the gadgets which will use this key
-    -- 'finish' each gadget to ensure the event handling doens't leak out
-    -- and combine using 'also' with @pure ()@ so execution will get to the next line.
-    foldr' (also . finish . runGadget) (pure ()) gads
-    delegate $ \fire -> do
-        -- 'also' with @pure ()@ to protect against 'finish'
-        childWin <- runWidget $ bracketWindow $ runWidget $ bracketReactId $ (child >>= fire) `also` (pure ())
-        -- now we can add the branch node with the children's window
-        runWidget $ appendWindow $ do
-            ls <- getReactListeners i -- get the listeners created by gads above
-            mdl <- view _model
-            props' <- lift $ fmap catMaybes $ (`runReaderT` mdl) $ traverse (runMaybeT . sequenceA) (DL.toList props)
-            branchMarkup (JE.toJSRep n) (("key", JE.toJSRep . J.pack $ show i) `DL.cons` DL.fromList props' <> DL.fromList ls) childWin
+-- -- | Interactive version of 'branchMarkup' using listeners obtained from the 'Plan' for the local 'ReactId'.
+-- -- It return a 'Widget' to indicate that it contains a 'Window' or possibly modifies 'PutReactId'.
+-- -- 'Gadget' are guaranteed to be created from 'Glazier.React.Reactor.trigger' or the like.
+-- -- 'Gadget' must not contain any 'Widget', otherwise this function will result in nested
+-- -- @Widget (Widget m) a@ which indicates at compile time incorrect usage,
+-- bh ::
+--     ( PutWindow s m
+--     , PutReactId m
+--     , Also () m
+--     , MonadDelegate m
+--     )
+--     => J.JSString-- ^ eg "div" or "input"
+--     -> DL.DList (Gadget m ())
+--     -> DL.DList (J.JSString, MetaReader s JE.JSRep)
+--     -- Gadget are guaranteed not to 'appendWindow' or 'modifyReactId',
+--     -- and only contains a single trigger each.
+--     -> Widget m a
+--     -> Widget m a
+-- bh n gads props (Widget child) = Widget $ do
+--     -- make sure the react id is unique amongst siblings
+--     modifyReactId $ \(ReactId (_ NE.:| ns, i)) -> ReactId (n NE.:| ns, i + 1)
+--     i <- askReactId
+--     -- run through the initialization of all the gadgets which will use this key
+--     -- 'finish' each gadget to ensure the event handling doens't leak out
+--     -- and combine using 'also' with @pure ()@ so execution will get to the next line.
+--     foldr' (also . finish . runGadget) (pure ()) gads
+--     delegate $ \fire -> do
+--         -- 'also' with @pure ()@ to protect against 'finish'
+--         childWin <- runWidget $ bracketWindow $ runWidget $ bracketReactId $ (child >>= fire) `also` (pure ())
+--         -- now we can add the branch node with the children's window
+--         runWidget $ appendWindow $ do
+--             ls <- getReactListeners i -- get the listeners created by gads above
+--             mdl <- view _meta
+--             props' <- lift $ fmap catMaybes $ (`runReaderT` mdl) $ traverse (runMaybeT . sequenceA) (DL.toList props)
+--             branchMarkup (JE.toJSRep n) (("key", JE.toJSRep . J.pack $ show i) `DL.cons` DL.fromList props' <> DL.fromList ls) childWin
+
+
+
 
 -- wack :: (MonadReader Int m) => n a -> m a
 -- wack = coerce
@@ -221,7 +283,7 @@ bh n gads props (Widget child) = Widget $ do
 -- import Glazier.Command.Exec
 -- import Glazier.React.Entity
 -- import Glazier.React.Gadget
--- import Glazier.React.Model
+-- import Glazier.React.Meta
 -- import Glazier.React.Window
 
 -- -- | A 'Widget' is a gadget that fires 'Either' a 'Window' or an event.
@@ -236,7 +298,7 @@ bh n gads props (Widget child) = Widget $ do
 -- -- noIOWidget _ = id
 
 -- -- magnifyWidget :: Traversal' t s -> ExceptT (Window s ()) (Gadget c s s') a -> ExceptT (Window t ()) (Gadget c o t) a
--- -- magnifyWidget l wid = ExceptT $ (first (magnifiedModel l)) <$> (magnifiedEntity l (runExceptT wid))
+-- -- magnifyWidget l wid = ExceptT $ (first (magnifiedMeta l)) <$> (magnifiedEntity l (runExceptT wid))
 
 -- -- | Convert a 'Gadget' into a 'Widget'
 -- widget :: Gadget c s s' (Either (Window s ()) a) -> Widget c s s' a

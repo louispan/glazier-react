@@ -52,7 +52,7 @@ mkLeafElement n props =
 rawTextElement :: J.JSString -> ReactElement
 rawTextElement = js_rawTextElement
 
--- | React only allows a single top most element.
+-- | 'Glazier.React.ReactDOM.renderDOM' only allows a single top most element.
 -- Provide a handly function to wrap a list of ReactElements inside a 'div' if required.
 -- If there is only one element in the list, then nothing is changed.
 mkCombinedElements :: [ReactElement] -> IO ReactElement

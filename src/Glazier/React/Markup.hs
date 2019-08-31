@@ -1,13 +1,21 @@
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 
 -- | 'Lucid.HtmlT' inspired monad for creating 'ReactElement's
 module Glazier.React.Markup
-    ( ReactMarkup(..)
+    ( AskMarkup
+    , askMarkup
+    , PutMarkup
+    , putMarkup
+    , modifyMarkup
+    , appendMarkup
+    , ReactMarkup(..)
     , BranchParam(..)
     , LeafParam(..)
     , fromMarkup
@@ -23,11 +31,25 @@ module Glazier.React.Markup
     -- , overAllProperties
     ) where
 
-import Control.Monad.State.Strict
+import Control.Monad.Context
 import qualified Data.DList as DL
 import qualified GHCJS.Types as J
 import qualified Glazier.React.Element as Z
 import qualified JavaScript.Extras as JE
+
+type AskMarkup m = MonadAsk (DL.DList ReactMarkup) m
+askMarkup :: AskMarkup m => m (DL.DList ReactMarkup)
+askMarkup = askContext @(DL.DList ReactMarkup)
+
+type PutMarkup m = MonadPut (DL.DList ReactMarkup) m
+putMarkup :: PutMarkup m => DL.DList ReactMarkup -> m ()
+putMarkup = putContext
+
+modifyMarkup :: PutMarkup m => (DL.DList ReactMarkup -> DL.DList ReactMarkup) -> m ()
+modifyMarkup = modifyContext
+
+appendMarkup :: PutMarkup m => DL.DList ReactMarkup -> m ()
+appendMarkup a = modifyMarkup (*> a)
 
 -- | The parameters required to create a branch ReactElement with children
 data BranchParam = BranchParam
@@ -62,26 +84,24 @@ fromMarkup (ElementMarkup e) = pure e
 -------------------------------------------------
 
 -- | To use an exisitng ReactElement
-fromElement :: MonadState (DL.DList ReactMarkup) m => Z.ReactElement -> m ()
-fromElement e = modify' (`DL.snoc` ElementMarkup e)
+fromElement :: PutMarkup m => Z.ReactElement -> m ()
+fromElement e = modifyMarkup (`DL.snoc` ElementMarkup e)
 
 -- | Convert the ReactMlt to [Z.ReactElement]
 toElements :: DL.DList ReactMarkup -> IO [Z.ReactElement]
 toElements xs = sequenceA $ fromMarkup <$> DL.toList xs
 
--- | Fully render the ReactMlt into a single Z.ReactElement
+-- | 'Glazier.React.ReactDOM.renderDOM' only allows a single top most element.
+-- Provide a handly function to wrap a list of ReactElements inside a 'div' if required.
+-- If there is only one element in the list, then nothing is changed.
 toElement :: DL.DList ReactMarkup -> IO Z.ReactElement
 toElement xs = toElements xs >>= Z.mkCombinedElements
-
--- -- | toElements reading an s from the environment
--- toElements' :: MonadIO io => (s -> ReactMlT io ()) -> s -> io [Z.ReactElement]
--- toElements' f = (toElements . f)
 
 -------------------------------------------------
 
 -- | For raw text content
-rawTextMarkup :: MonadState (DL.DList ReactMarkup) m => J.JSString -> m ()
-rawTextMarkup n = modify' (`DL.snoc` RawTextMarkup n)
+rawTextMarkup :: PutMarkup m => J.JSString -> m ()
+rawTextMarkup n = modifyMarkup (`DL.snoc` RawTextMarkup n)
 
 -- | For the contentless elements: eg 'br_'.
 -- Memonic: lf for leaf.
@@ -89,29 +109,30 @@ rawTextMarkup n = modify' (`DL.snoc` RawTextMarkup n)
 -- if the same key is used across listeners and props.
 -- "If an attribute/prop is duplicated the last one defined wins."
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
-leafMarkup :: (MonadState (DL.DList ReactMarkup) m)
+leafMarkup :: PutMarkup m
     => JE.JSRep
     -> (DL.DList (J.JSString, JE.JSRep))
     -> m ()
-leafMarkup n props = modify' (`DL.snoc` LeafMarkup (LeafParam n props))
+leafMarkup n props = modifyMarkup (`DL.snoc` LeafMarkup (LeafParam n props))
 
 -- | Create a MonadState that run the given given a combining function
 -- where the first arg is the state from running the markup producing MonadState with mempty,
 -- and the 2nd arg the starting state of the resultant MonadState.
-withMarkup :: MonadState (DL.DList ReactMarkup) m
+withMarkup :: PutMarkup m
     => (DL.DList ReactMarkup -> DL.DList ReactMarkup -> DL.DList ReactMarkup)
     -> m a
     -> m a
 withMarkup f childs = do
     -- save state
-    s <- get
+    s <- askMarkup
     -- run children with mempty
-    put mempty
+    putMarkup mempty
     a <- childs
-    childs' <- get
+    childs' <- askMarkup
     -- restore state
-    put s
-    modify' (f childs')
+    putMarkup s
+    -- append the children markup
+    modifyMarkup (f childs')
     pure a
 
 -- | For the contentful elements: eg 'div_'.
@@ -120,7 +141,7 @@ withMarkup f childs = do
 -- if the same key is used across listeners and props.
 -- "If an attribute/prop is duplicated the last one defined wins."
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
-branchMarkup :: (MonadState (DL.DList ReactMarkup) m)
+branchMarkup :: PutMarkup m
     => JE.JSRep
     -> (DL.DList (J.JSString, JE.JSRep))
     -> m a

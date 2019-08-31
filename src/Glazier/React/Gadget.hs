@@ -4,7 +4,6 @@
 module Glazier.React.Gadget where
 
 import Glazier.Logger
-import Glazier.React.Obj
 import Glazier.React.ReactId
 
 -- type MonadGadget' c s m= (Logger c m, AskWeakObj o m)
