@@ -161,8 +161,12 @@ execReactorCmd executor c = case c of
         pure lastCmds
     NotifyMutated obj k -> execNotifyMutated obj k
     ResetMutation obj k -> execResetMutation obj k
-    RegisterDOMListener obj j n goStrict goLazy -> done $ execRegisterDOMListener executor obj j n goStrict goLazy
+    -- RegisterDOMListener obj j n goStrict goLazy -> done $ execRegisterDOMListener executor obj j n goStrict goLazy
+
+    -- callback on each html node level
     RegisterReactListener obj k n goStrict goLazy -> done $ execRegisterReactListener executor obj k n goStrict goLazy
+
+    -- callback on the whole widget level
     RegisterMountedListener obj k -> done $ execRegisterMountedListener executor obj k
     RegisterRenderedListener obj k -> done $ execRegisterRenderedListener executor obj k
     -- RegisterRenderedOnceListener obj k -> done $ execRegisterRenderedOnceListener executor obj k

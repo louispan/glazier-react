@@ -30,7 +30,7 @@ instance A.FromJSONKey ReactId
 
 type AskReactId = MonadAsk ReactId
 askReactId :: AskReactId m => m ReactId
-askReactId = askContext @ReactId
+askReactId = askContext
 
 type PutReactId = MonadPut ReactId
 putReactId :: PutReactId m => ReactId -> m ()

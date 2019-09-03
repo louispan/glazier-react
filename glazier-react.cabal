@@ -13,11 +13,6 @@ build-type:          Simple
 extra-source-files:  README.md
 cabal-version:       >=1.10
 
-Flag debug
-  Description: Enable debug io
-  Default:     False
-  Manual:      True
-
 library
   hs-source-dirs:      src
   js-sources:          jsbits/react.js
@@ -80,8 +75,6 @@ library
     build-depends: ghcjs-base
   if !impl(ghcjs)
     build-depends: ghcjs-base-stub >= 0.2.1
-  if flag(Debug)
-    cpp-options:     -DDEBUGIO
 
 source-repository head
   type:     git

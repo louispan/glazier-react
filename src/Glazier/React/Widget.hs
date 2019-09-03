@@ -13,13 +13,14 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Glazier.React.Widget where
     -- ( Window
     -- , Widget
     -- , Gadget
     -- , AskWindow(..)
-    -- , PutWindow
+    -- , PutMarkup
     -- , MetaReader
     -- , classNames
     -- , prop
@@ -41,7 +42,9 @@ import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.Identity
 import qualified Data.DList as DL
+-- import Data.Proxy
 -- import Data.Foldable
 import Data.IORef
 import qualified Data.JSString as J
@@ -55,6 +58,9 @@ import Glazier.React.Shim
 -- import Glazier.React.Widget.Internal
 import qualified JavaScript.Extras as JE
 import System.Mem.Weak
+-- import Control.Monad.Context
+-- import Control.Monad.Delegate
+-- import Glazier.Command
 
 -- type MetaReader s = MaybeT (ReaderT s (Benign IO))
 -- type BIOReader s = ReaderT s (Benign IO)
@@ -64,30 +70,67 @@ import System.Mem.Weak
 -- as well as the html for rendering.
 -- It is expected that the interpreter of the Gizmo will add a final effect
 -- which is to set the final html for the component.
-type Gizmo c s =
-    -- ReaderT (Model s) -- 'AskModel'
-    -- ReaderT Plan -- 'AskPlan'
-    ReaderT s -- 'AskMeta'
-    (ReaderT (WeakModelRef s) -- 'AskWeakModelRef', 'AskLogLevel'
+type Widget c s =
+    ReaderT (WeakRef Plan) -- 'AskPlanWeakRef', 'AskLogLevel'
+    (ReaderT (Model (WeakRef s)) -- 'AskModelWeakRef'
     (MaybeT -- 'Alternative'
     (ContT () -- 'MonadDelegate'
+    -- State monads must be after MonadDelegate
     (StateT (ReactId) -- 'PutReactId'
     (StateT (DL.DList ReactMarkup) -- 'PutMarkup'
-    (ProgramT c (Benign IO))))))) -- 'MonadComand', 'MonadBenignIO'
+    (ProgramT c (Benign IO)
+    )))))) -- 'MonadComand', 'MonadBenignIO'
     -- (ProgramT c (Benign IO))))))) -- 'MonadComand', 'MonadBenignIO'
 
-newtype Widget m a = Widget (m a)
-    deriving (Monad, Functor, Applicative)
+wack :: Lens' s Bool -> Widget c s Bool
+wack lns = do
+    s <- askModel
+    pure $ s ^.lns
 
-wock :: (PutMarkup m, AskWeakModelRef s m) => m ()
-wock = do
-    obj <- askWeakModelRef
-    displayWeakModelRef obj
 
-wack :: Gizmo c s s
-wack = do
-   s <- askMeta
-   pure s
+-- | ALlow additional user ReaderT and IdentityT stack on top of Widget c s
+-- Like 'Control.Monad.IO.Unlift.UnliftIO', this newtype wrapper prevents impredicative types.
+newtype UniftWidget c s m = UniftWidget { unliftWidget :: forall a. m a -> Widget c s a }
+
+-- | Similar to 'Control.Monad.IO.Unlift.MonadUnliftIO', except we want to unlift a @Widget (Gizmo c s) a@.
+-- This limits transformers stack to 'ReaderT' and 'IdentityT' on top of @Gizmo c s m@
+class MonadUnliftWidget c s m | m -> c s where
+    askUnliftWidget :: m (UniftWidget c s m)
+
+instance MonadUnliftWidget c s (Widget c s) where
+    askUnliftWidget = pure (UniftWidget id)
+
+instance (Functor m, MonadUnliftWidget c s m) => MonadUnliftWidget c s (ReaderT r m) where
+    askUnliftWidget = ReaderT $ \r ->
+        (\u -> UniftWidget (unliftWidget u . flip runReaderT r)) <$> askUnliftWidget
+
+instance (Functor m, MonadUnliftWidget c s m) => MonadUnliftWidget c s (IdentityT m) where
+    askUnliftWidget = IdentityT $
+        (\u -> UniftWidget (unliftWidget u . runIdentityT)) <$> askUnliftWidget
+
+-- newtype Widget m a = Widget (m a)
+--     deriving
+--         (Monad
+--         , Functor
+--         , Applicative
+--         , Alternative
+--         , MonadAsk r
+--         , MonadPut s
+--         , MonadProgram c
+--         , MonadCodify c
+--         , MonadBenignIO
+--         )
+
+-- wock :: forall s m. (MonadBenignIO m, PutMarkup m, AskPlanWeakRef m) => m ()
+-- wock _ = do
+--     obj <- askWeakModelRef @s
+--     displayWeakModelRef obj
+
+-- wack :: forall c s. Gizmo c s ()
+-- wack = wock (Proxy @s)
+
+-- wack2 :: Widget c s ()
+-- wack2 = wock
 
 -- FIMXE: Add instances of Gizmo for Widget wrapper
 
@@ -119,25 +162,25 @@ propM = (>>= prop) . maybeM
 --     lift $ fmap go $ (`runReaderT` mdl) $ traverse sequenceA ls
 --   where go = JE.toJSRep . J.unwords . fmap fst . filter snd -- . catMaybes
 
-displayWeakModelRef :: (MonadBenignIO m, PutMarkup m) => WeakModelRef s -> m ()
+displayWeakModelRef :: (MonadBenignIO m, PutMarkup m) => WeakRef Plan -> m ()
 displayWeakModelRef that = (`evalMaybeT` ()) $ do
     mdlRef <- MaybeT $ liftBenignIO $ Benign $ deRefWeak that
     displayModelRef mdlRef
 
-displayModelRef :: (MonadBenignIO m, PutMarkup m) => ModelRef s -> m ()
+displayModelRef :: (MonadBenignIO m, PutMarkup m) => IORef Plan -> m ()
 displayModelRef mdlRef = do
     mdl <- liftBenignIO $ Benign $ readIORef mdlRef
     displayModel mdl
 
-displayModel :: PutMarkup m => Model s -> m ()
+displayModel :: PutMarkup m => Plan -> m ()
 displayModel mdl = do
     -- mdl <- liftBenignIO $ Benign $ readIORef obj
-    let scb = mdl ^. _plan._shimCallbacks
+    let scb = mdl ^. _shimCallbacks
         renderCb = shimOnRender scb
         mountedCb = shimOnMounted scb
         renderedCb = shimOnRendered scb
         refCb = shimOnRef scb
-        i = mdl ^. _plan._planId
+        i = mdl ^. _planId
     -- These are the callbacks on the 'ShimComponent'
     -- See jsbits/react.js
     leafMarkup (JE.toJSRep shimComponent)
@@ -149,7 +192,7 @@ displayModel mdl = do
         ]
 
 -- -- | write some text that can be safely obtained from the meta
--- rawTxt :: (PutWindow m, MonadBenignIO m) => ReaderT s m J.JSString -> m ()
+-- rawTxt :: (PutMarkup m, MonadBenignIO m) => ReaderT s m J.JSString -> m ()
 -- rawTxt m = appendWindow $ do
 --     s <- view _meta
 --     n <- lift $ runReaderT m s
@@ -161,7 +204,7 @@ displayModel mdl = do
 -- -- 'Gadget' must not contain any 'Widget', otherwise this function will result in nested
 -- -- @Widget (Widget m) a@ which indicates at compile time incorrect usage,
 -- lf ::
---     ( PutWindow s m
+--     ( PutMarkup s m
 --     , PutReactId m
 --     , Also () m
 --     , MonadDelegate m
@@ -190,7 +233,7 @@ displayModel mdl = do
 -- -- 'Gadget' must not contain any 'Widget', otherwise this function will result in nested
 -- -- @Widget (Widget m) a@ which indicates at compile time incorrect usage,
 -- bh ::
---     ( PutWindow s m
+--     ( PutMarkup s m
 --     , PutReactId m
 --     , Also () m
 --     , MonadDelegate m
@@ -259,7 +302,7 @@ displayModel mdl = do
 -- -- | Create a MonadState that run the given given a combining function
 -- -- where the first arg is the state from running the markup producing MonadState with mempty,
 -- -- and the 2nd arg the starting state of the resultant MonadState.
--- withWindow :: PutWindow s m
+-- withWindow :: PutMarkup s m
 --     => (Window s () -> Window s () -> Window s ())
 --     -> m a
 --     -> m a
