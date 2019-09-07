@@ -11,9 +11,11 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Glazier.React.Widget where
     -- ( Window
@@ -35,7 +37,6 @@ module Glazier.React.Widget where
 -- import Control.Also
 import Control.Applicative
 import Control.Lens
-import Control.Monad.Benign
 import Control.Monad.Cont
 -- import Control.Monad.Delegate
 import Control.Monad.Reader
@@ -78,9 +79,8 @@ type Widget c s =
     -- State monads must be after MonadDelegate
     (StateT (ReactId) -- 'PutReactId'
     (StateT (DL.DList ReactMarkup) -- 'PutMarkup'
-    (ProgramT c (Benign IO)
-    )))))) -- 'MonadComand', 'MonadBenignIO'
-    -- (ProgramT c (Benign IO))))))) -- 'MonadComand', 'MonadBenignIO'
+    (ProgramT c IO -- 'MonadComand', 'MonadIO'
+    ))))))
 
 wack :: Lens' s Bool -> Widget c s Bool
 wack lns = do
@@ -162,14 +162,14 @@ propM = (>>= prop) . maybeM
 --     lift $ fmap go $ (`runReaderT` mdl) $ traverse sequenceA ls
 --   where go = JE.toJSRep . J.unwords . fmap fst . filter snd -- . catMaybes
 
-displayWeakModelRef :: (MonadBenignIO m, PutMarkup m) => WeakRef Plan -> m ()
+displayWeakModelRef :: (MonadIO m, PutMarkup m) => WeakRef Plan -> m ()
 displayWeakModelRef that = (`evalMaybeT` ()) $ do
-    mdlRef <- MaybeT $ liftBenignIO $ Benign $ deRefWeak that
+    mdlRef <- MaybeT $ liftIO $ deRefWeak that
     displayModelRef mdlRef
 
-displayModelRef :: (MonadBenignIO m, PutMarkup m) => IORef Plan -> m ()
+displayModelRef :: (MonadIO m, PutMarkup m) => IORef Plan -> m ()
 displayModelRef mdlRef = do
-    mdl <- liftBenignIO $ Benign $ readIORef mdlRef
+    mdl <- liftIO $ readIORef mdlRef
     displayModel mdl
 
 displayModel :: PutMarkup m => Plan -> m ()

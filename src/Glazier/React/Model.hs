@@ -20,23 +20,19 @@ module Glazier.React.Model where
 -- import Control.Lens
 import Control.Applicative
 import Control.Lens.Misc
-import Control.Monad.Benign
 import Control.Monad.Context
-import Control.Monad.Morph
+import Control.Monad.IO.Class
 import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Extras
-import Data.Foldable
+-- import Data.Foldable
 import Data.IORef
 -- import qualified Data.Map.Strict as M
-import Data.Maybe
-import qualified Data.Set as S
-import Data.StableNameMap
+-- import qualified Data.Set as S
 import qualified GHC.Generics as G
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
 import Glazier.Logger
-import Glazier.React.EventTarget
 import Glazier.React.ReactId
 import Glazier.React.Shim
 import System.Mem.Weak
@@ -82,21 +78,27 @@ releaseShimCallbacks (ShimCallbacks a b c d e) = do
 
 ----------------------------------------------------------------------------------
 
-data Rerendering
+data Rerender
     = RerenderNotRequired
-    | RerenderScheduled
+    | RerenderRequired
     deriving (Show, Eq)
 
 -- | Interactivity data for a react component
 data Plan = Plan
     { planId :: ReactId
-    , planLogLevel :: Benign IO (Maybe LogLevel)
+    , planLogLevel :: IO (Maybe LogLevel)
+
     -- a react "ref" to the javascript instance of ReactComponent
     -- so that react "componentRef.setState()" can be called.
     , shimRef :: Maybe ShimRef
     , shimCallbacks :: ShimCallbacks
-    , createdCallbacks :: StableNameMap (J.JSVal -> IO ()) (J.Callback (J.JSVal -> IO ()))
+    -- , createdCallbacks :: StableNameMap (J.JSVal -> IO ()) (J.Callback (J.JSVal -> IO ()))
+    -- , createdCallbacks :: [ (J.JSVal -> IO ()) (J.Callback (J.JSVal -> IO ()))]
 
+    -- The prerendered back buffer
+    , prerendered :: J.JSVal
+    -- An IO action that will update 'prerendered' with the latest markup using the associated 'Obj s'
+    , rerender :: IO ()
 
     -- called after every rendering
     -- FIXME: TODO
@@ -114,7 +116,7 @@ data Plan = Plan
 
     -- do on next rerender. This gets reset after every rerender.
     -- used just to support 'Glazier.React.Reactor.getReactRef'
-    , renderedOnceListener :: IO ()
+    -- , renderedOnceListener :: IO ()
 
     -- interactivity data for child DOM elements
     -- , reactants :: M.Map ReactId Reactant
@@ -132,13 +134,13 @@ data Plan = Plan
 
 
     -- set of all reactIds that are modifying this widget
-    , mutations :: S.Set EventTarget
+    -- , mutations :: S.Set EventTarget
 
     -- if rerender is required
     -- true if rerendering was scheduled
     -- false if rerendering was not scheduled
     -- prevents multiple scheduing of the rerender request
-    , rerendering :: Rerendering
+    -- , rerendering :: Rerendering
 
 
     -- FIXME: make rendering is two phase
@@ -146,10 +148,6 @@ data Plan = Plan
     -- but on mutated will refresh he pre-rendered jsval
     -- this way it can "block"
 
-    -- The prerendered back buffer
-    , prerendered :: J.JSVal
-    -- An IO action will update 'prerendered' with the latest markup using the associated 'Obj s'
-    , rerender :: IO ()
 
     } deriving (G.Generic)
 
@@ -158,15 +156,17 @@ makeLenses_ ''Plan
 releasePlanCallbacks :: Plan -> IO ()
 releasePlanCallbacks pln = do
     releaseShimCallbacks (shimCallbacks pln)
-    traverse_ J.releaseCallback (createdCallbacks pln)
+    -- FIXME
+    -- traverse_ J.releaseCallback (createdCallbacks pln)
 
 instance Show Plan where
-    showsPrec d pln = showParen
-        (d >= 11)
-        ( showString "Plan {" . showString "componentRef ? " . shows (isJust $ shimRef pln)
+    showsPrec p pln = showParen
+        (p >= 11)
+        ( showString "Plan " . shows (planId pln)
+        -- , showString ", " . showString "componentRef ? " . shows (isJust $ shimRef pln)
         -- . showString ", " . showString "elementalIds = " . showList (M.keys $ reactants pln)
         -- . showString ", " . showString "planIds = " . showList (M.keys $ reactants pln)
-        . showString "}"
+        -- . showString "}"
         )
 
 ----------------------------------------------------------------------------------
@@ -204,9 +204,6 @@ instance Show Plan where
 
 ----------------------------------------------------------------------------------
 
--- | Avoids ambiguous types for 'askModel' and 'askModelWeakRef'
-newtype Model s = Model { getModel :: s }
-
 -- class MonadAsk s m => AskMeta s m where
 --     askMeta :: m s
 --     askMeta = askContext
@@ -236,32 +233,49 @@ askPlanWeakRef :: AskPlanWeakRef m => m (WeakRef Plan)
 askPlanWeakRef = askContext
 
 -- type AskPlan = MonadAsk Plan
-askPlan :: (MonadBenignIO m, Alternative m, AskPlanWeakRef m) => m Plan
+askPlan :: (MonadIO m, Alternative m, AskPlanWeakRef m) => m Plan
 askPlan = do
     wk <- askPlanWeakRef
-    ref <- maybeM . liftBenignIO . Benign $ deRefWeak wk
-    liftBenignIO . Benign $ readIORef ref
+    ref <- maybeM . liftIO $ deRefWeak wk
+    liftIO $ readIORef ref
 
+-- | Avoids ambiguous types for 'askModel' and 'askModelWeakRef'
+newtype Model s = Model { getModel :: s }
 type AskModelWeakRef s = MonadAsk (Model (WeakRef s))
 askModelWeakRef :: AskModelWeakRef s m => m (WeakRef s)
 askModelWeakRef = getModel <$> askContext
 
 -- type AskModel s = MonadAsk (Model s)
-askModel :: (MonadBenignIO m, Alternative m, AskModelWeakRef s m) => m s
+askModel :: (MonadIO m, Alternative m, AskModelWeakRef s m) => m s
 askModel = do
     wk <- askModelWeakRef
-    ref <- maybeM . liftBenignIO . Benign $ deRefWeak wk
-    liftBenignIO . Benign $ readIORef ref
+    ref <- maybeM . liftIO $ deRefWeak wk
+    liftIO $ readIORef ref
 
 
 -- | We can get the loglevel from a PlanWeakRef
-instance Monad m => MonadAsk (Benign IO (Maybe LogLevel)) (ReaderT (WeakRef Plan) m) where
+instance {-# OVERLAPPING #-} Monad m => MonadAsk (IO (Maybe LogLevel)) (ReaderT (WeakRef Plan) m) where
     -- logLevel :: m (Benign IO (Maybe LogLevel))
     askContext = do
         ref <- askPlanWeakRef
         pure $ go ref
       where
-        go wk = Benign $ runMaybeT $ do
+        go wk = runMaybeT $ do
             ref <- MaybeT $ deRefWeak wk
             pln <- lift $ readIORef ref
-            MaybeT . getBenign . planLogLevel $ pln
+            MaybeT . planLogLevel $ pln
+
+data WeakObj s = WeakObj
+    { planWeakRef :: WeakRef Plan
+    , modelWeakRef :: WeakRef s
+    } deriving (G.Generic)
+
+makeLenses_ ''WeakObj
+
+data Obj s = Obj
+    { planRef :: Ref Plan
+    , modelRef :: Ref s
+    , weakObj :: WeakObj s
+    } deriving (G.Generic)
+
+makeLenses_ ''Obj
