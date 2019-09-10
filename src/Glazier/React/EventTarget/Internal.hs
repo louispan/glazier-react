@@ -18,11 +18,11 @@ import qualified JavaScript.Extras as JE
 -- | The object that dispatched the event.
 -- https://developer.mozilla.org/en-US/docs/Web/API/Event/target
 newtype EventTarget =
-    EventTarget JE.JSRep -- not J.JSVal so the show instance is more useful
+    EventTarget J.JSVal
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
 instance JE.FromJS EventTarget where
-    fromJS a | js_isEventTarget a = Just $ EventTarget $ JE.JSRep a
+    fromJS a | js_isEventTarget a = Just $ EventTarget a
     fromJS _ = Nothing
 
 #ifdef __GHCJS__

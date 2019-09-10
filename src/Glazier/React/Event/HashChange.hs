@@ -35,7 +35,7 @@ instance NFData HashChangeEvent
 toHashChangeEvent :: NativeEvent -> Maybe HashChangeEvent
 toHashChangeEvent nevt | js_isHashChangeEvent evt = Just $
     HashChangeEvent
-    { target = EventTarget $ JE.JSRep $ unsafeGetProperty evt "target"
+    { target = EventTarget $ unsafeGetProperty evt "target"
     , eventType = unsafeGetProperty evt "type"
     , bubbles = unsafeGetProperty evt "bubbles"
     , cancelable = unsafeGetProperty evt "cancelable"

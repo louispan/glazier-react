@@ -24,7 +24,7 @@ import qualified JavaScript.Extras as JE
 import qualified JavaScript.Object as JO
 
 -- | NB. No FromJS provided. See 'unsafeCoerceElement' below.
-newtype ReactElement = ReactElement JE.JSRep
+newtype ReactElement = ReactElement J.JSVal
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
 instance Newtype ReactElement
@@ -36,15 +36,15 @@ instance Newtype ReactElement
 -- This function is required when receiving ReactElement from javascript (eg in a callback)
 -- or to interface with foreign React Elements.
 unsafeCoerceElement :: J.JSVal -> ReactElement
-unsafeCoerceElement = ReactElement . JE.JSRep
+unsafeCoerceElement = ReactElement
 
 -- | Create a react element (with children) from a HashMap of properties
-mkBranchElement :: JE.JSRep -> [(J.JSString, JE.JSRep)] -> [ReactElement] -> IO ReactElement
+mkBranchElement :: J.JSVal -> [(J.JSString, J.JSVal)] -> [ReactElement] -> IO ReactElement
 mkBranchElement n props xs =
     js_mkBranchElement n (JE.propertiesToObject props) (JA.fromList $ JE.toJS <$> xs)
 
 -- | Create a react element (with no children) from a HashMap of properties
-mkLeafElement :: JE.JSRep -> [(J.JSString, JE.JSRep)] -> IO ReactElement
+mkLeafElement :: J.JSVal -> [(J.JSString, J.JSVal)] -> IO ReactElement
 mkLeafElement n props =
     js_mkLeafElement n (JE.propertiesToObject props)
 
@@ -65,11 +65,11 @@ mkCombinedElements xs = js_mkCombinedElements (JA.fromList $ JE.toJS <$> xs)
 -- and JSArray are mutable.
 foreign import javascript unsafe
     "$r = hgr$React().createElement($1, $2, $3);"
-    js_mkBranchElement :: JE.JSRep -> JO.Object -> JA.JSArray -> IO ReactElement
+    js_mkBranchElement :: J.JSVal -> JO.Object -> JA.JSArray -> IO ReactElement
 
 foreign import javascript unsafe
     "$r = hgr$React().createElement($1, $2);"
-    js_mkLeafElement :: JE.JSRep -> JO.Object -> IO ReactElement
+    js_mkLeafElement :: J.JSVal -> JO.Object -> IO ReactElement
 
 foreign import javascript unsafe
     "$r = $1;"
@@ -85,16 +85,16 @@ foreign import javascript unsafe
 -- | This is an IO action because even if the same args was used
 -- a different ReactElement may be created, because JSVal
 -- and JSArray are mutable.
-js_mkBranchElement :: JE.JSRep -> JO.Object -> JA.JSArray -> IO ReactElement
-js_mkBranchElement _ _ _ = pure (ReactElement $ JE.JSRep J.nullRef)
+js_mkBranchElement :: J.JSVal -> JO.Object -> JA.JSArray -> IO ReactElement
+js_mkBranchElement _ _ _ = pure (ReactElement J.nullRef)
 
-js_mkLeafElement :: JE.JSRep -> JO.Object -> IO ReactElement
-js_mkLeafElement _ _ =  pure (ReactElement $ JE.JSRep J.nullRef)
+js_mkLeafElement :: J.JSVal -> JO.Object -> IO ReactElement
+js_mkLeafElement _ _ =  pure (ReactElement J.nullRef)
 
 js_rawTextElement :: J.JSString -> ReactElement
-js_rawTextElement _ = ReactElement $ JE.JSRep J.nullRef
+js_rawTextElement _ = ReactElement J.nullRef
 
 js_mkCombinedElements :: JA.JSArray -> IO ReactElement
-js_mkCombinedElements _ = pure (ReactElement $ JE.JSRep J.nullRef)
+js_mkCombinedElements _ = pure (ReactElement J.nullRef)
 
 #endif

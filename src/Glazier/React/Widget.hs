@@ -1,6 +1,7 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
@@ -34,34 +35,23 @@ module Glazier.React.Widget where
     -- , bh
     -- ) where
 
--- import Control.Also
-import Control.Applicative
 import Control.Lens
 import Control.Monad.Cont
--- import Control.Monad.Delegate
 import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Identity
 import qualified Data.DList as DL
--- import Data.Proxy
--- import Data.Foldable
 import Data.IORef
 import qualified Data.JSString as J
--- import qualified Data.List.NonEmpty as NE
--- import Data.Maybe
 import Glazier.Command
 import Glazier.React.Markup
 import Glazier.React.Model
-import Glazier.React.ReactId.Internal
+import Glazier.React.ReactId
 import Glazier.React.Shim
--- import Glazier.React.Widget.Internal
 import qualified JavaScript.Extras as JE
 import System.Mem.Weak
--- import Control.Monad.Context
--- import Control.Monad.Delegate
--- import Glazier.Command
 
 -- type MetaReader s = MaybeT (ReaderT s (Benign IO))
 -- type BIOReader s = ReaderT s (Benign IO)
@@ -74,13 +64,14 @@ import System.Mem.Weak
 type Widget c s =
     ReaderT (WeakRef Plan) -- 'AskPlanWeakRef', 'AskLogLevel'
     (ReaderT (Model (WeakRef s)) -- 'AskModelWeakRef'
+    (ReaderT (Model s) -- 'AskModel'
     (MaybeT -- 'Alternative'
     (ContT () -- 'MonadDelegate'
     -- State monads must be after MonadDelegate
     (StateT (ReactId) -- 'PutReactId'
     (StateT (DL.DList ReactMarkup) -- 'PutMarkup'
     (ProgramT c IO -- 'MonadComand', 'MonadIO'
-    ))))))
+    )))))))
 
 wack :: Lens' s Bool -> Widget c s Bool
 wack lns = do
@@ -134,46 +125,46 @@ instance (Functor m, MonadUnliftWidget c s m) => MonadUnliftWidget c s (Identity
 
 -- FIMXE: Add instances of Gizmo for Widget wrapper
 
-prop :: (Applicative m, JE.ToJS a) => a -> m JE.JSRep
-prop = pure . JE.toJSRep
+-- | get soemthing from the model as a property
+-- prop :: (JE.ToJS a, AskModel s m) => Getting a s a -> m J.JSVal
+-- prop lns = (JE.toJSRep . view lns) <$> askModel
 
--- | Handy when using overloaded lists
-strProp :: Applicative m => J.JSString -> m JE.JSRep
-strProp = prop
+-- prop :: (Applicative m, JE.ToJS a) => a -> m J.JSVal
+-- prop = pure . JE.toJSRep
 
-propM :: (Monad m, Alternative m, JE.ToJS a) => m (Maybe a) -> m JE.JSRep
-propM = (>>= prop) . maybeM
+-- strProp :: Applicative m => J.JSString -> m J.JSVal
+-- strProp = pure . JE.toJSRep
 
--- -- | Creates a JE.JSRep single string for "className" property from a list of (JSString, Bool)
+-- -- | Creates a J.JSVal single string for "className" property from a list of (JSString, Bool)
 -- -- Idea from https://github.com/JedWatson/classnames
--- classNames :: [(J.JSString, ReaderT s (Benign IO) Bool)] -> ReaderT s (Benign IO) JE.JSRep
+-- classNames :: [(J.JSString, ReaderT s (Benign IO) Bool)] -> ReaderT s (Benign IO) J.JSVal
 -- classNames ls = do
 --     mdl <- ask
 --     -- lift $ lift $ fmap go $ (`runReaderT` mdl) $ traverse (runMaybeT . sequenceA) ls
 --     lift $ fmap go $ (`runReaderT` mdl) $ traverse sequenceA ls
 --   where go = JE.toJSRep . J.unwords . fmap fst . filter snd -- . catMaybes
 
--- -- | Creates a JE.JSRep single string for "className" property from a list of (JSString, Bool)
+-- -- | Creates a J.JSVal single string for "className" property from a list of (JSString, Bool)
 -- -- Idea from https://github.com/JedWatson/classnames
--- classNames :: Monad m => [(J.JSString, m Bool)] -> m JE.JSRep
+-- classNames :: Monad m => [(J.JSString, m Bool)] -> m J.JSVal
 -- classNames ls = do
 --     mdl <- ask
 --     -- lift $ lift $ fmap go $ (`runReaderT` mdl) $ traverse (runMaybeT . sequenceA) ls
 --     lift $ fmap go $ (`runReaderT` mdl) $ traverse sequenceA ls
 --   where go = JE.toJSRep . J.unwords . fmap fst . filter snd -- . catMaybes
 
-displayWeakModelRef :: (MonadIO m, PutMarkup m) => WeakRef Plan -> m ()
-displayWeakModelRef that = (`evalMaybeT` ()) $ do
+displayPlanWeakRef :: (MonadIO m, PutMarkup m) => WeakRef Plan -> m ()
+displayPlanWeakRef that = (`evalMaybeT` ()) $ do
     mdlRef <- MaybeT $ liftIO $ deRefWeak that
-    displayModelRef mdlRef
+    displayPlanRef mdlRef
 
-displayModelRef :: (MonadIO m, PutMarkup m) => IORef Plan -> m ()
-displayModelRef mdlRef = do
+displayPlanRef :: (MonadIO m, PutMarkup m) => IORef Plan -> m ()
+displayPlanRef mdlRef = do
     mdl <- liftIO $ readIORef mdlRef
-    displayModel mdl
+    displayPlan mdl
 
-displayModel :: PutMarkup m => Plan -> m ()
-displayModel mdl = do
+displayPlan :: PutMarkup m => Plan -> m ()
+displayPlan mdl = do
     -- mdl <- liftBenignIO $ Benign $ readIORef obj
     let scb = mdl ^. _shimCallbacks
         renderCb = shimOnRender scb
@@ -183,20 +174,21 @@ displayModel mdl = do
         i = mdl ^. _planId
     -- These are the callbacks on the 'ShimComponent'
     -- See jsbits/react.js
-    leafMarkup (JE.toJSRep shimComponent)
-        [ ("key", JE.toJSRep . J.pack $ show i)
-        , ("render", JE.toJSRep renderCb)
-        , ("mounted", JE.toJSRep mountedCb)
-        , ("rendered", JE.toJSRep renderedCb)
-        , ("ref", JE.toJSRep refCb)
+    leafMarkup (JE.toJS shimComponent)
+        [ ("key", JE.toJS . J.pack $ show i)
+        , ("render", JE.toJS renderCb)
+        , ("mounted", JE.toJS mountedCb)
+        , ("rendered", JE.toJS renderedCb)
+        , ("ref", JE.toJS refCb)
         ]
 
--- -- | write some text that can be safely obtained from the meta
--- rawTxt :: (PutMarkup m, MonadBenignIO m) => ReaderT s m J.JSString -> m ()
--- rawTxt m = appendWindow $ do
---     s <- view _meta
---     n <- lift $ runReaderT m s
---     rawTextMarkup n
+-- | write some text from the model. Use 'like' to 'const' a string instead.
+rawTxt :: (PutMarkup m, AskModel s m) => Getting J.JSString s J.JSString -> m ()
+rawTxt lns = do
+    s <- askModel
+    rawTextMarkup $ s ^. lns
+
+-- data Prop = forall a. JE.ToJS a => Prop a
 
 -- -- | Interactive version of 'leafMarkup' using listeners obtained from the 'Plan' for the local 'ReactId'.
 -- -- It return a 'Widget' to indicate that it contains a 'Window' or possibly modifies 'PutReactId'.
@@ -211,7 +203,7 @@ displayModel mdl = do
 --     )
 --     => J.JSString-- ^ eg "div" or "input"
 --     -> DL.DList (Gadget m ())
---     -> DL.DList (J.JSString, MetaReader s JE.JSRep)
+--     -> DL.DList (J.JSString, MetaReader s J.JSVal)
 --     -> Widget m ()
 -- lf n gads props = Widget $ do
 --     -- make sure the react id is unique amongst siblings
@@ -240,7 +232,7 @@ displayModel mdl = do
 --     )
 --     => J.JSString-- ^ eg "div" or "input"
 --     -> DL.DList (Gadget m ())
---     -> DL.DList (J.JSString, MetaReader s JE.JSRep)
+--     -> DL.DList (J.JSString, MetaReader s J.JSVal)
 --     -- Gadget are guaranteed not to 'appendWindow' or 'modifyReactId',
 --     -- and only contains a single trigger each.
 --     -> Widget m a
@@ -279,19 +271,19 @@ displayModel mdl = do
 -- keyProperty :: ReactId -> JE.Property
 -- keyProperty k = ("key", JE.toJSRep . J.pack $ show k)
 
--- bindListenerContext :: JE.JSRep -> J.Callback (J.JSVal -> J.JSVal -> IO ()) -> JE.JSRep
+-- bindListenerContext :: J.JSVal -> J.Callback (J.JSVal -> J.JSVal -> IO ()) -> J.JSVal
 -- bindListenerContext = js_bindListenerContext
 
 -- #ifdef __GHCJS__
 
 -- foreign import javascript unsafe
 --     "$r = function(j) { $2($1, j) };"
---     js_bindListenerContext :: JE.JSRep -> J.Callback (J.JSVal -> J.JSVal -> IO ()) -> JE.JSRep
+--     js_bindListenerContext :: J.JSVal -> J.Callback (J.JSVal -> J.JSVal -> IO ()) -> J.JSVal
 
 -- #else
 
--- js_bindListenerContext :: JE.JSRep -> J.Callback (J.JSVal -> J.JSVal -> IO ()) -> JE.JSRep
--- js_bindListenerContext _ _ = JE.JSRep J.nullRef
+-- js_bindListenerContext :: J.JSVal -> J.Callback (J.JSVal -> J.JSVal -> IO ()) -> J.JSVal
+-- js_bindListenerContext _ _ = J.JSVal J.nullRef
 
 
 -- #endif

@@ -53,14 +53,14 @@ appendMarkup a = modifyMarkup (*> a)
 
 -- | The parameters required to create a branch ReactElement with children
 data BranchParam = BranchParam
-    JE.JSRep
-    (DL.DList (J.JSString, JE.JSRep))
+    J.JSVal
+    (DL.DList (J.JSString, J.JSVal))
     (DL.DList ReactMarkup)
 
 -- | The parameters required to create a leaf ReactElement (no children)
 data LeafParam = LeafParam
-    JE.JSRep
-    (DL.DList (J.JSString, JE.JSRep))
+    J.JSVal
+    (DL.DList (J.JSString, J.JSVal))
 
 data ReactMarkup
     = ElementMarkup Z.ReactElement
@@ -110,8 +110,8 @@ rawTextMarkup n = modifyMarkup (`DL.snoc` RawTextMarkup n)
 -- "If an attribute/prop is duplicated the last one defined wins."
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
 leafMarkup :: PutMarkup m
-    => JE.JSRep
-    -> (DL.DList (J.JSString, JE.JSRep))
+    => J.JSVal
+    -> (DL.DList (J.JSString, J.JSVal))
     -> m ()
 leafMarkup n props = modifyMarkup (`DL.snoc` LeafMarkup (LeafParam n props))
 
@@ -142,8 +142,8 @@ withMarkup f childs = do
 -- "If an attribute/prop is duplicated the last one defined wins."
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
 branchMarkup :: PutMarkup m
-    => JE.JSRep
-    -> (DL.DList (J.JSString, JE.JSRep))
+    => J.JSVal
+    -> (DL.DList (J.JSString, J.JSVal))
     -> m a
     -> m a
 branchMarkup n props = withMarkup (\childs' ms -> ms `DL.snoc` BranchMarkup (BranchParam n props childs'))

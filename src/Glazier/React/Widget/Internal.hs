@@ -22,7 +22,7 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as M
 import qualified GHC.Generics as G
 import Glazier.React.Markup
-import Glazier.React.ReactId.Internal
+import Glazier.React.ReactId
 import Glazier.React.Model
 import qualified JavaScript.Extras as JE
 

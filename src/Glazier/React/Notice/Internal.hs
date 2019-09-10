@@ -27,11 +27,11 @@ import qualified JavaScript.Extras as JE
 -- All relevant data from the 'Notice' must be consumed as soon you get one.
 -- That is, 'Notice' must only be used in the first part of 'handleEvent'.
 -- It is not an instance of NFData and so cannot be returned into the second lazy part of 'handleEvent'
-newtype Notice = Notice JE.JSRep -- not J.JSVal so the show instance is more useful
+newtype Notice = Notice J.JSVal -- not J.JSVal so the show instance is more useful
     deriving (G.Generic, Show)
 
 instance JE.FromJS Notice where
-    fromJS a | js_isNotice a = Just $ Notice $ JE.JSRep a
+    fromJS a | js_isNotice a = Just $ Notice a
     fromJS _ = Nothing
 
 preventDefault :: Notice -> IO ()

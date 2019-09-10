@@ -14,7 +14,6 @@ import qualified GHCJS.Types as J
 import Glazier.React.EventTarget.Internal
 import Glazier.React.NativeEvent.Internal
 import Glazier.React.Notice.Internal
-import qualified JavaScript.Extras as JE
 
 -- | Every `Notice` can be parsed to an `SyntheticEvent`.
 -- 'SyntheticEvent' must only be used in the first part of 'handleEvent'.
@@ -38,16 +37,16 @@ instance NFData SyntheticEvent
 -- within the strict part of 'handleEventM'
 -- the Notice is effectively immutable.
 toSyntheticEvent :: Notice -> SyntheticEvent
-toSyntheticEvent (Notice (JE.JSRep evt)) =
+toSyntheticEvent (Notice evt) =
     SyntheticEvent
     { bubbles = unsafeGetProperty evt "bubbles"
     , cancelable = unsafeGetProperty evt "cancelable"
-    , currentTarget = EventTarget $ JE.JSRep $ unsafeGetProperty evt "currentTarget"
+    , currentTarget = EventTarget $ unsafeGetProperty evt "currentTarget"
     , defaultPrevented = unsafeGetProperty evt "defaultPrevented"
     , eventPhase = unsafeGetProperty evt "eventPhase"
     , isTrusted = unsafeGetProperty evt "isTrusted"
-    , nativeEvent = NativeEvent $ JE.JSRep $ evt
-    , target = EventTarget $ JE.JSRep $ unsafeGetProperty evt "target"
+    , nativeEvent = NativeEvent $ evt
+    , target = EventTarget $ unsafeGetProperty evt "target"
     , timeStamp = unsafeGetProperty evt "timeStamp"
     , eventType = unsafeGetProperty evt "type"
     }

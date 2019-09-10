@@ -18,13 +18,13 @@
 module Glazier.React.Model where
 
 -- import Control.Lens
-import Control.Applicative
+-- import Control.Applicative
 import Control.Lens.Misc
 import Control.Monad.Context
-import Control.Monad.IO.Class
+-- import Control.Monad.IO.Class
 import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
-import Control.Monad.Trans.Extras
+-- import Control.Monad.Trans.Extras
 -- import Data.Foldable
 import Data.IORef
 -- import qualified Data.Map.Strict as M
@@ -232,26 +232,28 @@ type AskPlanWeakRef = MonadAsk (WeakRef Plan)
 askPlanWeakRef :: AskPlanWeakRef m => m (WeakRef Plan)
 askPlanWeakRef = askContext
 
--- type AskPlan = MonadAsk Plan
-askPlan :: (MonadIO m, Alternative m, AskPlanWeakRef m) => m Plan
-askPlan = do
-    wk <- askPlanWeakRef
-    ref <- maybeM . liftIO $ deRefWeak wk
-    liftIO $ readIORef ref
+-- -- type AskPlan = MonadAsk Plan
+-- readPlan :: (MonadIO m, Alternative m, AskPlanWeakRef m) => m Plan
+-- readPlan = do
+--     wk <- askPlanWeakRef
+--     ref <- maybeM . liftIO $ deRefWeak wk
+--     liftIO $ readIORef ref
 
 -- | Avoids ambiguous types for 'askModel' and 'askModelWeakRef'
 newtype Model s = Model { getModel :: s }
+
 type AskModelWeakRef s = MonadAsk (Model (WeakRef s))
 askModelWeakRef :: AskModelWeakRef s m => m (WeakRef s)
 askModelWeakRef = getModel <$> askContext
 
--- type AskModel s = MonadAsk (Model s)
-askModel :: (MonadIO m, Alternative m, AskModelWeakRef s m) => m s
-askModel = do
-    wk <- askModelWeakRef
-    ref <- maybeM . liftIO $ deRefWeak wk
-    liftIO $ readIORef ref
-
+type AskModel s = MonadAsk (Model s)
+askModel :: AskModel s m => m s
+askModel = getModel <$> askContext
+-- readModel :: (MonadIO m, Alternative m, AskModelWeakRef s m) => m s
+-- readModel = do
+--     wk <- askModelWeakRef
+--     ref <- maybeM . liftIO $ deRefWeak wk
+--     liftIO $ readIORef ref
 
 -- | We can get the loglevel from a PlanWeakRef
 instance {-# OVERLAPPING #-} Monad m => MonadAsk (IO (Maybe LogLevel)) (ReaderT (WeakRef Plan) m) where

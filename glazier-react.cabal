@@ -32,7 +32,7 @@ library
                        Glazier.React.Notice.Internal
                        Glazier.React.ReactDOM
                        Glazier.React.ReactId
-                       Glazier.React.ReactId.Internal
+                      --  Glazier.React.ReactId.Internal
                        Glazier.React.Reactor
                        Glazier.React.Reactor.Exec
                       --  Glazier.React.Obj

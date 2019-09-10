@@ -18,7 +18,7 @@ import qualified JavaScript.Extras as JE
 
 -- | Returns a reference to the javascript *class* definition
 -- of the shim wrapper around ReactPureComponent
-newtype ShimComponent = ShimComponent JE.JSRep
+newtype ShimComponent = ShimComponent J.JSVal
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
 -- | This returns the javascript class definition of ShimComponent.
@@ -31,18 +31,18 @@ rerenderShim :: ShimRef -> IO ()
 rerenderShim = js_rerenderShim
 
 -- | This is used store the react "ref" to a javascript instance of a react Component.
-newtype ShimRef = ShimRef JE.JSRep
+newtype ShimRef = ShimRef J.JSVal
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
 instance JE.FromJS ShimRef where
-    fromJS a | js_isReactComponent a = Just $ ShimRef $ JE.JSRep a
+    fromJS a | js_isReactComponent a = Just $ ShimRef a
     fromJS _ = Nothing
 
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
   "$r = hgr$shimComponent();"
-  js_shimComponent :: JE.JSRep
+  js_shimComponent :: J.JSVal
 
 -- !!blah is javascript way of converting to bool
 -- using undocumented api to check if something is react component
@@ -57,8 +57,8 @@ foreign import javascript unsafe
 
 #else
 
-js_shimComponent :: JE.JSRep
-js_shimComponent = JE.JSRep J.nullRef
+js_shimComponent :: J.JSVal
+js_shimComponent = J.nullRef
 
 js_isReactComponent :: J.JSVal -> Bool
 js_isReactComponent _ = False

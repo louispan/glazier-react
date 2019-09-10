@@ -15,6 +15,7 @@
 
 module Glazier.React.Reactor where
 
+import qualified Data.Map.Strict as M
 import Control.Also
 import Control.Applicative
 import Control.DeepSeq
@@ -34,6 +35,8 @@ import Data.IORef
 import qualified Data.JSString as J
 import qualified Data.List.NonEmpty as NE
 import Data.Maybe
+import Data.Proxy
+import Data.String
 import qualified Data.Text as T
 import GHC.Stack
 import qualified GHCJS.Foreign.Callback as J
@@ -56,14 +59,14 @@ import qualified JavaScript.Extras as JE
 type CmdReactor c =
     ( Cmd' [] c -- required by 'command_'
     , Cmd' Reactor c
-    , Cmd LogLine c
+    , Cmd (LogLine J.JSString) c
     )
 
 -- | Change model logic
 -- type BenignState s = StateT s IO
 
 -- | Doesn't need to know about the model @s@
-type MonadReactor c m = (Cmd' [] c, CmdReactor c, Alternative m, Also () m, MonadCommand c m, AskLogLevel m) -- AskPlanWeakRef, AskReactId m)
+type MonadReactor c m = (Cmd' [] c, CmdReactor c, Alternative m, Also () m, Logger J.JSString c m) -- AskPlanWeakRef, AskReactId m)
 
 -- | Needs to know about the model @s@ and also modifies markup
 -- type MonadWidget c s m = (MonadGadget c s m, AskModelWeakRef s m) --, PutReactId m, PutMarkup m)
@@ -76,7 +79,7 @@ data Reactor c where
     -- MkReactId :: NE.NonEmpty J.JSString -> (ReactId -> c) -> Reactor c
 
     -- MkEventHandler :: NFData a
-    --     => (JE.JSRep -> MaybeT IO a)
+    --     => (J.JSVal -> MaybeT IO a)
     --     -> (a -> c)
     --     -> ((J.JSVal -> IO (), IO ()) -> c)
     --     -> Reactor c
@@ -107,10 +110,10 @@ data Reactor c where
     -- so that it will be relatively efficient to use this function on every rerender.
     MkHandler :: NFData a
         => WeakRef Plan
-        -> (JE.JSRep -> MaybeT IO a)
+        -> (J.JSVal -> MaybeT IO a)
         -> (a -> c)
         -- (preprocess, postprocess)
-        -> ((JE.JSRep -> IO (), IO ()) -> c)
+        -> ((J.JSVal -> IO (), IO ()) -> c)
         -> Reactor c
 
     -- | Turn processor into a 'J.Callback'
@@ -119,7 +122,7 @@ data Reactor c where
     MkCallback ::
         WeakRef Plan
         -- (preprocess, postprocess)
-        -> (JE.JSRep -> IO (), IO ())
+        -> (J.JSVal -> IO (), IO ())
         -> (J.Callback (J.JSVal -> IO ()) -> c)
         -> Reactor c
 
@@ -182,9 +185,9 @@ data Reactor c where
     -- -- | Create and register a dom callback
     -- RegisterDOMListener :: NFData a
     --     => WeakModelRef s
-    --     -> JE.JSRep
+    --     -> J.JSVal
     --     -> J.JSString
-    --     -> (JE.JSRep -> MaybeT IO a)
+    --     -> (J.JSVal -> MaybeT IO a)
     --     -> (a -> c)
     --     -> Reactor c
 
@@ -195,7 +198,7 @@ data Reactor c where
     --     => WeakRef Plan
     --     -> ReactId
     --     -> J.JSString
-    --     -> (JE.JSRep -> MaybeT IO a)
+    --     -> (J.JSVal -> MaybeT IO a)
     --     -> (a -> c)
     --     -> Reactor c
 
@@ -223,7 +226,7 @@ data Reactor c where
     --     -> (ReactId -> c)
     --     -> Reactor c
 
-instance ShowIO (Reactor c) where
+instance (IsString str, Semigroup str) => ShowIO str (Reactor c) where
     -- showsPrecIO p (MkReactId s _) = textParen (p >= 11) $
     --     "MkReactId " <> showIO s
     showsPrecIO p (MkHandler this _ _ _) = showParenIO (p >= 11) $ ("MkHandler " <>) <$> (showIO this)
@@ -233,7 +236,7 @@ instance ShowIO (Reactor c) where
     -- showsPrec _ (GetReactRef _ _ _) = showString "GetReactRef"
     showsPrecIO p (ScheduleRerender this) = showParenIO (p >= 11) $ ("ScheduleRerender " <>) <$> (showIO this)
     showsPrecIO p (RerenderNow this) = showParenIO (p >= 11) $ ("RerenderNow " <>) <$> (showIO this)
-    showsPrecIO p (Mutate _ r _) = showParenIO (p >= 11) $ pure $ "Mutate " <> (T.pack $ show r)
+    showsPrecIO p (Mutate _ r _) = showParenIO (p >= 11) $ pure $ "Mutate " <> (fromString $ show r)
     -- showsPrec p (NotifyMutated _ k) = showParen (p >= 11) $
     --     showString "NotifyMutated " . shows k
     -- showsPrec p (ResetMutation _ k) = showParen (p >= 11) $
@@ -248,6 +251,37 @@ instance ShowIO (Reactor c) where
     -- showsPrec _ (RegisterMutatedListener _ _) = showString "RegisterMutatedListener"
 -- FIXME: Forgot onMounted, onUnMounted
 
+
+
+
+logLineJS :: Logger J.JSString c m
+    => LogLevel -> CallStack -> IO J.JSString
+    -> m ()
+logLineJS = logLine (Proxy @J.JSString)
+
+logExecJS :: (ShowIO J.JSString cmd, Cmd cmd c, Logger J.JSString c m)
+    => LogLevel -> CallStack -> cmd -> m ()
+logExecJS = logExec (Proxy @J.JSString)
+
+logExecJS' :: (ShowIO J.JSString (cmd c), Cmd' cmd c, Logger J.JSString c m)
+    => LogLevel -> CallStack -> cmd c -> m ()
+logExecJS' = logExec' (Proxy @J.JSString)
+
+logEvalJS :: (ShowIO J.JSString cmd, Cmd cmd c, Logger J.JSString c m)
+    => LogLevel -> CallStack -> ((a -> c) -> cmd) -> m a
+logEvalJS = logEval (Proxy @J.JSString)
+
+logEvalJS' :: (ShowIO J.JSString (cmd c), Cmd' cmd c, Logger J.JSString c m)
+    => LogLevel -> CallStack -> ((a -> c) -> cmd c) -> m a
+logEvalJS' = logEval' (Proxy @J.JSString)
+
+logInvokeJS :: (ShowIO J.JSString (cmd c), Cmd' cmd c, Functor cmd, Logger J.JSString c m)
+    => LogLevel -> CallStack -> cmd a -> m a
+logInvokeJS = logInvoke (Proxy @J.JSString)
+
+logInvokeJS_ :: (ShowIO J.JSString (cmd c), Cmd' cmd c, Cmd' [] c, Functor cmd, Logger J.JSString c m)
+    => LogLevel -> CallStack -> cmd () -> m ()
+logInvokeJS_ = logInvoke_ (Proxy @J.JSString)
 
 ------------------------------------------------------
 -- Basic
@@ -274,7 +308,7 @@ instance ShowIO (Reactor c) where
 mkObj :: (HasCallStack, MonadReactor c m)
     => Widget c s () -> NE.NonEmpty J.JSString -> s -> m (Obj s)
 mkObj wid logname s = delegatify $ \f -> do
-    logExec' TRACE callStack $ MkObj wid logname s f
+    logExec' (Proxy @J.JSString) TRACE callStack $ MkObj wid logname s f
 
 ------------------------------------------------------
 -- MonadUnliftWidget
@@ -304,7 +338,7 @@ unliftMkObj m logname s = do
 rerender :: (HasCallStack, MonadReactor c m, AskPlanWeakRef m) => m ()
 rerender = do
     this <- askPlanWeakRef
-    logExec' TRACE callStack $ ScheduleRerender this
+    logExecJS' TRACE callStack $ ScheduleRerender this
 
 ------------------------------------------------------
 -- MonadGadget
@@ -330,7 +364,7 @@ mutate = mutate_ RerenderRequired
 mutate_ :: (HasCallStack, MonadReactor c m, AskModelWeakRef s m) => Rerender -> StateT s IO () -> m ()
 mutate_ r m = do
     this <- askModelWeakRef
-    logExec' TRACE callStack $ Mutate this r (command_ <$> m)
+    logExecJS' TRACE callStack $ Mutate this r (command_ <$> m)
 
 -- | 'mutateThen_' with 'RerenderRequired'
 mutateThen :: (HasCallStack, MonadReactor c m, AskModelWeakRef s m) => StateT s IO (m a) -> m a
@@ -345,7 +379,7 @@ mutateThen_ r m = do
         let f n = n >>= fire
         -- f' :: m a -> c
         f' <- codify f
-        logExec' TRACE callStack $ Mutate this r (f' <$> m)
+        logExecJS' TRACE callStack $ Mutate this r (f' <$> m)
 
 -- -- | Same as 'onRendered' but the action only occurs once on the next rerender.
 -- onRenderedOnce ::
@@ -361,14 +395,14 @@ mutateThen_ r m = do
 -- Triggers - MonadGadget')
 ------------------------------------------------------
 
--- -- | Create a callback for a 'JE.JSRep' and add it to this elementals's dlist of listeners.
+-- -- | Create a callback for a 'J.JSVal' and add it to this elementals's dlist of listeners.
 -- -- 'domTrigger' does not expect a 'Notice' as it is not part of React.
 -- -- Contrast with 'trigger' which expects a 'Notice'.
 -- domTrigger ::
 --     (HasCallStack, NFData a, AsReactor c, MonadGadget' c s m)
---     => JE.JSRep
+--     => J.JSVal
 --     -> J.JSString
---     -> (JE.JSRep -> MaybeT IO a)
+--     -> (J.JSVal -> MaybeT IO a)
 --     -> m a
 -- domTrigger j n goStrict = do
 --     obj <- askWeakModelRef
@@ -379,7 +413,7 @@ mutateThen_ r m = do
 -- -- Unlike 'domTrigger' the @a@ does not need to be @NFData a@
 -- domTrigger_ ::
 --     (HasCallStack, AsReactor c, MonadGadget' c s m)
---     => JE.JSRep
+--     => J.JSVal
 --     -> J.JSString
 --     -> a
 --     -> m a
@@ -447,76 +481,40 @@ mutateThen_ r m = do
 -- Triggers - MonadGadget
 ---------------------------
 
--- | This convert the input @goStrict@ and @f@ into two ghcjs 'Callback',
--- a (callback, postprocess).
--- Multiple preprocess callback must be run for the same event before any of the
--- postprocess callback, due to the way ghcjs sync and async threads interact with React js.
+
+-- | This convert the (preprocess, postprocess) into a ghcjs 'Callback'
+mkCallback ::
+    (HasCallStack, MonadReactor c m, AskPlanWeakRef m)
+    => (J.JSVal -> IO (), IO ())
+    -> m (J.Callback (J.JSVal -> IO ()))
+mkCallback f = do
+    plnRef <- askPlanWeakRef
+    delegatify $ \k ->
+        logExecJS' TRACE callStack $ MkCallback plnRef f k
+
+-- | This convert the input @goStrict@ and @f@ into (preprocess, postprocess).
+-- Multiple preprocess must be run for the same event before any of the postprocess,
+-- due to the way ghcjs sync and async threads interact with React js.
 mkHandler ::
     (HasCallStack, NFData a, MonadReactor c m, AskPlanWeakRef m)
-    => (JE.JSRep -> MaybeT IO a)
+    => (J.JSVal -> MaybeT IO a)
     -> (a -> m ())
-    -> m (JE.JSRep -> IO (), IO ()) -- (preprocess, postprocess)
+    -> m (J.JSVal -> IO (), IO ()) -- (preprocess, postprocess)
 mkHandler goStrict f = do
     plnRef <- askPlanWeakRef
     f' <- codify f
     delegatify $ \k -> do
-        logExec' TRACE callStack $ MkHandler plnRef goStrict f' k
+        logExecJS' TRACE callStack $ MkHandler plnRef goStrict f' k
 
-handleNotice :: Monad m => (Notice -> MaybeT m a) -> (JE.JSRep -> MaybeT m a)
-handleNotice g j = MaybeT (pure $ JE.fromJSRep j) >>= g
+handleNotice :: Monad m => (Notice -> MaybeT m a) -> (J.JSVal -> MaybeT m a)
+handleNotice g j = MaybeT (pure $ JE.fromJS j) >>= g
 
 mkNoticeHandler ::
     (HasCallStack, NFData a, MonadReactor c m, AskPlanWeakRef m)
     => (Notice -> MaybeT IO a)
     -> (a -> m ())
-    -> m (JE.JSRep -> IO (), IO ()) -- (preprocess, postprocess)
+    -> m (J.JSVal -> IO (), IO ()) -- (preprocess, postprocess)
 mkNoticeHandler goStrict goLazy = mkHandler (handleNotice goStrict) goLazy
-
--- -- | Create a callback for a 'JE.JSRep' and add it to this reactant's dlist of listeners.
--- -- Consider using the other callbacks because all react listeners result in 'Notice'.
--- trigger' ::
---     (HasCallStack, NFData a, MonadReactor c m, AskPlanWeakRef m, AskReactId m)
---     => J.JSString
---     -> (JE.JSRep -> MaybeT IO a)
---     -> (a -> m b)
---     -> m b
--- trigger' n goStrict f = do
---     obj <- askPlanWeakRef
---     i <- askReactId
---     a <- delegatify $ \k -> do
---         logExec' TRACE callStack $ RegisterReactListener obj i n goStrict k
---     f a
-
--- -- | Create a callback for a 'Notice' and add it to this elementals's dlist of listeners.
--- -- Contrast with 'domTrigger' which expects a 'JE.JSRep'.
--- trigger ::
---     (HasCallStack, NFData a, AsReactor c, MonadReactor c m)
---     => J.JSString
---     -> (Notice -> MaybeT IO a)
---     -> (a -> m b)
---     -> m b
--- trigger n goStrict k = trigger' n (handlesNotice goStrict) k
---   where
---     handlesNotice :: (Notice -> MaybeT IO a) -> (JE.JSRep -> MaybeT IO a)
---     handlesNotice g j = MaybeT (pure $ JE.fromJSRep j) >>= g
-
--- -- | A variation of 'trigger' which ignores the event but fires the given arg instead.
--- -- Unlike 'trigger' the @a@ does not need to be @NFData a@
--- trigger_ ::
---     (HasCallStack, AsReactor c, MonadReactor c m)
---     => J.JSString
---     -> a
---     -> (a -> m b)
---     -> m b
--- trigger_ n a k =
---     -- using trigger' to bypass conversion to 'Notice' in 'trigger'
---     runGadget $ trigger' n (const $ pure ()) (const $ k a)
-
--- trigger2 ::
---     (HasCallStack, NFData a, AsReactor c, MonadGadget c s m)
---     => J.JSString
---     -> (Notice -> MaybeT IO a)
---     -> (a -> m ())
 
 -- | Orphan instance because it requires AsReactor
 -- LOUISFIXME: Think about this, use ReaderT (s -> Either e Obj s)?
@@ -535,3 +533,50 @@ mkNoticeHandler goStrict goLazy = mkHandler (handleNotice goStrict) goLazy
 
 
 ----------------------------------------------------------------------------------
+
+lf ::
+    ( PutMarkup m
+    , PutReactId m
+    , AskModel s m
+    , AskPlanWeakRef m
+    , MonadReactor c m
+    )
+    => J.JSString-- ^ eg "div" or "input"
+    -> DL.DList (J.JSString, m (J.JSVal -> IO (), IO ()))
+    -> DL.DList (J.JSString, Getting J.JSVal s J.JSVal)
+    -> m ()
+lf n gads props = do
+    s <- askModel
+    putNextReactId n
+    gads' <- traverse sequenceA (DL.toList gads)
+    let gads'' = M.fromListWith (<>) gads'
+    gads''' <- traverse mkCallback gads''
+    leafMarkup (JE.toJS n)
+        (((fmap (`view` s)) <$> props)
+            <> (DL.fromList . M.toList $ JE.toJS <$> gads'''))
+
+bh ::
+    ( PutMarkup m
+    , PutReactId m
+    , AskModel s m
+    , AskPlanWeakRef m
+    , MonadReactor c m
+    )
+    => J.JSString-- ^ eg "div" or "input"
+    -> DL.DList (J.JSString, m (J.JSVal -> IO (), IO ()))
+    -> DL.DList (J.JSString, Getting J.JSVal s J.JSVal)
+    -> m a
+    -> m a
+bh n gads props children = do
+    s <- askModel
+    putNextReactId n
+    gads' <- traverse sequenceA (DL.toList gads)
+    let gads'' = M.fromListWith (<>) gads'
+    gads''' <- traverse mkCallback gads''
+    putPushReactId
+    a <- branchMarkup (JE.toJS n)
+        (((fmap (`view` s)) <$> props)
+            <> (DL.fromList . M.toList $ JE.toJS <$> gads'''))
+        children
+    putPopReactId
+    pure a

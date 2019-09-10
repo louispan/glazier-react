@@ -18,11 +18,11 @@ import qualified JavaScript.Extras as JE
 -- | The native event
 -- https://developer.mozilla.org/en-US/docs/Web/API/Event
 newtype NativeEvent =
-    NativeEvent JE.JSRep -- not J.JSVal so the show instance is more useful
+    NativeEvent J.JSVal
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
 instance JE.FromJS NativeEvent where
-    fromJS a | js_isNativeEvent a = Just $ NativeEvent $ JE.JSRep a
+    fromJS a | js_isNativeEvent a = Just $ NativeEvent a
     fromJS _ = Nothing
 
 #ifdef __GHCJS__

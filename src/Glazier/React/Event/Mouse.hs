@@ -13,7 +13,6 @@ import qualified GHC.Generics as G
 import qualified GHCJS.Types as J
 import Glazier.React.EventTarget.Internal
 import Glazier.React.Notice.Internal
-import qualified JavaScript.Extras as JE
 
 -- | Mouse and Drag/Drop events
 -- 'MouseEvent' must only be used in the first part of 'handleEvent'.
@@ -48,7 +47,7 @@ instance NFData MouseEvent
 -- within the strict part of 'handleEventM'
 -- the Notice is effectively immutable.
 toMouseEvent :: Notice -> Maybe MouseEvent
-toMouseEvent (Notice (JE.JSRep evt)) | js_isMouseEvent (unsafeGetProperty evt "nativeEvent") = Just $
+toMouseEvent (Notice evt) | js_isMouseEvent (unsafeGetProperty evt "nativeEvent") = Just $
     MouseEvent
     { altKey = unsafeGetProperty evt "altKey"
     , button = unsafeGetProperty evt "button"
@@ -60,7 +59,7 @@ toMouseEvent (Notice (JE.JSRep evt)) | js_isMouseEvent (unsafeGetProperty evt "n
     , metaKey = unsafeGetProperty evt "metaKey"
     , pageX = unsafeGetProperty evt "pageX"
     , pageY = unsafeGetProperty evt "pageY"
-    , relatedTarget = EventTarget $ JE.JSRep $ unsafeGetProperty evt "relatedTarget"
+    , relatedTarget = EventTarget $ unsafeGetProperty evt "relatedTarget"
     , screenX = unsafeGetProperty evt "screenX"
     , screenY = unsafeGetProperty evt "xcreenY"
     , shiftKey = unsafeGetProperty evt "shiftKey"

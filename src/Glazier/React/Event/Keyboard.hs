@@ -12,7 +12,6 @@ import Control.DeepSeq
 import qualified GHC.Generics as G
 import qualified GHCJS.Types as J
 import Glazier.React.Notice.Internal
-import qualified JavaScript.Extras as JE
 import Prelude hiding (repeat)
 
 -- | Keyboard events
@@ -42,7 +41,7 @@ instance NFData KeyboardEvent
 -- within the strict part of 'handleEventM'
 -- the Notice is effectively immutable.
 toKeyboardEvent :: Notice -> Maybe KeyboardEvent
-toKeyboardEvent (Notice (JE.JSRep evt)) | js_isKeyboardEvent (unsafeGetProperty evt "nativeEvent") = Just $
+toKeyboardEvent (Notice evt) | js_isKeyboardEvent (unsafeGetProperty evt "nativeEvent") = Just $
     KeyboardEvent
     { altKey = unsafeGetProperty evt "altKey"
     , charCode = unsafeGetProperty evt "charCode"
