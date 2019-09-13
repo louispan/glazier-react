@@ -31,16 +31,15 @@ library
                        Glazier.React.Notice
                        Glazier.React.Notice.Internal
                        Glazier.React.ReactDOM
-                       Glazier.React.ReactId
-                      --  Glazier.React.ReactId.Internal
                        Glazier.React.Reactor
                        Glazier.React.Reactor.Exec
                       --  Glazier.React.Obj
                        Glazier.React.Model
+                       Glazier.React.Plan
                        Glazier.React.Shim
                        Glazier.React.Shim.Internal
+                       Glazier.React.Type
                        Glazier.React.Widget
-                      --  Glazier.React.Widget.Internal
   build-depends:       base >= 4.9.0 && < 5
                      , aeson >= 1.4.2.0
                      , aeson-applicative >= 1.4

@@ -1,22 +1,21 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Glazier.React.Widget where
     -- ( Window
@@ -34,49 +33,45 @@ module Glazier.React.Widget where
     -- , lf
     -- , bh
     -- ) where
-
-import Control.Lens
 import Control.Monad.Cont
 import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Extras
-import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Identity
+import Control.Monad.Trans.Maybe
 import qualified Data.DList as DL
 import Data.IORef
-import qualified Data.JSString as J
+import Data.Tagged.Extras
 import Glazier.Command
+import Glazier.React.Plan
 import Glazier.React.Markup
-import Glazier.React.Model
-import Glazier.React.ReactId
 import Glazier.React.Shim
+import Glazier.React.Type
 import qualified JavaScript.Extras as JE
 import System.Mem.Weak
-
--- type MetaReader s = MaybeT (ReaderT s (Benign IO))
--- type BIOReader s = ReaderT s (Benign IO)
 
 -- | 'Gizmo' is an instance of 'MonadWidget'
 -- Gizmo contains the effects (eg register listener)
 -- as well as the html for rendering.
 -- It is expected that the interpreter of the Gizmo will add a final effect
 -- which is to set the final html for the component.
+-- FIXME: onMounted/unmounted listeners are registered via a Observer ReaderT (c -> IO ()) as part of Widget stack
 type Widget c s =
     ReaderT (WeakRef Plan) -- 'AskPlanWeakRef', 'AskLogLevel'
-    (ReaderT (Model (WeakRef s)) -- 'AskModelWeakRef'
-    (ReaderT (Model s) -- 'AskModel'
+    (ReaderT (Tagged "Model" (WeakRef s)) -- 'AskModelWeakRef'
+    (ReaderT (Tagged "Model" s) -- 'AskModel'
     (MaybeT -- 'Alternative'
     (ContT () -- 'MonadDelegate'
-    -- State monads must be after MonadDelegate
-    (StateT (ReactId) -- 'PutReactId'
+    -- State monads must be inside ContT to be 'MonadDelegate'
+    -- (StateT (ReactId) -- 'PutReactId'
     (StateT (DL.DList ReactMarkup) -- 'PutMarkup'
     (ProgramT c IO -- 'MonadComand', 'MonadIO'
-    )))))))
+    ))))))
 
-wack :: Lens' s Bool -> Widget c s Bool
-wack lns = do
-    s <- askModel
-    pure $ s ^.lns
+-- wack :: Lens' s Bool -> Widget c s Bool
+-- wack lns = do
+--     s <- askModel
+--     pure $ s ^.lns
 
 
 -- | ALlow additional user ReaderT and IdentityT stack on top of Widget c s
@@ -98,32 +93,6 @@ instance (Functor m, MonadUnliftWidget c s m) => MonadUnliftWidget c s (ReaderT 
 instance (Functor m, MonadUnliftWidget c s m) => MonadUnliftWidget c s (IdentityT m) where
     askUnliftWidget = IdentityT $
         (\u -> UniftWidget (unliftWidget u . runIdentityT)) <$> askUnliftWidget
-
--- newtype Widget m a = Widget (m a)
---     deriving
---         (Monad
---         , Functor
---         , Applicative
---         , Alternative
---         , MonadAsk r
---         , MonadPut s
---         , MonadProgram c
---         , MonadCodify c
---         , MonadBenignIO
---         )
-
--- wock :: forall s m. (MonadBenignIO m, PutMarkup m, AskPlanWeakRef m) => m ()
--- wock _ = do
---     obj <- askWeakModelRef @s
---     displayWeakModelRef obj
-
--- wack :: forall c s. Gizmo c s ()
--- wack = wock (Proxy @s)
-
--- wack2 :: Widget c s ()
--- wack2 = wock
-
--- FIMXE: Add instances of Gizmo for Widget wrapper
 
 -- | get soemthing from the model as a property
 -- prop :: (JE.ToJS a, AskModel s m) => Getting a s a -> m J.JSVal
@@ -164,29 +133,24 @@ displayPlanRef mdlRef = do
     displayPlan mdl
 
 displayPlan :: PutMarkup m => Plan -> m ()
-displayPlan mdl = do
-    -- mdl <- liftBenignIO $ Benign $ readIORef obj
-    let scb = mdl ^. _shimCallbacks
+displayPlan pln = do
+    let scb = shimCallbacks pln
         renderCb = shimOnRender scb
-        mountedCb = shimOnMounted scb
-        renderedCb = shimOnRendered scb
         refCb = shimOnRef scb
-        i = mdl ^. _planId
+        mountedCb = shimOnMounted scb
+        unmountedCb = shimOnUnmounted scb
+        renderedCb = shimOnRendered scb
+        n = logName pln
     -- These are the callbacks on the 'ShimComponent'
     -- See jsbits/react.js
     leafMarkup (JE.toJS shimComponent)
-        [ ("key", JE.toJS . J.pack $ show i)
+        [ ("key", JE.toJS $ untag' @"LogName" n)
         , ("render", JE.toJS renderCb)
-        , ("mounted", JE.toJS mountedCb)
-        , ("rendered", JE.toJS renderedCb)
         , ("ref", JE.toJS refCb)
+        , ("mounted", JE.toJS mountedCb)
+        , ("unmounted", JE.toJS unmountedCb)
+        , ("rendered", JE.toJS renderedCb)
         ]
-
--- | write some text from the model. Use 'like' to 'const' a string instead.
-rawTxt :: (PutMarkup m, AskModel s m) => Getting J.JSString s J.JSString -> m ()
-rawTxt lns = do
-    s <- askModel
-    rawTextMarkup $ s ^. lns
 
 -- data Prop = forall a. JE.ToJS a => Prop a
 

@@ -25,17 +25,12 @@ module Glazier.React.Markup
     , rawTextMarkup
     , leafMarkup
     , branchMarkup
-    -- , withMarkup
-    -- , modifyMarkup
-    -- , overSurfaceProperties
-    -- , overAllProperties
     ) where
 
 import Control.Monad.Context
 import qualified Data.DList as DL
 import qualified GHCJS.Types as J
 import qualified Glazier.React.Element as Z
-import qualified JavaScript.Extras as JE
 
 type AskMarkup m = MonadAsk (DL.DList ReactMarkup) m
 askMarkup :: AskMarkup m => m (DL.DList ReactMarkup)

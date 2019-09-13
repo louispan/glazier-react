@@ -20,42 +20,28 @@ import Control.Also
 import Control.Applicative
 import Control.DeepSeq
 import Control.Lens
-import Control.Monad.Cont
-import Control.Monad.Context
 import Control.Monad.Delegate
-import Control.Monad.Reader
 import Control.Monad.State.Strict
-import Control.Monad.Trans.Extras
-import Control.Monad.Trans.Identity
 import Control.Monad.Trans.Maybe
-import Data.Diverse.Lens
 import qualified Data.DList as DL
-import Data.Function.Extras
-import Data.IORef
 import qualified Data.JSString as J
-import qualified Data.List.NonEmpty as NE
-import Data.Maybe
 import Data.Proxy
 import Data.String
-import qualified Data.Text as T
 import GHC.Stack
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
 import Glazier.Command
 import Glazier.Logger
-import Glazier.React.EventTarget
+import Glazier.React.Plan
 import Glazier.React.Markup
 import Glazier.React.Model
 import Glazier.React.Notice
-import Glazier.React.ReactId
 import Glazier.React.Widget
 import Glazier.ShowIO
-import System.Mem.Weak
--- import Glazier.React.Widget.Internal
+import Glazier.React.Type
 import qualified JavaScript.Extras as JE
 
 -----------------------------------------------------------------
-
 type CmdReactor c =
     ( Cmd' [] c -- required by 'command_'
     , Cmd' Reactor c
@@ -66,7 +52,7 @@ type CmdReactor c =
 -- type BenignState s = StateT s IO
 
 -- | Doesn't need to know about the model @s@
-type MonadReactor c m = (Cmd' [] c, CmdReactor c, Alternative m, Also () m, Logger J.JSString c m) -- AskPlanWeakRef, AskReactId m)
+type MonadReactor c m = (Cmd' [] c, CmdReactor c, Alternative m, Also () m, LoggerJS c m)
 
 -- | Needs to know about the model @s@ and also modifies markup
 -- type MonadWidget c s m = (MonadGadget c s m, AskModelWeakRef s m) --, PutReactId m, PutMarkup m)
@@ -128,11 +114,8 @@ data Reactor c where
 
     -- | Make a fully initialized object from a widget and meta
     -- MkObj :: Widget c s s () -> J.JSString -> s -> (Obj s -> c) -> Reactor c
-    MkObj :: Widget c s () -> NE.NonEmpty J.JSString -> s -> (Obj s -> c) -> Reactor c
+    MkObj :: Widget c s () -> LogNameJS -> s -> (Obj s -> c) -> Reactor c
 
-    -- | Set the the prerendered backbuffer
-    -- SetRender :: WeakObj s -> Window s () -> Reactor c
-    SetPrerendered :: WeakRef Plan -> DL.DList ReactMarkup -> Reactor c
 
     -- Get the event target
     -- If a "ref" callback to update 'elementalRef' has not been added;
@@ -167,7 +150,7 @@ data Reactor c where
 
     -- FIXME:: Get another widget's model in a safe way where this will be registered
     -- as a listener to be notified of mutations
-    GetObjModel :: WeakRef Plan -> WeakObj s -> (s -> c) -> Reactor c
+    -- GetObjModel :: WeakRef Plan -> WeakObj s -> (s -> c) -> Reactor c
 
     -- FIXME: TODO
     -- -- | Private effect used by executor: Calls the meta mutatedListener with 'ReactId'
@@ -229,14 +212,14 @@ data Reactor c where
 instance (IsString str, Semigroup str) => ShowIO str (Reactor c) where
     -- showsPrecIO p (MkReactId s _) = textParen (p >= 11) $
     --     "MkReactId " <> showIO s
-    showsPrecIO p (MkHandler this _ _ _) = showParenIO (p >= 11) $ ("MkHandler " <>) <$> (showIO this)
-    showsPrecIO p (MkObj _ logname _ _) = showParenIO (p >= 11) $ ("MkObj " <>) <$> (showIO logname)
+    showsPrecIO p (MkHandler this _ _ _) = showParenIO (p >= 11) $ (showStr "MkHandler " .) <$> (showsIO this)
+    showsPrecIO p (MkCallback this _ _) = showParenIO (p >= 11) $ (showStr "MkCallback " .) <$> (showsIO this)
+    showsPrecIO p (MkObj _ logname _ _) = showParenIO (p >= 11) $ (showStr "MkObj " .) <$> (showsIO logname)
     -- showsPrec _ (SetRender _ _ ) = showString "SetRender"
-    showsPrecIO p (SetPrerendered this _ ) = showParenIO (p >= 11) $ ("SetPrerendered " <>) <$> (showIO this)
     -- showsPrec _ (GetReactRef _ _ _) = showString "GetReactRef"
-    showsPrecIO p (ScheduleRerender this) = showParenIO (p >= 11) $ ("ScheduleRerender " <>) <$> (showIO this)
-    showsPrecIO p (RerenderNow this) = showParenIO (p >= 11) $ ("RerenderNow " <>) <$> (showIO this)
-    showsPrecIO p (Mutate _ r _) = showParenIO (p >= 11) $ pure $ "Mutate " <> (fromString $ show r)
+    showsPrecIO p (ScheduleRerender this) = showParenIO (p >= 11) $ (showStr "ScheduleRerender " .) <$> (showsIO this)
+    showsPrecIO p (RerenderNow this) = showParenIO (p >= 11) $ (showStr "RerenderNow " .) <$> (showsIO this)
+    showsPrecIO p (Mutate _ r _) = showParenIO (p >= 11) $ pure $ (showStr "Mutate ") . (showFromStr $ show r)
     -- showsPrec p (NotifyMutated _ k) = showParen (p >= 11) $
     --     showString "NotifyMutated " . shows k
     -- showsPrec p (ResetMutation _ k) = showParen (p >= 11) $
@@ -254,32 +237,32 @@ instance (IsString str, Semigroup str) => ShowIO str (Reactor c) where
 
 
 
-logLineJS :: Logger J.JSString c m
+logLineJS :: LoggerJS c m
     => LogLevel -> CallStack -> IO J.JSString
     -> m ()
 logLineJS = logLine (Proxy @J.JSString)
 
-logExecJS :: (ShowIO J.JSString cmd, Cmd cmd c, Logger J.JSString c m)
+logExecJS :: (ShowIOJS cmd, Cmd cmd c, LoggerJS c m)
     => LogLevel -> CallStack -> cmd -> m ()
 logExecJS = logExec (Proxy @J.JSString)
 
-logExecJS' :: (ShowIO J.JSString (cmd c), Cmd' cmd c, Logger J.JSString c m)
+logExecJS' :: (ShowIOJS (cmd c), Cmd' cmd c, LoggerJS c m)
     => LogLevel -> CallStack -> cmd c -> m ()
 logExecJS' = logExec' (Proxy @J.JSString)
 
-logEvalJS :: (ShowIO J.JSString cmd, Cmd cmd c, Logger J.JSString c m)
+logEvalJS :: (ShowIOJS cmd, Cmd cmd c, LoggerJS c m)
     => LogLevel -> CallStack -> ((a -> c) -> cmd) -> m a
 logEvalJS = logEval (Proxy @J.JSString)
 
-logEvalJS' :: (ShowIO J.JSString (cmd c), Cmd' cmd c, Logger J.JSString c m)
+logEvalJS' :: (ShowIOJS (cmd c), Cmd' cmd c, LoggerJS c m)
     => LogLevel -> CallStack -> ((a -> c) -> cmd c) -> m a
 logEvalJS' = logEval' (Proxy @J.JSString)
 
-logInvokeJS :: (ShowIO J.JSString (cmd c), Cmd' cmd c, Functor cmd, Logger J.JSString c m)
+logInvokeJS :: (ShowIOJS (cmd c), Cmd' cmd c, Functor cmd, LoggerJS c m)
     => LogLevel -> CallStack -> cmd a -> m a
 logInvokeJS = logInvoke (Proxy @J.JSString)
 
-logInvokeJS_ :: (ShowIO J.JSString (cmd c), Cmd' cmd c, Cmd' [] c, Functor cmd, Logger J.JSString c m)
+logInvokeJS_ :: (ShowIOJS (cmd c), Cmd' cmd c, Cmd' [] c, Functor cmd, LoggerJS c m)
     => LogLevel -> CallStack -> cmd () -> m ()
 logInvokeJS_ = logInvoke_ (Proxy @J.JSString)
 
@@ -306,7 +289,7 @@ logInvokeJS_ = logInvoke_ (Proxy @J.JSString)
 -- | Make an initialized 'Obj' for a given meta using the given 'Widget'.
 -- Unlike 'unliftMkObj', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
 mkObj :: (HasCallStack, MonadReactor c m)
-    => Widget c s () -> NE.NonEmpty J.JSString -> s -> m (Obj s)
+    => Widget c s () -> LogNameJS -> s -> m (Obj s)
 mkObj wid logname s = delegatify $ \f -> do
     logExec' (Proxy @J.JSString) TRACE callStack $ MkObj wid logname s f
 
@@ -317,7 +300,7 @@ mkObj wid logname s = delegatify $ \f -> do
 -- | Convenient variation of 'mkObj' where the widget is unlifted from the given monad.
 -- This is useful for transformer stacks that require addition MonadReader-like effects.
 unliftMkObj :: (HasCallStack, MonadUnliftWidget c s m, MonadReactor c m)
-    => m () -> NE.NonEmpty J.JSString -> s -> m (Obj s)
+    => m () -> LogNameJS -> s -> m (Obj s)
 unliftMkObj m logname s = do
     u <- askUnliftWidget
     mkObj (unliftWidget u m) logname s
@@ -534,9 +517,15 @@ mkNoticeHandler goStrict goLazy = mkHandler (handleNotice goStrict) goLazy
 
 ----------------------------------------------------------------------------------
 
+-- | write some text from the model. Use 'like' to 'const' a string instead.
+rawTxt :: (PutMarkup m, AskModel s m) => Getting J.JSString s J.JSString -> m ()
+rawTxt lns = do
+    s <- askModel
+    rawTextMarkup $ s ^. lns
+
 lf ::
     ( PutMarkup m
-    , PutReactId m
+    -- , PutReactId m
     , AskModel s m
     , AskPlanWeakRef m
     , MonadReactor c m
@@ -547,7 +536,7 @@ lf ::
     -> m ()
 lf n gads props = do
     s <- askModel
-    putNextReactId n
+    -- putNextReactId n
     gads' <- traverse sequenceA (DL.toList gads)
     let gads'' = M.fromListWith (<>) gads'
     gads''' <- traverse mkCallback gads''
@@ -557,7 +546,7 @@ lf n gads props = do
 
 bh ::
     ( PutMarkup m
-    , PutReactId m
+    -- , PutReactId m
     , AskModel s m
     , AskPlanWeakRef m
     , MonadReactor c m
@@ -567,16 +556,16 @@ bh ::
     -> DL.DList (J.JSString, Getting J.JSVal s J.JSVal)
     -> m a
     -> m a
-bh n gads props children = do
+bh n gads props child = do
     s <- askModel
-    putNextReactId n
+    -- putNextReactId n
     gads' <- traverse sequenceA (DL.toList gads)
     let gads'' = M.fromListWith (<>) gads'
     gads''' <- traverse mkCallback gads''
-    putPushReactId
+    -- putPushReactId
     a <- branchMarkup (JE.toJS n)
         (((fmap (`view` s)) <$> props)
             <> (DL.fromList . M.toList $ JE.toJS <$> gads'''))
-        children
-    putPopReactId
+        child
+    -- putPopReactId
     pure a

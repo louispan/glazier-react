@@ -5,25 +5,24 @@
 module Glazier.React
     ( module Glazier.Command
     , module Glazier.Command.Exec
-#ifdef DEBUGIO
-    , module Glazier.DebugIO
-    , module Glazier.DebugIO.Exec
-#endif
     , module Glazier.Logger
-    , module Glazier.React.EventTarget    -- , module Glazier.React.Markup
+    , module Glazier.React.EventTarget
     , module Glazier.React.NativeEvent
     , module Glazier.React.Notice
     , module Glazier.React.ReactDOM
-    , module Glazier.React.ReactId
+    -- , module Glazier.React.ReactId
     , module Glazier.React.Reactor
     , module Glazier.React.Reactor.Exec
+ -- , module Glazier.React.Markup
     , module Glazier.React.Model
+    , Plan
+    , AskPlanWeakRef
+    , askPlanWeakRef
+    , module Glazier.React.Type
     , module Glazier.React.Widget
     , module Control.Also
     , module Control.Applicative
     , module Control.Monad
-    , module Control.Monad.Benign
-    , module Control.Monad.Benign.Exec
     , module Control.Monad.Delegate
     , module Control.Monad.Context
     , module Control.Monad.Observer
@@ -35,10 +34,8 @@ module Glazier.React
     , module Control.Monad.Trans.Extras
     , module Control.Monad.Trans.Maybe
     , module GHC.Stack
-    , module Data.Functor.Functor2
-    , module Data.Functor.Extras
+    , module Data.Function.Extras
     , module Data.Proxy
-    , module Data.Tagged
     , module Data.Tagged.Extras
     , module Control.Lens
     , module Control.Lens.Misc
@@ -49,8 +46,6 @@ import Control.Applicative
 import Control.Lens
 import Control.Lens.Misc
 import Control.Monad
-import Control.Monad.Benign
-import Control.Monad.Benign.Exec
 import Control.Monad.Context
 import Control.Monad.Delegate
 import Control.Monad.Except
@@ -61,27 +56,20 @@ import Control.Monad.State.Strict
 import Control.Monad.Trans
 import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
-import Data.Functor.Extras
-import Data.Functor.Functor2
+import Data.Function.Extras
 import Data.Proxy
-import Data.Tagged
 import Data.Tagged.Extras
 import GHC.Stack
 import Glazier.Command
 import Glazier.Command.Exec
-#ifdef DEBUGIO
-import Glazier.DebugIO
-import Glazier.DebugIO.Exec
-#endif
 import Glazier.Logger
--- import Glazier.React.Element
 import Glazier.React.EventTarget
--- import Glazier.React.Markup
 import Glazier.React.NativeEvent
 import Glazier.React.Notice
 import Glazier.React.ReactDOM
-import Glazier.React.ReactId
 import Glazier.React.Reactor
 import Glazier.React.Reactor.Exec
 import Glazier.React.Model
+import Glazier.React.Plan
+import Glazier.React.Type
 import Glazier.React.Widget

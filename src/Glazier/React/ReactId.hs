@@ -1,4 +1,5 @@
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -11,8 +12,9 @@ module Glazier.React.ReactId where
 
 import Control.Monad.Context
 import Control.Monad.Reader
-import Data.String
 import qualified Data.JSString as J
+import qualified Data.List as DL
+import Data.Tagged.Extras
 import qualified GHC.Generics as G
 import Glazier.Logger
 import JavaScript.Extras.Aeson.Instances ()
@@ -39,11 +41,11 @@ askReactId = askContext
 
 -- | We can get the LogName from a ReactId
 type AskLogNameJS = AskLogName J.JSString
-instance {-# OVERLAPPING #-} Monad m => MonadAsk (LogName J.JSString) (ReaderT ReactId m) where
+instance {-# OVERLAPPING #-} Monad m => MonadAsk (Tagged "LogName" J.JSString) (ReaderT ReactId m) where
   askContext = do
     ReactId _ ns <- askReactId
-    let xs = (\(n, i) -> n <> (fromString $ show i)) <$> ns
-    pure . LogName $ foldr (<>) "" xs
+    let xs = DL.intersperse "." $ fst <$> ns
+    pure . Tagged @"LogName" $ foldr (<>) "" xs
 
 type PutReactId = MonadPut ReactId
 putReactId :: PutReactId m => ReactId -> m ()
