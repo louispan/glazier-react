@@ -50,23 +50,10 @@ function hgr$shimComponent() {
                     this.props['rendered']();
             }
 
-            componentDidMount() {
-                // Also forward to rendered so it gets a callback on initial render.
-                if (this.props['mounted'])
-                    this.props['mounted']();
-                if (this.props['rendered'])
-                    this.props['rendered']();
-            }
-
             render() {
                 if (this.props['render'])
                     return this.props['render']();
                 return null;
-            }
-
-            componentWillUnmount() {
-                if (this.props['unmounted'])
-                    this.props['unmounted']();
             }
         }
         hgr$shimComponent_ = Shim;

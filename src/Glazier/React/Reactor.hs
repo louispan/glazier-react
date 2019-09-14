@@ -15,7 +15,6 @@
 
 module Glazier.React.Reactor where
 
-import qualified Data.Map.Strict as M
 import Control.Also
 import Control.Applicative
 import Control.DeepSeq
@@ -25,6 +24,7 @@ import Control.Monad.State.Strict
 import Control.Monad.Trans.Maybe
 import qualified Data.DList as DL
 import qualified Data.JSString as J
+import qualified Data.Map.Strict as M
 import Data.Proxy
 import Data.String
 import GHC.Stack
@@ -32,13 +32,13 @@ import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
 import Glazier.Command
 import Glazier.Logger
-import Glazier.React.Plan
+import Glazier.React.Common
 import Glazier.React.Markup
-import Glazier.React.Model
 import Glazier.React.Notice
+import Glazier.React.Obj
+import Glazier.React.Plan
 import Glazier.React.Widget
 import Glazier.ShowIO
-import Glazier.React.Type
 import qualified JavaScript.Extras as JE
 
 -----------------------------------------------------------------
@@ -59,17 +59,6 @@ type MonadReactor c m = (Cmd' [] c, CmdReactor c, Alternative m, Also () m, Logg
 
 -- | NB. 'Reactor' is not a functor because of the @Widget c@ in 'MkObj'
 data Reactor c where
-    -- -- -- | Evaluate some benign IO
-    -- -- EvalBenignIO :: Benign IO c -> Reactor c
-    -- -- | Make a unique named id
-    -- MkReactId :: NE.NonEmpty J.JSString -> (ReactId -> c) -> Reactor c
-
-    -- MkEventHandler :: NFData a
-    --     => (J.JSVal -> MaybeT IO a)
-    --     -> (a -> c)
-    --     -> ((J.JSVal -> IO (), IO ()) -> c)
-    --     -> Reactor c
-
     -- | Using the NFData idea from React/Flux/PropertiesAndEvents.hs
     -- React re-uses Notice from a pool, which means it may no longer be valid if we lazily
     -- parse it. However, we still want lazy parsing so we don't parse unnecessary fields.
@@ -114,8 +103,8 @@ data Reactor c where
 
     -- | Make a fully initialized object from a widget and meta
     -- MkObj :: Widget c s s () -> J.JSString -> s -> (Obj s -> c) -> Reactor c
+    -- NB. 'Reactor' is not a functor because of the @Widget c@ in 'MkObj'
     MkObj :: Widget c s () -> LogNameJS -> s -> (Obj s -> c) -> Reactor c
-
 
     -- Get the event target
     -- If a "ref" callback to update 'elementalRef' has not been added;
@@ -126,17 +115,10 @@ data Reactor c where
     --     -> (EventTarget -> c)
     --     -> Reactor c
 
-    -- | Schedules a 'RerenderNow' to after all the current commands are processed.
-    -- Does nothing if already scheduled, or in the middle of a mutation
-    -- (ie 'mutations' is non empty)
+    -- | Notify react to render the 'prerendered' frame
+    -- Does nothing if 'rerenderRequired' is RerenderNotRequired
     -- FIXME: Optimise also to use ReactDOM.unstable_batchedUpdates
-    ScheduleRerender :: WeakRef Plan -> Reactor c
-
-    -- | Private effect used by executor:
-    -- Rerender now
-    -- Does nothing if rerender has not been scheduled or
-    -- if in the middle of mutation ('mutations' is not empty)
-    RerenderNow :: WeakRef Plan -> Reactor c
+    Rerender :: WeakRef Plan -> Reactor c
 
     -- FIXME: TODO
     -- -- | Update, store 'ReactId' in 'mutataions' and fire 'mutatedListener'.
@@ -144,9 +126,9 @@ data Reactor c where
     -- -- 'mutatedListener' as long as the 'ReactId' has not been seen before.
     -- -- When the cycle of 'Mutate' and 'mutatedListener' finishes, the 'mutations' is
     -- -- cleared.
-    -- -- Finally 'Rerender' is called.
+    -- -- Finally 'rerender' is called.
     -- Mutate :: WeakModelRef s -> ReactId -> StateT s IO c -> Reactor c
-    Mutate :: WeakRef s -> Rerender -> StateT s IO c -> Reactor c
+    Mutate :: WeakRef s -> RerenderRequired -> StateT s IO c -> Reactor c
 
     -- FIXME:: Get another widget's model in a safe way where this will be registered
     -- as a listener to be notified of mutations
@@ -217,8 +199,7 @@ instance (IsString str, Semigroup str) => ShowIO str (Reactor c) where
     showsPrecIO p (MkObj _ logname _ _) = showParenIO (p >= 11) $ (showStr "MkObj " .) <$> (showsIO logname)
     -- showsPrec _ (SetRender _ _ ) = showString "SetRender"
     -- showsPrec _ (GetReactRef _ _ _) = showString "GetReactRef"
-    showsPrecIO p (ScheduleRerender this) = showParenIO (p >= 11) $ (showStr "ScheduleRerender " .) <$> (showsIO this)
-    showsPrecIO p (RerenderNow this) = showParenIO (p >= 11) $ (showStr "RerenderNow " .) <$> (showsIO this)
+    showsPrecIO p (Rerender this) = showParenIO (p >= 11) $ (showStr "Rerender " .) <$> (showsIO this)
     showsPrecIO p (Mutate _ r _) = showParenIO (p >= 11) $ pure $ (showStr "Mutate ") . (showFromStr $ show r)
     -- showsPrec p (NotifyMutated _ k) = showParen (p >= 11) $
     --     showString "NotifyMutated " . shows k
@@ -321,7 +302,7 @@ unliftMkObj m logname s = do
 rerender :: (HasCallStack, MonadReactor c m, AskPlanWeakRef m) => m ()
 rerender = do
     this <- askPlanWeakRef
-    logExecJS' TRACE callStack $ ScheduleRerender this
+    logExecJS' TRACE callStack $ Rerender this
 
 ------------------------------------------------------
 -- MonadGadget
@@ -344,7 +325,7 @@ mutate = mutate_ RerenderRequired
 -- Expose 'Rerender' for "uncontrolled (by react)" components like <input>
 -- which doesn't necessarily require a rerender if the model changes.
 -- Mutation notifications are always sent.
-mutate_ :: (HasCallStack, MonadReactor c m, AskModelWeakRef s m) => Rerender -> StateT s IO () -> m ()
+mutate_ :: (HasCallStack, MonadReactor c m, AskModelWeakRef s m) => RerenderRequired -> StateT s IO () -> m ()
 mutate_ r m = do
     this <- askModelWeakRef
     logExecJS' TRACE callStack $ Mutate this r (command_ <$> m)
@@ -354,7 +335,7 @@ mutateThen :: (HasCallStack, MonadReactor c m, AskModelWeakRef s m) => StateT s 
 mutateThen = mutateThen_ RerenderRequired
 
 -- | Variation of 'mutate_' which also returns the next action to execute after mutating.
-mutateThen_ :: (HasCallStack, MonadReactor c m, AskModelWeakRef s m) => Rerender -> StateT s IO (m a) -> m a
+mutateThen_ :: (HasCallStack, MonadReactor c m, AskModelWeakRef s m) => RerenderRequired -> StateT s IO (m a) -> m a
 mutateThen_ r m = do
     this <- askModelWeakRef
     delegate $ \fire -> do

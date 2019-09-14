@@ -34,6 +34,7 @@ module Glazier.React.Widget where
     -- , bh
     -- ) where
 import Control.Monad.Cont
+import Control.Monad.Observer
 import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Extras
@@ -43,12 +44,50 @@ import qualified Data.DList as DL
 import Data.IORef
 import Data.Tagged.Extras
 import Glazier.Command
-import Glazier.React.Plan
+import Glazier.React.Common
 import Glazier.React.Markup
+import Glazier.React.Plan.Internal
 import Glazier.React.Shim
-import Glazier.React.Type
 import qualified JavaScript.Extras as JE
 import System.Mem.Weak
+
+type AskConstructor c m = MonadObserver (Tagged "Constructor" c) m
+askConstructor :: AskConstructor c m => m (c -> m ())
+askConstructor = (. Tagged @"Constructor") <$> askObserver
+
+-- | Register and execute the given monad at construction time.
+-- The registration of the callback is only performed the construction of the widget.
+-- Do not expect this function to do anything on subsequent rerenders
+-- so don't use the function conditionally after construction.
+onConstruction :: (AskConstructor c m, MonadCodify c m) => m () -> m ()
+onConstruction m = do
+    f <- askConstructor
+    c <- codify' m
+    f c
+
+type AskDestructor c m = MonadObserver (Tagged "Destructor" c) m
+askDestructor :: AskDestructor c m => m (c -> m ())
+askDestructor = (. Tagged @"Destructor") <$> askObserver
+
+-- | Register the given monad to be evaluated at destruction time.
+-- The same "construction time only registration caveats" apply as in 'onConstruction'.
+onDestruction :: (AskDestructor c m, MonadCodify c m) => m () -> m ()
+onDestruction m = do
+    f <- askDestructor
+    c <- codify' m
+    f c
+
+type AskRendered c m = MonadObserver (Tagged "Rendered" c) m
+askRendered :: AskRendered c m => m (c -> m ())
+askRendered = (. Tagged @"Rendered") <$> askObserver
+
+-- | Register the given monad to be evaluated after every rerender, including the first rerender.
+-- The same "construction time only registration caveats" apply as in 'onConstruction'.
+onRendered :: (AskRendered c m, MonadCodify c m) => m () -> m ()
+onRendered m = do
+    f <- askRendered
+    c <- codify' m
+    f c
 
 -- | 'Gizmo' is an instance of 'MonadWidget'
 -- Gizmo contains the effects (eg register listener)
@@ -57,7 +96,10 @@ import System.Mem.Weak
 -- which is to set the final html for the component.
 -- FIXME: onMounted/unmounted listeners are registered via a Observer ReaderT (c -> IO ()) as part of Widget stack
 type Widget c s =
-    ReaderT (WeakRef Plan) -- 'AskPlanWeakRef', 'AskLogLevel'
+    ObserverT (Tagged "Rendered" c) -- 'AskRendered'
+    (ObserverT (Tagged "Destructor" c) -- 'AskDestructor'
+    (ObserverT (Tagged "Constructor" c) -- 'AskConstructor'
+    (ReaderT (WeakRef Plan) -- 'AskPlanWeakRef', 'Logger'
     (ReaderT (Tagged "Model" (WeakRef s)) -- 'AskModelWeakRef'
     (ReaderT (Tagged "Model" s) -- 'AskModel'
     (MaybeT -- 'Alternative'
@@ -66,7 +108,7 @@ type Widget c s =
     -- (StateT (ReactId) -- 'PutReactId'
     (StateT (DL.DList ReactMarkup) -- 'PutMarkup'
     (ProgramT c IO -- 'MonadComand', 'MonadIO'
-    ))))))
+    )))))))))
 
 -- wack :: Lens' s Bool -> Widget c s Bool
 -- wack lns = do
@@ -137,8 +179,6 @@ displayPlan pln = do
     let scb = shimCallbacks pln
         renderCb = shimOnRender scb
         refCb = shimOnRef scb
-        mountedCb = shimOnMounted scb
-        unmountedCb = shimOnUnmounted scb
         renderedCb = shimOnRendered scb
         n = logName pln
     -- These are the callbacks on the 'ShimComponent'
@@ -147,8 +187,6 @@ displayPlan pln = do
         [ ("key", JE.toJS $ untag' @"LogName" n)
         , ("render", JE.toJS renderCb)
         , ("ref", JE.toJS refCb)
-        , ("mounted", JE.toJS mountedCb)
-        , ("unmounted", JE.toJS unmountedCb)
         , ("rendered", JE.toJS renderedCb)
         ]
 
