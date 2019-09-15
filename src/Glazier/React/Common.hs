@@ -17,7 +17,7 @@ type WeakRef s = Weak (IORef s)
 
 type ShowIOJS = ShowIO J.JSString
 
-type LogNameJS = Tagged "LogName" J.JSString
+type LogName = Tagged "LogName" J.JSString
 
 data RerenderRequired
     = RerenderNotRequired

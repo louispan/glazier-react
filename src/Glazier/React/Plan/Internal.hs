@@ -1,4 +1,5 @@
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -14,6 +15,7 @@ import Control.Monad.Trans.Maybe
 import Data.Function.Extras
 import Data.IORef
 import Data.Maybe
+import Data.Tagged.Extras
 import qualified GHC.Generics as G
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
@@ -48,7 +50,7 @@ releaseShimCallbacks (ShimCallbacks a b c) = do
 data Plan = Plan
     -- guaranteed unique for every widget instance
     { reactId :: ReactId
-    , logName :: LogNameJS
+    , logName :: Tagged "LogName" J.JSString
     , logLevel :: IO (Maybe LogLevel)
     , logDepth :: IO (Maybe (Maybe LogCallStackDepth))
 
@@ -128,8 +130,10 @@ instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Maybe LogLevel) (ReaderT (We
             MaybeT . logLevel $ pln
 
 -- | Get the 'LogName' from a 'WeakRef' 'Plan'
-type AskLogNameJS = AskLogName J.JSString
-instance {-# OVERLAPPING #-} MonadIO m => MonadAsk LogNameJS (ReaderT (WeakRef Plan) m) where
+type AskLogName = MonadAsk (Tagged "LogName" J.JSString)
+askLogName :: AskLogName m => m (Tagged "LogName" J.JSString)
+askLogName = askContext
+instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Tagged "LogName" J.JSString) (ReaderT (WeakRef Plan) m) where
     askContext = do
         ref <- askPlanWeakRef
         n <- liftIO $ go ref

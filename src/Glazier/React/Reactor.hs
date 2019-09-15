@@ -2,6 +2,7 @@
 -- {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
@@ -28,6 +29,7 @@ import qualified Data.List as DL
 import qualified Data.Map.Strict as M
 import Data.Proxy
 import Data.String
+import Data.Tagged.Extras
 import GHC.Stack
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
@@ -50,7 +52,7 @@ type CmdReactor c =
     , Cmd (LogLine J.JSString) c
     )
 
-type LoggerJS c m = (Logger J.JSString c m, AskReactPath m)
+type LoggerJS c m = (Logger J.JSString c m, AskLogName m, AskReactPath m)
 
 -- | Doesn't need to know about the model @s@
 type MonadReactor c m = (Cmd' [] c, CmdReactor c, Alternative m, Also () m, LoggerJS c m)
@@ -105,7 +107,7 @@ data Reactor c where
     -- | Make a fully initialized object from a widget and meta
     -- MkObj :: Widget c s s () -> J.JSString -> s -> (Obj s -> c) -> Reactor c
     -- NB. 'Reactor' is not a functor because of the @Widget c@ in 'MkObj'
-    MkObj :: Widget c s () -> LogNameJS -> s -> (Obj s -> c) -> Reactor c
+    MkObj :: Widget c s () -> LogName -> s -> (Obj s -> c) -> Reactor c
 
     -- Get the event target
     -- If a "ref" callback to update 'elementalRef' has not been added;
@@ -232,7 +234,8 @@ logLineJS :: LoggerJS c m
     -> m ()
 logLineJS lvl cs msg = do
     p <- logPrefix
-    logLine (Proxy @J.JSString) lvl cs $ (\y -> p <> ": " <> y) <$> msg
+    n <- untag' @"LogName" <$> askLogName
+    logLine (Proxy @J.JSString) lvl cs $ (\y -> n <> " " <> p <> ": " <> y) <$> msg
 
 logExecJS :: (ShowIOJS cmd, Cmd cmd c, LoggerJS c m)
     => LogLevel -> CallStack -> cmd -> m ()
@@ -281,7 +284,7 @@ logInvokeJS_ = logInvoke_ (Proxy @J.JSString)
 -- | Make an initialized 'Obj' for a given meta using the given 'Widget'.
 -- Unlike 'unliftMkObj', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
 mkObj :: (HasCallStack, MonadReactor c m)
-    => Widget c s () -> LogNameJS -> s -> m (Obj s)
+    => Widget c s () -> LogName -> s -> m (Obj s)
 mkObj wid logname s = delegatify $ \f ->
     logExec' (Proxy @J.JSString) TRACE callStack $ MkObj wid logname s f
 
@@ -292,7 +295,7 @@ mkObj wid logname s = delegatify $ \f ->
 -- | Convenient variation of 'mkObj' where the widget is unlifted from the given monad.
 -- This is useful for transformer stacks that require addition MonadReader-like effects.
 unliftMkObj :: (HasCallStack, MonadUnliftWidget c s m, MonadReactor c m)
-    => m () -> LogNameJS -> s -> m (Obj s)
+    => m () -> LogName -> s -> m (Obj s)
 unliftMkObj m logname s = do
     u <- askUnliftWidget
     mkObj (unliftWidget u m) logname s

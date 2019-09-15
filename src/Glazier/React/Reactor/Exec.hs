@@ -31,6 +31,7 @@ import Data.Function.Extras
 import qualified Data.HashMap.Strict as HM
 import Data.IORef.Extras
 import qualified Data.JSString as J
+import qualified Data.Map.Strict as M
 import Data.String
 import Data.Tagged.Extras
 import GHC.Stack
@@ -69,7 +70,7 @@ data LogConfig = LogConfig
     -- This map will be populated with override for different lognames
     -- Do not delete from this map to remove log overrides
     -- instead, set them to nothing.
-    , logOverrides :: HM.HashMap LogNameJS (IORef
+    , logOverrides :: HM.HashMap LogName (IORef
         -- Nothing means no override.
         -- Just Nothing means turn off logging.
         ( Maybe (Maybe LogLevel)
@@ -84,19 +85,8 @@ type AskLogConfigRef = MonadAsk (IORef LogConfig)
 askLogConfigRef :: AskLogConfigRef m => m (IORef LogConfig)
 askLogConfigRef = askContext
 
-type AskNextReactIdRef = MonadAsk (IORef (Tagged "NextReactId" ReactId))
-askNextReactIdRef :: AskNextReactIdRef m => m (IORef (Tagged "NextReactId" ReactId))
-askNextReactIdRef = askContext
-
-mkReactId :: (MonadIO m, AskNextReactIdRef m) => m ReactId
-mkReactId = do
-    ref <- askNextReactIdRef
-    liftIO $ atomicModifyIORef' ref $ \n ->
-        let ReactId i = untag' @"NextReactId" n
-        in ( Tagged @"NextReactId" . ReactId $ i + 1, ReactId i)
-
 -- | returns io actions that will always have latest log state for the logname
-getLogConfig :: (MonadIO m, AskLogConfigRef m)=> LogNameJS -> m (IO (Maybe LogLevel), IO (Maybe (Maybe LogCallStackDepth)))
+getLogConfig :: (MonadIO m, AskLogConfigRef m)=> LogName -> m (IO (Maybe LogLevel), IO (Maybe (Maybe LogCallStackDepth)))
 getLogConfig logname = do
     envRef <- askLogConfigRef
     -- find or insert entry into overrides
@@ -118,6 +108,26 @@ getLogConfig logname = do
                 Nothing -> defaultLogCallStackDepth <$> readIORef envRef
                 Just x -> pure $ Just x
     pure (getLogLevel, getLogDepth)
+
+-----------------------------------------------
+
+type AskNextReactIdRef = MonadAsk (IORef (Tagged "NextReactId" ReactId))
+askNextReactIdRef :: AskNextReactIdRef m => m (IORef (Tagged "NextReactId" ReactId))
+askNextReactIdRef = askContext
+
+mkReactId :: (MonadIO m, AskNextReactIdRef m) => m ReactId
+mkReactId = do
+    ref <- askNextReactIdRef
+    liftIO $ atomicModifyIORef' ref $ \n ->
+        let ReactId i = untag' @"NextReactId" n
+        in ( Tagged @"NextReactId" . ReactId $ i + 1, ReactId i)
+
+-----------------------------------------------
+
+type AskDirtyPlan = MonadAsk (Tagged "DirtyPlan" (IORef (M.Map ReactId (WeakRef Plan))))
+askDirtyPlan :: AskDirtyPlan m => m (IORef (M.Map ReactId (WeakRef Plan)))
+askDirtyPlan = untag' @"DirtyPlan" <$> askContext
+
 
 -- -- | renders the given obj onto the given javascript dom
 -- -- and exports the obj to prevent it from being garbage collected
@@ -210,7 +220,7 @@ execMkObj ::
     )
     => (c -> m ())
     -> Widget c s ()
-    -> LogNameJS
+    -> LogName
     -> s
     -> m (Obj s)
 execMkObj executor wid logName' s = do
