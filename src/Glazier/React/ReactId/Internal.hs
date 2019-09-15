@@ -9,7 +9,7 @@ import Control.Monad.Context
 import Data.Hashable
 import qualified GHC.Generics as G
 
-newtype ReactId = ReactId Int
+newtype ReactId = ReactId { unReactId :: Int }
     deriving (G.Generic, Read, Show, Eq, Ord, Hashable)
 
 type AskReactId = MonadAsk ReactId

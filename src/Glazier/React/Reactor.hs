@@ -24,6 +24,7 @@ import Control.Monad.State.Strict
 import Control.Monad.Trans.Maybe
 import qualified Data.DList as DL
 import qualified Data.JSString as J
+import qualified Data.List as DL
 import qualified Data.Map.Strict as M
 import Data.Proxy
 import Data.String
@@ -37,6 +38,7 @@ import Glazier.React.Markup
 import Glazier.React.Notice
 import Glazier.React.Obj
 import Glazier.React.Plan
+import Glazier.React.ReactPath
 import Glazier.React.Widget
 import Glazier.ShowIO
 import qualified JavaScript.Extras as JE
@@ -48,8 +50,7 @@ type CmdReactor c =
     , Cmd (LogLine J.JSString) c
     )
 
--- | Change model logic
--- type BenignState s = StateT s IO
+type LoggerJS c m = (Logger J.JSString c m, AskReactPath m)
 
 -- | Doesn't need to know about the model @s@
 type MonadReactor c m = (Cmd' [] c, CmdReactor c, Alternative m, Also () m, LoggerJS c m)
@@ -119,6 +120,10 @@ data Reactor c where
     -- Does nothing if 'rerenderRequired' is RerenderNotRequired
     -- FIXME: Optimise also to use ReactDOM.unstable_batchedUpdates
     Rerender :: WeakRef Plan -> Reactor c
+
+    -- | Schedule to rerender
+    -- FIXME: Optimise also to use ReactDOM.unstable_batchedUpdates
+    ScheduleRerender :: WeakRef Plan -> Reactor c
 
     -- FIXME: TODO
     -- -- | Update, store 'ReactId' in 'mutataions' and fire 'mutatedListener'.
@@ -216,12 +221,18 @@ instance (IsString str, Semigroup str) => ShowIO str (Reactor c) where
 -- FIXME: Forgot onMounted, onUnMounted
 
 
-
+logPrefix :: AskReactPath m => m J.JSString
+logPrefix = do
+    ps <- getReactPath <$> askReactPath
+    let xs = DL.intersperse "." $ (\(n, i) -> n <> (fromString $ show i)) <$> ps
+    pure (foldr (<>) "" xs)
 
 logLineJS :: LoggerJS c m
     => LogLevel -> CallStack -> IO J.JSString
     -> m ()
-logLineJS = logLine (Proxy @J.JSString)
+logLineJS lvl cs msg = do
+    p <- logPrefix
+    logLine (Proxy @J.JSString) lvl cs $ (\y -> p <> ": " <> y) <$> msg
 
 logExecJS :: (ShowIOJS cmd, Cmd cmd c, LoggerJS c m)
     => LogLevel -> CallStack -> cmd -> m ()
@@ -271,7 +282,7 @@ logInvokeJS_ = logInvoke_ (Proxy @J.JSString)
 -- Unlike 'unliftMkObj', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
 mkObj :: (HasCallStack, MonadReactor c m)
     => Widget c s () -> LogNameJS -> s -> m (Obj s)
-mkObj wid logname s = delegatify $ \f -> do
+mkObj wid logname s = delegatify $ \f ->
     logExec' (Proxy @J.JSString) TRACE callStack $ MkObj wid logname s f
 
 ------------------------------------------------------
@@ -506,7 +517,7 @@ rawTxt lns = do
 
 lf ::
     ( PutMarkup m
-    -- , PutReactId m
+    , PutReactPath m
     , AskModel s m
     , AskPlanWeakRef m
     , MonadReactor c m
@@ -517,7 +528,7 @@ lf ::
     -> m ()
 lf n gads props = do
     s <- askModel
-    -- putNextReactId n
+    putNextReactPath n
     gads' <- traverse sequenceA (DL.toList gads)
     let gads'' = M.fromListWith (<>) gads'
     gads''' <- traverse mkCallback gads''
@@ -527,7 +538,7 @@ lf n gads props = do
 
 bh ::
     ( PutMarkup m
-    -- , PutReactId m
+    , PutReactPath m
     , AskModel s m
     , AskPlanWeakRef m
     , MonadReactor c m
@@ -539,14 +550,14 @@ bh ::
     -> m a
 bh n gads props child = do
     s <- askModel
-    -- putNextReactId n
+    putNextReactPath n
     gads' <- traverse sequenceA (DL.toList gads)
     let gads'' = M.fromListWith (<>) gads'
     gads''' <- traverse mkCallback gads''
-    -- putPushReactId
+    putPushReactPath
     a <- branchMarkup (JE.toJS n)
         (((fmap (`view` s)) <$> props)
             <> (DL.fromList . M.toList $ JE.toJS <$> gads'''))
         child
-    -- putPopReactId
+    putPopReactPath
     pure a

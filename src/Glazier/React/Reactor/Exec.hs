@@ -16,10 +16,6 @@
 
 module Glazier.React.Reactor.Exec where
 
-import Control.Also
-import Control.Concurrent
-import Control.Concurrent.STM
-import Control.DeepSeq
 import Control.Lens
 import Control.Lens.Misc
 import Control.Monad.Context
@@ -29,38 +25,27 @@ import Control.Monad.Reader
 import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
-import qualified Control.Monad.Trans.RWS.Strict as RWS
 import Control.Monad.Trans.State.Strict
-import Data.Diverse.Lens
 import qualified Data.DList as DL
 import Data.Function.Extras
 import qualified Data.HashMap.Strict as HM
 import Data.IORef.Extras
 import qualified Data.JSString as J
-import qualified Data.List.NonEmpty as NE
-import qualified Data.Map.Strict as M
-import Data.Maybe
-import qualified Data.Set as S
 import Data.String
 import Data.Tagged.Extras
-import qualified Data.Text as T
-import Data.Tuple
-import Data.Typeable
 import GHC.Stack
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Foreign.Callback.Internal as J
-import qualified GHCJS.Foreign.Export as J
 import qualified GHCJS.Types as J
 import Glazier.Command
-import Glazier.Command.Exec
 import Glazier.Logger
 import Glazier.React.Common
-import Glazier.React.EventTarget
 import Glazier.React.Markup
 import Glazier.React.Obj.Internal
 import Glazier.React.Plan.Internal
-import Glazier.React.ReactDOM
+import Glazier.React.ReactId.Internal
 import Glazier.React.Reactor
+import Glazier.React.ReactPath
 import Glazier.React.Shim
 import Glazier.React.Widget
 import qualified JavaScript.Extras as JE
@@ -71,7 +56,11 @@ import System.Mem.Weak
 import Data.Semigroup
 #endif
 
-data ReactorEnv = ReactorEnv
+-- data ReactorEnv = ReactorEnv
+-- nextReactId :: ReactId
+--     ,
+
+data LogConfig = LogConfig
     { defaultLogLevel :: Maybe LogLevel  -- Nothing means turn off logging
     -- Nothing means don't change defaults from loglevel
     -- Just Nothing means full stack
@@ -86,21 +75,33 @@ data ReactorEnv = ReactorEnv
         ( Maybe (Maybe LogLevel)
         -- Nothing means no override.
         -- Just Nothing means full stack
-        , (Maybe (Maybe LogCallStackDepth))))
+        , Maybe (Maybe LogCallStackDepth)))
     }
 
-makeLenses_ ''ReactorEnv
+makeLenses_ ''LogConfig
 
-type AskReactorEnv = MonadAsk (IORef ReactorEnv)
-askReactorEnv :: AskReactorEnv m => m (IORef ReactorEnv)
-askReactorEnv = askContext
+type AskLogConfigRef = MonadAsk (IORef LogConfig)
+askLogConfigRef :: AskLogConfigRef m => m (IORef LogConfig)
+askLogConfigRef = askContext
+
+type AskNextReactIdRef = MonadAsk (IORef (Tagged "NextReactId" ReactId))
+askNextReactIdRef :: AskNextReactIdRef m => m (IORef (Tagged "NextReactId" ReactId))
+askNextReactIdRef = askContext
+
+mkReactId :: (MonadIO m, AskNextReactIdRef m) => m ReactId
+mkReactId = do
+    ref <- askNextReactIdRef
+    liftIO $ atomicModifyIORef' ref $ \n ->
+        let ReactId i = untag' @"NextReactId" n
+        in ( Tagged @"NextReactId" . ReactId $ i + 1, ReactId i)
 
 -- | returns io actions that will always have latest log state for the logname
-getLogConfig :: IORef ReactorEnv -> LogNameJS -> IO (IO (Maybe LogLevel), IO (Maybe (Maybe LogCallStackDepth)))
-getLogConfig envRef logname = do
+getLogConfig :: (MonadIO m, AskLogConfigRef m)=> LogNameJS -> m (IO (Maybe LogLevel), IO (Maybe (Maybe LogCallStackDepth)))
+getLogConfig logname = do
+    envRef <- askLogConfigRef
     -- find or insert entry into overrides
-    newOverride <- newIORef (Nothing, Nothing)
-    entryRef <- atomicModifyIORef' envRef $ \env ->
+    newOverride <- liftIO $ newIORef (Nothing, Nothing)
+    entryRef <- liftIO $ atomicModifyIORef' envRef $ \env ->
         let (b, overrides) = findOrInsert logname newOverride (logOverrides env)
         in (env {logOverrides = overrides}, b)
     -- return action to read from overrides
@@ -185,7 +186,7 @@ getLogConfig envRef logname = do
 -----------------------------------------------------------------
 execLogLineJS ::
     MonadIO m
-    => LogLevel -> (LogName J.JSString) -> (IO J.JSString) -> [(String, SrcLoc)] -> m ()
+    => LogLevel -> Tagged "LogName" J.JSString -> IO J.JSString -> [(String, SrcLoc)] -> m ()
 execLogLineJS lvl n msg cs = do
     let f = case lvl of
             TRACE -> js_logInfo
@@ -203,7 +204,8 @@ execLogLineJS lvl n msg cs = do
 execMkObj ::
     ( MonadIO m
     , MonadUnliftIO m
-    , AskReactorEnv m
+    , AskLogConfigRef m
+    , AskNextReactIdRef m
     , CmdReactor c
     )
     => (c -> m ())
@@ -214,11 +216,12 @@ execMkObj ::
 execMkObj executor wid logName' s = do
     UnliftIO u <- askUnliftIO
     hack $ liftIO $ putStrLn "LOUISDEBUG: execMkObj"
-    envRef <- askReactorEnv
-    (logLevel', logDepth') <- liftIO $ getLogConfig envRef logName'
+    (logLevel', logDepth') <- getLogConfig logName'
+    i <- mkReactId
     (obj, prerndr) <- liftIO $ do
         -- create shim with fake callbacks for now
         let newPlan = Plan
+                i
                 logName'
                 logLevel'
                 logDepth'
@@ -268,9 +271,10 @@ execMkObj executor wid logName' s = do
                     $ (`evalStateT` mempty) -- markup
                     $ evalContT
                     $ (`evalMaybeT` ())
-                    $ (`runReaderT` (Tagged @"Model" mdl))
-                    $ (`runReaderT` (Tagged @"Model" mdlWkRef))
+                    $ (`runReaderT` Tagged @"Model" mdl)
+                    $ (`runReaderT` Tagged @"Model" mdlWkRef)
                     $ (`runReaderT` plnWkRef)
+                    $ (`runReaderT` (ReactPath (Nothing, [])))
                     $ (`runObserverT` onConstruct)
                     $ (`runObserverT` onDestruct)
                     $ (`runObserverT` onRendrd)
@@ -345,7 +349,7 @@ execMkObj executor wid logName' s = do
 
 execRerender :: MonadIO m => WeakRef Plan -> m ()
 execRerender wk = (`evalMaybeT` ()) $ do
-    hack $ liftIO $ putStrLn "LOUISDEBUG: execRerender"
+    hack $ liftIO $ putStrLn "LOUISDEBUG: execRerender" -- FIXME: need to schedule/batch
     plnRef <- MaybeT $ liftIO $ deRefWeak wk
     pln <- liftIO $ readIORef plnRef
     hack $ liftIO $ putStrLn "LOUISDEBUG: execRerender2"

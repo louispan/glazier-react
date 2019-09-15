@@ -19,6 +19,7 @@ import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
 import Glazier.Logger
 import Glazier.React.Common
+import Glazier.React.ReactId
 import Glazier.React.Shim
 import System.Mem.Weak
 
@@ -45,7 +46,9 @@ releaseShimCallbacks (ShimCallbacks a b c) = do
 
 -- | Interactivity data for a react component
 data Plan = Plan
-    { logName :: LogName J.JSString
+    -- guaranteed unique for every widget instance
+    { reactId :: ReactId
+    , logName :: LogNameJS
     , logLevel :: IO (Maybe LogLevel)
     , logDepth :: IO (Maybe (Maybe LogCallStackDepth))
 
@@ -103,7 +106,9 @@ releasePlanCallbacks pln = do
 instance Show Plan where
     showsPrec p pln = showParen
         (p >= 11)
-        ( showString "Plan " . shows (logName pln)
+        ( showString "Plan "
+            . showParen True (shows $ reactId pln)
+            . showParen True (shows $ logName pln)
         -- , showString ", " . showString "componentRef ? " . shows (isJust $ shimRef pln)
         )
 
@@ -124,7 +129,7 @@ instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Maybe LogLevel) (ReaderT (We
 
 -- | Get the 'LogName' from a 'WeakRef' 'Plan'
 type AskLogNameJS = AskLogName J.JSString
-instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (LogName J.JSString) (ReaderT (WeakRef Plan) m) where
+instance {-# OVERLAPPING #-} MonadIO m => MonadAsk LogNameJS (ReaderT (WeakRef Plan) m) where
     askContext = do
         ref <- askPlanWeakRef
         n <- liftIO $ go ref
@@ -133,7 +138,7 @@ instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (LogName J.JSString) (ReaderT
         go wk = runMaybeT $ do
             ref <- MaybeT $ deRefWeak wk
             pln <- lift $ readIORef ref
-            pure $ logName $ pln
+            pure $ logName pln
 
 -- | Get the 'LogCallStackDepth' from a 'WeakRef' 'Plan'
 instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Maybe (Maybe LogCallStackDepth)) (ReaderT (WeakRef Plan) m) where

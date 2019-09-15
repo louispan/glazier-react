@@ -18,21 +18,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 
 module Glazier.React.Widget where
-    -- ( Window
-    -- , Widget
-    -- , Gadget
-    -- , AskWindow(..)
-    -- , PutMarkup
-    -- , MetaReader
-    -- , classNames
-    -- , prop
-    -- , strProp
-    -- , propM
-    -- , displayWeakObj
-    -- , rawTxt
-    -- , lf
-    -- , bh
-    -- ) where
+
 import Control.Monad.Cont
 import Control.Monad.Observer
 import Control.Monad.Reader
@@ -47,6 +33,7 @@ import Glazier.Command
 import Glazier.React.Common
 import Glazier.React.Markup
 import Glazier.React.Plan.Internal
+import Glazier.React.ReactPath
 import Glazier.React.Shim
 import qualified JavaScript.Extras as JE
 import System.Mem.Weak
@@ -99,7 +86,8 @@ type Widget c s =
     ObserverT (Tagged "Rendered" c) -- 'AskRendered'
     (ObserverT (Tagged "Destructor" c) -- 'AskDestructor'
     (ObserverT (Tagged "Constructor" c) -- 'AskConstructor'
-    (ReaderT (WeakRef Plan) -- 'AskPlanWeakRef', 'Logger'
+    (ReaderT ReactPath -- 'AskReactPath', 'AskLogNameJS'
+    (ReaderT (WeakRef Plan) -- 'AskPlanWeakRef', 'AskLogLevel', 'AskLogId'
     (ReaderT (Tagged "Model" (WeakRef s)) -- 'AskModelWeakRef'
     (ReaderT (Tagged "Model" s) -- 'AskModel'
     (MaybeT -- 'Alternative'
@@ -108,7 +96,7 @@ type Widget c s =
     -- (StateT (ReactId) -- 'PutReactId'
     (StateT (DL.DList ReactMarkup) -- 'PutMarkup'
     (ProgramT c IO -- 'MonadComand', 'MonadIO'
-    )))))))))
+    ))))))))))
 
 -- wack :: Lens' s Bool -> Widget c s Bool
 -- wack lns = do

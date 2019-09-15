@@ -38,6 +38,7 @@ library
                        Glazier.React.ReactDOM
                        Glazier.React.ReactId
                        Glazier.React.ReactId.Internal
+                       Glazier.React.ReactPath
                        Glazier.React.Reactor
                        Glazier.React.Reactor.Exec
                        Glazier.React.Shim
