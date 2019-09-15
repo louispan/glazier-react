@@ -235,7 +235,7 @@ logLineJS :: LoggerJS c m
 logLineJS lvl cs msg = do
     p <- logPrefix
     n <- untag' @"LogName" <$> askLogName
-    logLine (Proxy @J.JSString) lvl cs $ (\y -> n <> " " <> p <> ": " <> y) <$> msg
+    logLine (Proxy @J.JSString) lvl cs $ (\x -> n <> "<" <> p <> "> " <> x) <$> msg
 
 logExecJS :: (ShowIOJS cmd, Cmd cmd c, LoggerJS c m)
     => LogLevel -> CallStack -> cmd -> m ()

@@ -6,6 +6,7 @@ module Glazier.React.Shim.Internal
     ( ShimComponent(..) -- constructor exported
     , shimComponent
     , rerenderShim
+    , batchShimRerender
     , ShimRef(..) -- constructor exported
     ) where
 
@@ -14,6 +15,7 @@ import Data.String
 import qualified GHC.Generics as G
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
+import Glazier.React.ReactBatch
 import qualified JavaScript.Extras as JE
 
 -- | Returns a reference to the javascript *class* definition
@@ -30,6 +32,10 @@ shimComponent = ShimComponent js_shimComponent
 rerenderShim :: ShimRef -> IO ()
 rerenderShim = js_rerenderShim
 
+-- | batch rerendering of a shim
+batchShimRerender :: ReactBatch -> ShimRef -> IO ()
+batchShimRerender b s = js_batchShimRerender (JE.toJS b) (JE.toJS s)
+
 -- | This is used store the react "ref" to a javascript instance of a react Component.
 newtype ShimRef = ShimRef J.JSVal
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
@@ -41,19 +47,23 @@ instance JE.FromJS ShimRef where
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
-  "$r = hgr$shimComponent();"
+  "$r = hgr$ShimComponent();"
   js_shimComponent :: J.JSVal
 
 -- !!blah is javascript way of converting to bool
 -- using undocumented api to check if something is react component
 -- https://stackoverflow.com/questions/33199959/how-to-detect-a-react-component-vs-a-react-element
 foreign import javascript unsafe
-    "!(!($1 && !(!($1['isReactComponent']))))"
-    js_isReactComponent :: J.JSVal -> Bool
+  "!(!($1 && !(!($1['isReactComponent']))))"
+  js_isReactComponent :: J.JSVal -> Bool
 
 foreign import javascript unsafe
-  "if ($1 && $1['rerender']) { $1['rerender']() };"
+  "if ($1 && $1['rerender']){$1['rerender']()};"
   js_rerenderShim :: ShimRef -> IO ()
+
+foreign import javascript unsafe
+  "if ($1 && $1['batch'] && $2 && $2['rerender']){$1['batch'](function(){$2['rerender']()})};"
+  js_batchShimRerender :: J.JSVal -> J.JSVal -> IO ()
 
 #else
 
@@ -65,5 +75,8 @@ js_isReactComponent _ = False
 
 js_rerenderShim :: ShimRef -> IO ()
 js_rerenderShim _ = pure ()
+
+js_batchShimRerender :: J.JSVal -> J.JSVal -> IO ()
+js_batchShimRerender _ _ = pure ()
 
 #endif

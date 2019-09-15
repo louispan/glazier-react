@@ -22,9 +22,9 @@ function hgr$ReactDOM() {
     return hgr$ReactDOM_;
 }
 
-var hgr$shimComponent_ = null;
-function hgr$shimComponent() {
-    if (!hgr$shimComponent_) {
+var hgr$ShimComponent_ = null;
+function hgr$ShimComponent() {
+    if (!hgr$ShimComponent_) {
         // The state in the Shim contains
         //   frame :: A GHCJS.Foreign.Export of the haskell state to render.
         // Inheriting from Component means every call to this.setState will result in a render.
@@ -56,9 +56,33 @@ function hgr$shimComponent() {
                 return null;
             }
         }
-        hgr$shimComponent_ = Shim;
+        hgr$ShimComponent_ = Shim;
     }
-    return hgr$shimComponent_;
+    return hgr$ShimComponent_;
+}
+
+class hgr$ReactBatcher {
+    constructor() {
+        this.batch = [];
+    }
+
+    batch(f) {
+        this.batch.push(f);
+    }
+
+    runBatch() {
+      var btch = this.batch;
+      this.batch = []
+      hgr$ReactDOM().unstable_batchedUpdates(() => {
+        for (const f of btch){
+            f();
+        }
+      });
+    }
+}
+
+function hgr$mkReactBatcher() {
+    return new hgr$ReactBatcher();
 }
 
 // Convert a list of ReactElements into a single ReactElement

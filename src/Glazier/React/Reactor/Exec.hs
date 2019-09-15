@@ -44,6 +44,7 @@ import Glazier.React.Common
 import Glazier.React.Markup
 import Glazier.React.Obj.Internal
 import Glazier.React.Plan.Internal
+import Glazier.React.ReactBatch
 import Glazier.React.ReactId.Internal
 import Glazier.React.Reactor
 import Glazier.React.ReactPath
@@ -125,10 +126,43 @@ mkReactId = do
 -----------------------------------------------
 
 type AskDirtyPlan = MonadAsk (Tagged "DirtyPlan" (IORef (M.Map ReactId (WeakRef Plan))))
-askDirtyPlan :: AskDirtyPlan m => m (IORef (M.Map ReactId (WeakRef Plan)))
-askDirtyPlan = untag' @"DirtyPlan" <$> askContext
+askDirtyPlan :: AskDirtyPlan m => m (Tagged "DirtyPlan" (IORef (M.Map ReactId (WeakRef Plan))))
+askDirtyPlan = askContext
 
+type AskReactBatch = MonadAsk ReactBatch
+askReactBatch :: AskReactBatch m => m ReactBatch
+askReactBatch = askContext
 
+rerenderDirtyPlans :: (AskReactBatch m, AskDirtyPlan m, MonadIO m) => m ()
+rerenderDirtyPlans = do
+    ref <- untag' @"DirtyPlan" <$> askDirtyPlan
+    ds <- liftIO $ atomicModifyIORef' ref $ \ds -> (mempty, ds)
+    liftIO $ foldMap go ds >>= liftIO
+    -- now run the batch tell react to use the prerendered frames
+    btch <- askReactBatch
+    liftIO $ runReactBatch btch
+  where
+    go plnWkRef = (`evalMaybeT` (pure ())) $ do
+        plnRef <- MaybeT $ liftIO $ deRefWeak plnWkRef
+        liftIO $ atomicModifyIORef' plnRef $ \pln ->
+            case rerenderRequired pln of
+                RerenderNotRequired -> (pln, (pure ()))
+                RerenderRequired ->
+                    (pln { rerenderRequired = RerenderNotRequired }
+                    , (prerender pln))
+
+-- execRerender :: (AskReactBatch m, MonadIO m) => WeakRef Plan -> m ()
+-- execRerender wk = (`evalMaybeT` ()) $ do
+--     hack $ liftIO $ putStrLn "LOUISDEBUG: execRerender"
+--     plnRef <- MaybeT $ liftIO $ deRefWeak wk
+--     pln <- liftIO $ readIORef plnRef
+--     hack $ liftIO $ putStrLn "LOUISDEBUG: execRerender2"
+--     liftIO $ case rerenderRequired pln of
+--         (Nothing, _) -> pure ()
+--         (_, RerenderNotRequired) -> pure ()
+--         (Just shm, RerenderRequired) -> rerenderShim shm
+
+        -- replace the prerendered frame
 -- -- | renders the given obj onto the given javascript dom
 -- -- and exports the obj to prevent it from being garbage collected
 -- -- which means the "main" haskell thread can exit.
@@ -216,6 +250,7 @@ execMkObj ::
     , MonadUnliftIO m
     , AskLogConfigRef m
     , AskNextReactIdRef m
+    , AskReactBatch m
     , CmdReactor c
     )
     => (c -> m ())
@@ -228,6 +263,7 @@ execMkObj executor wid logName' s = do
     hack $ liftIO $ putStrLn "LOUISDEBUG: execMkObj"
     (logLevel', logDepth') <- getLogConfig logName'
     i <- mkReactId
+    btch <- askReactBatch
     (obj, prerndr) <- liftIO $ do
         -- create shim with fake callbacks for now
         let newPlan = Plan
@@ -238,7 +274,7 @@ execMkObj executor wid logName' s = do
                 Nothing -- shimRef
                 J.nullRef -- prerendered
                 mempty -- prerender
-                RerenderRequired
+                (hack RerenderRequired)
                 mempty -- rendered
                 mempty -- final cleanup
                 (ShimCallbacks
@@ -269,7 +305,7 @@ execMkObj executor wid logName' s = do
                 wid
                 ml <- askMarkup
                 wk <- askPlanWeakRef
-                setPrerendered wk ml
+                setPrerendered btch wk ml
 
             -- mkRerenderCmds :: (c -> m ()) -> IO (DL.DList c)
             mkRerenderCmds onRendrd onDestruct onConstruct = (`evalMaybeT` mempty) $ do
@@ -331,13 +367,14 @@ execMkObj executor wid logName' s = do
     pure obj
 
   where
-    setPrerendered :: MonadIO m => WeakRef Plan -> DL.DList ReactMarkup -> m ()
-    setPrerendered plnWkRef mrkup = (`evalMaybeT` ()) $ do
+    setPrerendered :: MonadIO m => ReactBatch -> WeakRef Plan -> DL.DList ReactMarkup -> m ()
+    setPrerendered btch plnWkRef mrkup = (`evalMaybeT` ()) $ do
         frame <- liftIO $ JE.toJS <$> toElement mrkup
         hack $ liftIO $ putStrLn "LOUISDEBUG: execSetPrerendered"
         plnRef <- MaybeT $ liftIO $ deRefWeak plnWkRef
         -- replace the prerendered frame
-        liftIO $ atomicModifyIORef_' plnRef (_prerendered .~ frame)
+        shm <- MaybeT $ liftIO $ atomicModifyIORef' plnRef (\pln -> (pln & _prerendered .~ frame, shimRef pln))
+        liftIO $ batchShimRerender btch shm
 
     onRenderCb :: WeakRef Plan -> IO J.JSVal
     onRenderCb wk = (`evalMaybeT` J.nullRef) $ do
@@ -356,17 +393,6 @@ execMkObj executor wid logName' s = do
     onRenderedCb wk = (`evalMaybeT` ()) $ do
         plnRef <- MaybeT $ deRefWeak wk
         liftIO $ readIORef plnRef >>= rendered
-
-execRerender :: MonadIO m => WeakRef Plan -> m ()
-execRerender wk = (`evalMaybeT` ()) $ do
-    hack $ liftIO $ putStrLn "LOUISDEBUG: execRerender" -- FIXME: need to schedule/batch
-    plnRef <- MaybeT $ liftIO $ deRefWeak wk
-    pln <- liftIO $ readIORef plnRef
-    hack $ liftIO $ putStrLn "LOUISDEBUG: execRerender2"
-    liftIO $ case (shimRef pln, rerenderRequired pln) of
-        (Nothing, _) -> pure ()
-        (_, RerenderNotRequired) -> pure ()
-        (Just shm, RerenderRequired) -> rerenderShim shm
 
 -- -- | No need to run in a separate thread because it should never block for a significant amount of time.
 -- -- Update the meta 'MVar' with the given action. Also triggers a rerender.
