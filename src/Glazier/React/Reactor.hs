@@ -1,5 +1,3 @@
--- {-# OPTIONS_GHC -Wno-redundant-constraints #-}
--- {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
@@ -118,14 +116,14 @@ data Reactor c where
     --     -> (EventTarget -> c)
     --     -> Reactor c
 
-    -- | Notify react to render the 'prerendered' frame
-    -- Does nothing if 'rerenderRequired' is RerenderNotRequired
-    -- FIXME: Optimise also to use ReactDOM.unstable_batchedUpdates
-    Rerender :: WeakRef Plan -> Reactor c
+    -- -- | Notify react to render the 'prerendered' frame
+    -- -- Does nothing if 'rerenderRequired' is RerenderNotRequired
+    -- -- FIXME: Optimise also to use ReactDOM.unstable_batchedUpdates
+    -- Rerender :: WeakRef Plan -> Reactor c
 
-    -- | Schedule to rerender
-    -- FIXME: Optimise also to use ReactDOM.unstable_batchedUpdates
-    ScheduleRerender :: WeakRef Plan -> Reactor c
+    -- -- | Schedule to rerender
+    -- -- FIXME: Optimise also to use ReactDOM.unstable_batchedUpdates
+    -- ScheduleRerender :: WeakRef Plan -> Reactor c
 
     -- FIXME: TODO
     -- -- | Update, store 'ReactId' in 'mutataions' and fire 'mutatedListener'.
@@ -134,8 +132,7 @@ data Reactor c where
     -- -- When the cycle of 'Mutate' and 'mutatedListener' finishes, the 'mutations' is
     -- -- cleared.
     -- -- Finally 'rerender' is called.
-    -- Mutate :: WeakModelRef s -> ReactId -> StateT s IO c -> Reactor c
-    Mutate :: WeakRef s -> RerenderRequired -> StateT s IO c -> Reactor c
+    Mutate :: WeakRef Plan -> WeakRef s -> ReactPath -> RerenderRequired -> StateT s IO c -> Reactor c
 
     -- FIXME:: Get another widget's model in a safe way where this will be registered
     -- as a listener to be notified of mutations
@@ -206,8 +203,8 @@ instance (IsString str, Semigroup str) => ShowIO str (Reactor c) where
     showsPrecIO p (MkObj _ logname _ _) = showParenIO (p >= 11) $ (showStr "MkObj " .) <$> (showsIO logname)
     -- showsPrec _ (SetRender _ _ ) = showString "SetRender"
     -- showsPrec _ (GetReactRef _ _ _) = showString "GetReactRef"
-    showsPrecIO p (Rerender this) = showParenIO (p >= 11) $ (showStr "Rerender " .) <$> (showsIO this)
-    showsPrecIO p (Mutate _ r _) = showParenIO (p >= 11) $ pure $ (showStr "Mutate ") . (showFromStr $ show r)
+    -- showsPrecIO p (Rerender this) = showParenIO (p >= 11) $ (showStr "Rerender " .) <$> (showsIO this)
+    showsPrecIO p (Mutate _ _ req r _) = showParenIO (p >= 11) $ pure $ (showStr "Mutate ") . (showFromStr $ show req) . (showFromStr " ") . (showFromStr $ show r)
     -- showsPrec p (NotifyMutated _ k) = showParen (p >= 11) $
     --     showString "NotifyMutated " . shows k
     -- showsPrec p (ResetMutation _ k) = showParen (p >= 11) $
@@ -312,11 +309,11 @@ unliftMkObj m logname s = do
 --     logExec' TRACE callStack $ SetRender obj win
 
 
--- | Rerender the ShimComponent using the current @Entity@ context
-rerender :: (HasCallStack, MonadReactor c m, AskPlanWeakRef m) => m ()
-rerender = do
-    this <- askPlanWeakRef
-    logExecJS' TRACE callStack $ Rerender this
+-- -- | Rerender the ShimComponent using the current @Entity@ context
+-- rerender :: (HasCallStack, MonadReactor c m, AskPlanWeakRef m) => m ()
+-- rerender = do
+--     this <- askPlanWeakRef
+--     logExecJS' TRACE callStack $ Rerender this
 
 ------------------------------------------------------
 -- MonadGadget
@@ -332,32 +329,40 @@ rerender = do
 --     delegatify $ \f -> logExec' TRACE callStack $ GetReactRef obj i f
 
 -- | 'mutate_' with 'RerenderRequired'
-mutate :: (HasCallStack, MonadReactor c m, AskModelWeakRef s m) => StateT s IO () -> m ()
+mutate :: ( HasCallStack, MonadReactor c m, AskModelWeakRef s m, AskPlanWeakRef m)
+    => StateT s IO () -> m ()
 mutate = mutate_ RerenderRequired
 
 -- | Mutates the Model for the current widget.
 -- Expose 'Rerender' for "uncontrolled (by react)" components like <input>
 -- which doesn't necessarily require a rerender if the model changes.
 -- Mutation notifications are always sent.
-mutate_ :: (HasCallStack, MonadReactor c m, AskModelWeakRef s m) => RerenderRequired -> StateT s IO () -> m ()
+mutate_ :: ( HasCallStack, MonadReactor c m, AskModelWeakRef s m, AskPlanWeakRef m)
+    => RerenderRequired -> StateT s IO () -> m ()
 mutate_ r m = do
-    this <- askModelWeakRef
-    logExecJS' TRACE callStack $ Mutate this r (command_ <$> m)
+    mdl <- askModelWeakRef
+    this <- askPlanWeakRef
+    p <- askReactPath
+    logExecJS' TRACE callStack $ Mutate this mdl p r (command_ <$> m)
 
 -- | 'mutateThen_' with 'RerenderRequired'
-mutateThen :: (HasCallStack, MonadReactor c m, AskModelWeakRef s m) => StateT s IO (m a) -> m a
+mutateThen :: ( HasCallStack, MonadReactor c m, AskModelWeakRef s m, AskPlanWeakRef m)
+    => StateT s IO (m a) -> m a
 mutateThen = mutateThen_ RerenderRequired
 
 -- | Variation of 'mutate_' which also returns the next action to execute after mutating.
-mutateThen_ :: (HasCallStack, MonadReactor c m, AskModelWeakRef s m) => RerenderRequired -> StateT s IO (m a) -> m a
+mutateThen_ :: ( HasCallStack, MonadReactor c m, AskModelWeakRef s m, AskPlanWeakRef m)
+    => RerenderRequired -> StateT s IO (m a) -> m a
 mutateThen_ r m = do
-    this <- askModelWeakRef
+    mdl <- askModelWeakRef
+    this <- askPlanWeakRef
+    p <- askReactPath
     delegate $ \fire -> do
         -- f :: m a -> m ()
         let f n = n >>= fire
         -- f' :: m a -> c
         f' <- codify f
-        logExecJS' TRACE callStack $ Mutate this r (f' <$> m)
+        logExecJS' TRACE callStack $ Mutate this mdl p r (f' <$> m)
 
 -- -- | Same as 'onRendered' but the action only occurs once on the next rerender.
 -- onRenderedOnce ::

@@ -63,7 +63,7 @@ data Plan = Plan
     -- An IO action that will update 'prerendered' with the latest markup using the associated 'Obj s'
     , prerender :: IO ()
 
-    -- Whether to notify React of he updated 'prerenderd' frame
+    -- Optimization varaible: means whether the 'prerendered' frame is stale.
     , rerenderRequired :: RerenderRequired
 
     -- FIXME: TODO
@@ -101,7 +101,7 @@ makeLenses_ ''Plan
 
 releasePlanCallbacks :: Plan -> IO ()
 releasePlanCallbacks pln = do
-    hack $ releaseShimCallbacks (shimCallbacks pln)
+    fixme $ releaseShimCallbacks (shimCallbacks pln)
     -- FIXME
     -- traverse_ J.releaseCallback (createdCallbacks pln)
 

@@ -33,8 +33,8 @@ rerenderShim :: ShimRef -> IO ()
 rerenderShim = js_rerenderShim
 
 -- | batch rerendering of a shim
-batchShimRerender :: ReactBatch -> ShimRef -> IO ()
-batchShimRerender b s = js_batchShimRerender (JE.toJS b) (JE.toJS s)
+batchShimRerender :: ShimRef -> ReactBatch -> IO ()
+batchShimRerender b s = js_batchShimRerender (JE.toJS s) (JE.toJS b)
 
 -- | This is used store the react "ref" to a javascript instance of a react Component.
 newtype ShimRef = ShimRef J.JSVal
@@ -62,7 +62,7 @@ foreign import javascript unsafe
   js_rerenderShim :: ShimRef -> IO ()
 
 foreign import javascript unsafe
-  "if ($1 && $1['batch'] && $2 && $2['rerender']){$1['batch'](function(){$2['rerender']()})};"
+  "if ($1 && $1['rerender'] && $2 && $2['batch']){$2['batch'](function(){$1['rerender']()})};"
   js_batchShimRerender :: J.JSVal -> J.JSVal -> IO ()
 
 #else

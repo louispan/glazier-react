@@ -137,26 +137,35 @@ rerenderDirtyPlans :: (AskReactBatch m, AskDirtyPlan m, MonadIO m) => m ()
 rerenderDirtyPlans = do
     ref <- untag' @"DirtyPlan" <$> askDirtyPlan
     ds <- liftIO $ atomicModifyIORef' ref $ \ds -> (mempty, ds)
-    liftIO $ foldMap go ds >>= liftIO
-    -- now run the batch tell react to use the prerendered frames
+    liftIO $ foldMap prerndr ds >>= liftIO -- ^ possibly async GHCJS
+    -- by this time, there is a possibilty that shms were removed,
+    -- only only batch shms that are still valid
     btch <- askReactBatch
+    liftIO $ foldMap (batchShim btch) ds >>= liftIO -- ^ possibly async GHCJS
+    -- now run the batch tell react to use the prerendered frames
     liftIO $ runReactBatch btch
   where
-    go plnWkRef = (`evalMaybeT` (pure ())) $ do
+    prerndr plnWkRef = (`evalMaybeT` (pure ())) $ do
         plnRef <- MaybeT $ liftIO $ deRefWeak plnWkRef
-        liftIO $ atomicModifyIORef' plnRef $ \pln ->
-            case rerenderRequired pln of
-                RerenderNotRequired -> (pln, (pure ()))
-                RerenderRequired ->
-                    (pln { rerenderRequired = RerenderNotRequired }
-                    , (prerender pln))
+        liftIO $ prerender <$> readIORef plnRef
+    batchShim btch plnWkRef = (`evalMaybeT` (pure ())) $ do
+        plnRef <- MaybeT $ liftIO $ deRefWeak plnWkRef
+        shm <- maybeM $ liftIO $ shimRef <$> readIORef plnRef
+        pure $ batchShimRerender shm btch
+
+
+    -- liftIO $ batchShimRerender btch shm
+    -- on the first time this is called, shimRef will be Nothing
+    -- because the Shim is not mounted yet
+    -- but the pre-rendered frame will be ready when it is mounted
+
 
 -- execRerender :: (AskReactBatch m, MonadIO m) => WeakRef Plan -> m ()
 -- execRerender wk = (`evalMaybeT` ()) $ do
---     hack $ liftIO $ putStrLn "LOUISDEBUG: execRerender"
+--     fixme $ liftIO $ putStrLn "LOUISDEBUG: execRerender"
 --     plnRef <- MaybeT $ liftIO $ deRefWeak wk
 --     pln <- liftIO $ readIORef plnRef
---     hack $ liftIO $ putStrLn "LOUISDEBUG: execRerender2"
+--     fixme $ liftIO $ putStrLn "LOUISDEBUG: execRerender2"
 --     liftIO $ case rerenderRequired pln of
 --         (Nothing, _) -> pure ()
 --         (_, RerenderNotRequired) -> pure ()
@@ -260,7 +269,7 @@ execMkObj ::
     -> m (Obj s)
 execMkObj executor wid logName' s = do
     UnliftIO u <- askUnliftIO
-    hack $ liftIO $ putStrLn "LOUISDEBUG: execMkObj"
+    fixme $ liftIO $ putStrLn "LOUISDEBUG: execMkObj"
     (logLevel', logDepth') <- getLogConfig logName'
     i <- mkReactId
     btch <- askReactBatch
@@ -271,12 +280,12 @@ execMkObj executor wid logName' s = do
                 logName'
                 logLevel'
                 logDepth'
-                Nothing -- shimRef
-                J.nullRef -- prerendered
-                mempty -- prerender
-                (hack RerenderRequired)
-                mempty -- rendered
-                mempty -- final cleanup
+                Nothing -- ^ himRef
+                J.nullRef -- ^ prerendered, null for now
+                mempty -- ^ prerender
+                RerenderRequired -- ^ prerendered is null
+                mempty -- ^ rendered
+                mempty -- ^ final cleanup
                 (ShimCallbacks
                     (J.Callback J.nullRef)
                     (J.Callback J.nullRef)
@@ -287,7 +296,7 @@ execMkObj executor wid logName' s = do
         -- Create automatic garbage collection of the callbacks
         -- that will run when the Obj is garbage collected.
         plnWkRef <- mkWeakIORef plnRef $ do
-            hack $ putStrLn "LOUISDEBUG: release plnRef"
+            fixme $ putStrLn "LOUISDEBUG: release plnRef"
             pln <- readIORef plnRef
             destructor pln
             releasePlanCallbacks pln
@@ -298,14 +307,19 @@ execMkObj executor wid logName' s = do
 
             -- Now we have enough to run the widget
             wid' = do
-                -- get the window out of wid and set the rendering function
-                -- the window cannot be obtained from execStateT because it
-                -- will return in the partial result due to StateT instance of 'codify'
-                -- So use 'SetPrerendered' to store the final window.
-                wid
-                ml <- askMarkup
-                wk <- askPlanWeakRef
-                setPrerendered btch wk ml
+                -- only run if 'RerenderRequired'
+                plnRef' <- maybeM $ liftIO $ deRefWeak plnWkRef
+                pln <- liftIO $ readIORef plnRef'
+                case rerenderRequired pln of
+                    RerenderNotRequired -> pure ()
+                    RerenderRequired -> do
+                        wid
+                        -- get the window out of wid and set the rendering function
+                        -- the window cannot be obtained from execStateT because it
+                        -- will return in the partial result due to StateT instance of 'codify'
+                        -- So use 'SetPrerendered' to store the final window.
+                        ml <- askMarkup
+                        setPrerendered plnWkRef ml
 
             -- mkRerenderCmds :: (c -> m ()) -> IO (DL.DList c)
             mkRerenderCmds onRendrd onDestruct onConstruct = (`evalMaybeT` mempty) $ do
@@ -367,26 +381,28 @@ execMkObj executor wid logName' s = do
     pure obj
 
   where
-    setPrerendered :: MonadIO m => ReactBatch -> WeakRef Plan -> DL.DList ReactMarkup -> m ()
-    setPrerendered btch plnWkRef mrkup = (`evalMaybeT` ()) $ do
+    setPrerendered :: MonadIO m => WeakRef Plan -> DL.DList ReactMarkup -> m ()
+    setPrerendered plnWkRef mrkup = (`evalMaybeT` ()) $ do
         frame <- liftIO $ JE.toJS <$> toElement mrkup
-        hack $ liftIO $ putStrLn "LOUISDEBUG: execSetPrerendered"
+        fixme $ liftIO $ putStrLn "LOUISDEBUG: execSetPrerendered"
         plnRef <- MaybeT $ liftIO $ deRefWeak plnWkRef
         -- replace the prerendered frame
-        shm <- MaybeT $ liftIO $ atomicModifyIORef' plnRef (\pln -> (pln & _prerendered .~ frame, shimRef pln))
-        liftIO $ batchShimRerender btch shm
+        liftIO $ atomicModifyIORef_' plnRef $ \pln ->
+            (pln & _prerendered .~ frame
+                & _rerenderRequired .~ RerenderNotRequired)
 
     onRenderCb :: WeakRef Plan -> IO J.JSVal
     onRenderCb wk = (`evalMaybeT` J.nullRef) $ do
         plnRef <- MaybeT $ deRefWeak wk
         liftIO $ do
             pln <- readIORef plnRef
+            -- prerendered is guaranteed to be ready because the widget
+            -- should have been initialized before being mounted
             pure $ prerendered pln
 
     onRefCb :: WeakRef Plan -> J.JSVal -> IO ()
     onRefCb wk j = (`evalMaybeT` ()) $ do
         plnRef <- MaybeT $ deRefWeak wk
-        -- update shimRef held in the Plan
         liftIO $ atomicModifyIORef_' plnRef (_shimRef .~ JE.fromJS j)
 
     onRenderedCb :: WeakRef Plan -> IO ()
