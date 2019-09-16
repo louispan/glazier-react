@@ -16,6 +16,7 @@
 
 module Glazier.React.Reactor.Exec where
 
+import Control.Concurrent.MVar
 import Control.Lens
 import Control.Lens.Misc
 import Control.Monad.Context
@@ -34,6 +35,7 @@ import qualified Data.JSString as J
 import qualified Data.Map.Strict as M
 import Data.String
 import Data.Tagged.Extras
+import Data.Tuple
 import GHC.Stack
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Foreign.Callback.Internal as J
@@ -125,8 +127,8 @@ mkReactId = do
 
 -----------------------------------------------
 
-type AskDirtyPlan = MonadAsk (Tagged "DirtyPlan" (IORef (M.Map ReactId (WeakRef Plan))))
-askDirtyPlan :: AskDirtyPlan m => m (Tagged "DirtyPlan" (IORef (M.Map ReactId (WeakRef Plan))))
+type AskDirtyPlan = MonadAsk (Tagged "DirtyPlan" (IORef (M.Map ReactId (Weak (IORef Plan)))))
+askDirtyPlan :: AskDirtyPlan m => m (Tagged "DirtyPlan" (IORef (M.Map ReactId (Weak (IORef Plan)))))
 askDirtyPlan = askContext
 
 type AskReactBatch = MonadAsk ReactBatch
@@ -154,13 +156,15 @@ rerenderDirtyPlans = do
         pure $ batchShimRerender shm btch
 
 
+
+
     -- liftIO $ batchShimRerender btch shm
     -- on the first time this is called, shimRef will be Nothing
     -- because the Shim is not mounted yet
     -- but the pre-rendered frame will be ready when it is mounted
 
 
--- execRerender :: (AskReactBatch m, MonadIO m) => WeakRef Plan -> m ()
+-- execRerender :: (AskReactBatch m, MonadIO m) => Weak (IORef Plan) -> m ()
 -- execRerender wk = (`evalMaybeT` ()) $ do
 --     fixme $ liftIO $ putStrLn "LOUISDEBUG: execRerender"
 --     plnRef <- MaybeT $ liftIO $ deRefWeak wk
@@ -291,26 +295,30 @@ execMkObj executor wid logName' s = do
                     (J.Callback J.nullRef)
                     (J.Callback J.nullRef))
 
-        plnRef <- newIORef newPlan
-        mdlRef <- newIORef s
-        -- Create automatic garbage collection of the callbacks
-        -- that will run when the Obj is garbage collected.
-        plnWkRef <- mkWeakIORef plnRef $ do
-            fixme $ putStrLn "LOUISDEBUG: release plnRef"
-            pln <- readIORef plnRef
-            destructor pln
-            releasePlanCallbacks pln
-        mdlWkRef <- mkWeakIORef mdlRef (pure ())
+        -- scoped block to return just obj to avoid accidently using the strong refs
+        obj <- liftIO $ do
+            plnRef <- newIORef newPlan
+            mdlVar <- newMVar s
+            -- Create automatic garbage collection of the callbacks
+            -- that will run when the Obj is garbage collected.
+            plnWkRef <- mkWeakIORef plnRef $ do
+                fixme $ putStrLn "LOUISDEBUG: release plnRef"
+                pln <- readIORef plnRef
+                destructor pln
+                releasePlanCallbacks pln
+            mdlWkVar <- mkWeakMVar mdlVar (pure ())
 
-        let wkObj = WeakObj plnWkRef mdlWkRef
-            obj = Obj plnRef mdlRef wkObj
+            pure $ Obj plnRef mdlVar $ WeakObj plnWkRef mdlWkVar
 
-            -- Now we have enough to run the widget
+        -- Now we have enough to run the widget
+        let Obj _ _ (WeakObj plnWkRef mdlWkVar) = obj
             wid' = do
                 -- only run if 'RerenderRequired'
                 plnRef' <- maybeM $ liftIO $ deRefWeak plnWkRef
-                pln <- liftIO $ readIORef plnRef'
-                case rerenderRequired pln of
+                req <- liftIO $ atomicModifyIORef' plnRef' $ \pln ->
+                    swap (pln & _rerenderRequired <<.~ RerenderNotRequired)
+
+                case req of
                     RerenderNotRequired -> pure ()
                     RerenderRequired -> do
                         wid
@@ -324,15 +332,15 @@ execMkObj executor wid logName' s = do
             -- mkRerenderCmds :: (c -> m ()) -> IO (DL.DList c)
             mkRerenderCmds onRendrd onDestruct onConstruct = (`evalMaybeT` mempty) $ do
                 -- get the latest state from the weak ref
-                mdlRef' <- MaybeT $ liftIO $ deRefWeak mdlWkRef
-                mdl <- liftIO $ readIORef mdlRef'
+                mdlVar' <- MaybeT $ liftIO $ deRefWeak mdlWkVar
+                mdl <- liftIO $ readMVar mdlVar'
                 -- then get the latest markup using the state
                 liftIO $ execProgramT'
                     $ (`evalStateT` mempty) -- markup
                     $ evalContT
                     $ (`evalMaybeT` ())
                     $ (`runReaderT` Tagged @"Model" mdl)
-                    $ (`runReaderT` Tagged @"Model" mdlWkRef)
+                    $ (`runReaderT` Tagged @"Model" mdlWkVar)
                     $ (`runReaderT` plnWkRef)
                     $ (`runReaderT` (ReactPath (Nothing, [])))
                     $ (`runObserverT` onConstruct)
@@ -381,17 +389,16 @@ execMkObj executor wid logName' s = do
     pure obj
 
   where
-    setPrerendered :: MonadIO m => WeakRef Plan -> DL.DList ReactMarkup -> m ()
+    setPrerendered :: MonadIO m => Weak (IORef Plan) -> DL.DList ReactMarkup -> m ()
     setPrerendered plnWkRef mrkup = (`evalMaybeT` ()) $ do
         frame <- liftIO $ JE.toJS <$> toElement mrkup
         fixme $ liftIO $ putStrLn "LOUISDEBUG: execSetPrerendered"
         plnRef <- MaybeT $ liftIO $ deRefWeak plnWkRef
         -- replace the prerendered frame
         liftIO $ atomicModifyIORef_' plnRef $ \pln ->
-            (pln & _prerendered .~ frame
-                & _rerenderRequired .~ RerenderNotRequired)
+            (pln & _prerendered .~ frame)
 
-    onRenderCb :: WeakRef Plan -> IO J.JSVal
+    onRenderCb :: Weak (IORef Plan) -> IO J.JSVal
     onRenderCb wk = (`evalMaybeT` J.nullRef) $ do
         plnRef <- MaybeT $ deRefWeak wk
         liftIO $ do
@@ -400,15 +407,72 @@ execMkObj executor wid logName' s = do
             -- should have been initialized before being mounted
             pure $ prerendered pln
 
-    onRefCb :: WeakRef Plan -> J.JSVal -> IO ()
+    onRefCb :: Weak (IORef Plan) -> J.JSVal -> IO ()
     onRefCb wk j = (`evalMaybeT` ()) $ do
         plnRef <- MaybeT $ deRefWeak wk
         liftIO $ atomicModifyIORef_' plnRef (_shimRef .~ JE.fromJS j)
 
-    onRenderedCb :: WeakRef Plan -> IO ()
+    onRenderedCb :: Weak (IORef Plan) -> IO ()
     onRenderedCb wk = (`evalMaybeT` ()) $ do
         plnRef <- MaybeT $ deRefWeak wk
         liftIO $ readIORef plnRef >>= rendered
+
+-- execMutate ::
+--     ( MonadIO m
+--     , MonadBenignIO m
+--     , AsReactor c
+--     )
+--     => Weak (IORef Plan)
+--     -> WeakRef s
+--     -> ReactPath
+--     -> RerenderRequired
+--     -> StateT s IO c
+--     -> m ()
+-- execMutate plnWk mdlWk pth req tick = do
+--     liftIO $ putStrLn $ "LOUISDEBUG: execMutate " <> show k
+--     mdlVar <- MaybeT $ deRefWeak mdlWk
+--     s <- takeMVar mdlVar
+--     (c, s') <- liftIO $ runStateT tick s
+--     putMVar mdlVar s'
+
+--     -- FIXME: Need to run extra c
+
+--     -- FIXME: then if pln has rerender dirty, batch
+--     -- FIXME: and also notify
+
+
+--     plnRef <- MaybeT $ deRefWeak wk
+
+--     obj' <- benignDeRefWeakObj obj
+--     let mdlRef = sceneRef obj'
+--         mdlVar = sceneVar obj'
+--     -- q <- view ((hasLens @ReactorEnv)._reactorBackgroundEnv)
+--     liftIO $ do
+--         mdl <- takeMVar mdlVar
+--         putStrLn $ "LOUISDEBUG: execMutate2 " <> show k
+--         let s = mdl ^. _meta
+--         (c, s') <- getBenign $ runStateT tick s
+--         let mdl' = mdl & _meta .~ s'
+--         -- don't notify ticked listener straight away, but schedule it like rerender.
+--         -- This is so that if there are multiple mutates, it will try to only fire
+--         -- the notified callback as late as possible.
+--         -- 'execResetMutation' is now responsible for triggering a rerender,
+--         -- so suppress rerender until after 'execResetMutation' is called.
+--         let mdl'' = mdl' & _plan._rerendering .~ RerenderScheduled
+--             notifyCmd = [command' $ NotifyMutated obj k]
+--             -- Only fire NotifyMutated once for the same ReactId in processing cycle.
+--             (c', mdl''') = case S.member k (mdl' ^. _plan._mutations) of
+--                 False -> (notifyCmd, mdl'' & _plan._mutations %~ (S.insert k))
+--                 True -> ([], mdl'')
+--         -- LOUISFIXME: remove debug
+--         case S.member k (mdl' ^. _plan._mutations) of
+--             False -> putStrLn $ "new mutation"
+--             True -> putStrLn $ "old mutation"
+--         -- Update the back buffer
+--         atomicWriteIORef mdlRef mdl'''
+--         putMVar mdlVar mdl'''
+--         putStrLn $ "LOUISDEBUG: execMutate3 " <> show k
+--         pure (c', c)
 
 -- -- | No need to run in a separate thread because it should never block for a significant amount of time.
 -- -- Update the meta 'MVar' with the given action. Also triggers a rerender.

@@ -16,12 +16,14 @@ module Glazier.React.Reactor where
 
 import Control.Also
 import Control.Applicative
+import Control.Concurrent.MVar
 import Control.DeepSeq
 import Control.Lens
 import Control.Monad.Delegate
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Maybe
 import qualified Data.DList as DL
+import Data.IORef
 import qualified Data.JSString as J
 import qualified Data.List as DL
 import qualified Data.Map.Strict as M
@@ -42,6 +44,7 @@ import Glazier.React.ReactPath
 import Glazier.React.Widget
 import Glazier.ShowIO
 import qualified JavaScript.Extras as JE
+import System.Mem.Weak
 
 -----------------------------------------------------------------
 type CmdReactor c =
@@ -85,7 +88,7 @@ data Reactor c where
     -- GHC will try to return the same processor for the same input functions as much as possible
     -- so that it will be relatively efficient to use this function on every rerender.
     MkHandler :: NFData a
-        => WeakRef Plan
+        => Weak (IORef Plan)
         -> (J.JSVal -> MaybeT IO a)
         -> (a -> c)
         -- (preprocess, postprocess)
@@ -96,7 +99,7 @@ data Reactor c where
     -- GHC will try to return the same callback for the same input functions as much as possible.
     -- so that it will be relatively efficient to use this function on every rerender.
     MkCallback ::
-        WeakRef Plan
+        Weak (IORef Plan)
         -- (preprocess, postprocess)
         -> (J.JSVal -> IO (), IO ())
         -> (J.Callback (J.JSVal -> IO ()) -> c)
@@ -119,11 +122,11 @@ data Reactor c where
     -- -- | Notify react to render the 'prerendered' frame
     -- -- Does nothing if 'rerenderRequired' is RerenderNotRequired
     -- -- FIXME: Optimise also to use ReactDOM.unstable_batchedUpdates
-    -- Rerender :: WeakRef Plan -> Reactor c
+    -- Rerender :: Weak (IORef Plan) -> Reactor c
 
     -- -- | Schedule to rerender
     -- -- FIXME: Optimise also to use ReactDOM.unstable_batchedUpdates
-    -- ScheduleRerender :: WeakRef Plan -> Reactor c
+    -- ScheduleRerender :: Weak (IORef Plan) -> Reactor c
 
     -- FIXME: TODO
     -- -- | Update, store 'ReactId' in 'mutataions' and fire 'mutatedListener'.
@@ -132,11 +135,11 @@ data Reactor c where
     -- -- When the cycle of 'Mutate' and 'mutatedListener' finishes, the 'mutations' is
     -- -- cleared.
     -- -- Finally 'rerender' is called.
-    Mutate :: WeakRef Plan -> WeakRef s -> ReactPath -> RerenderRequired -> StateT s IO c -> Reactor c
+    Mutate :: Weak (IORef Plan) -> Weak (MVar s) -> ReactPath -> RerenderRequired -> StateT s IO c -> Reactor c
 
     -- FIXME:: Get another widget's model in a safe way where this will be registered
     -- as a listener to be notified of mutations
-    -- GetObjModel :: WeakRef Plan -> WeakObj s -> (s -> c) -> Reactor c
+    -- GetObjModel :: Weak (IORef Plan) -> WeakObj s -> (s -> c) -> Reactor c
 
     -- FIXME: TODO
     -- -- | Private effect used by executor: Calls the meta mutatedListener with 'ReactId'
@@ -164,7 +167,7 @@ data Reactor c where
     -- -- If the callback is for "ref", then an listener to update 'elementalRef' for 'GetEventTarget'
     -- -- will automatically be added just before the listener in 'RegisterReactListener'.
     -- RegisterReactListener :: NFData a
-    --     => WeakRef Plan
+    --     => Weak (IORef Plan)
     --     -> ReactId
     --     -> J.JSString
     --     -> (J.JSVal -> MaybeT IO a)
@@ -329,7 +332,7 @@ unliftMkObj m logname s = do
 --     delegatify $ \f -> logExec' TRACE callStack $ GetReactRef obj i f
 
 -- | 'mutate_' with 'RerenderRequired'
-mutate :: ( HasCallStack, MonadReactor c m, AskModelWeakRef s m, AskPlanWeakRef m)
+mutate :: ( HasCallStack, MonadReactor c m, AskModelWeakVar s m, AskPlanWeakRef m)
     => StateT s IO () -> m ()
 mutate = mutate_ RerenderRequired
 
@@ -337,24 +340,24 @@ mutate = mutate_ RerenderRequired
 -- Expose 'Rerender' for "uncontrolled (by react)" components like <input>
 -- which doesn't necessarily require a rerender if the model changes.
 -- Mutation notifications are always sent.
-mutate_ :: ( HasCallStack, MonadReactor c m, AskModelWeakRef s m, AskPlanWeakRef m)
+mutate_ :: ( HasCallStack, MonadReactor c m, AskModelWeakVar s m, AskPlanWeakRef m)
     => RerenderRequired -> StateT s IO () -> m ()
 mutate_ r m = do
-    mdl <- askModelWeakRef
+    mdl <- askModelWeakVar
     this <- askPlanWeakRef
     p <- askReactPath
     logExecJS' TRACE callStack $ Mutate this mdl p r (command_ <$> m)
 
 -- | 'mutateThen_' with 'RerenderRequired'
-mutateThen :: ( HasCallStack, MonadReactor c m, AskModelWeakRef s m, AskPlanWeakRef m)
+mutateThen :: ( HasCallStack, MonadReactor c m, AskModelWeakVar s m, AskPlanWeakRef m)
     => StateT s IO (m a) -> m a
 mutateThen = mutateThen_ RerenderRequired
 
 -- | Variation of 'mutate_' which also returns the next action to execute after mutating.
-mutateThen_ :: ( HasCallStack, MonadReactor c m, AskModelWeakRef s m, AskPlanWeakRef m)
+mutateThen_ :: ( HasCallStack, MonadReactor c m, AskModelWeakVar s m, AskPlanWeakRef m)
     => RerenderRequired -> StateT s IO (m a) -> m a
 mutateThen_ r m = do
-    mdl <- askModelWeakRef
+    mdl <- askModelWeakVar
     this <- askPlanWeakRef
     p <- askReactPath
     delegate $ \fire -> do

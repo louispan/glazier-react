@@ -114,12 +114,12 @@ instance Show Plan where
         -- , showString ", " . showString "componentRef ? " . shows (isJust $ shimRef pln)
         )
 
-type AskPlanWeakRef = MonadAsk (WeakRef Plan)
-askPlanWeakRef :: AskPlanWeakRef m => m (WeakRef Plan)
+type AskPlanWeakRef = MonadAsk (Weak (IORef Plan))
+askPlanWeakRef :: AskPlanWeakRef m => m (Weak (IORef Plan))
 askPlanWeakRef = askContext
 
 -- | Get the 'LogLevel' from a 'WeakRef' 'Plan'
-instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Maybe LogLevel) (ReaderT (WeakRef Plan) m) where
+instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Maybe LogLevel) (ReaderT (Weak (IORef Plan)) m) where
     askContext = do
         ref <- askPlanWeakRef
         liftIO $ go ref
@@ -133,7 +133,7 @@ instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Maybe LogLevel) (ReaderT (We
 type AskLogName = MonadAsk (Tagged "LogName" J.JSString)
 askLogName :: AskLogName m => m (Tagged "LogName" J.JSString)
 askLogName = askContext
-instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Tagged "LogName" J.JSString) (ReaderT (WeakRef Plan) m) where
+instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Tagged "LogName" J.JSString) (ReaderT (Weak (IORef Plan)) m) where
     askContext = do
         ref <- askPlanWeakRef
         n <- liftIO $ go ref
@@ -145,7 +145,7 @@ instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Tagged "LogName" J.JSString)
             pure $ logName pln
 
 -- | Get the 'LogCallStackDepth' from a 'WeakRef' 'Plan'
-instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Maybe (Maybe LogCallStackDepth)) (ReaderT (WeakRef Plan) m) where
+instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Maybe (Maybe LogCallStackDepth)) (ReaderT (Weak (IORef Plan)) m) where
     askContext = do
         ref <- askPlanWeakRef
         liftIO $ go ref

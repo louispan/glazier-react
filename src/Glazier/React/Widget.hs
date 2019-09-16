@@ -19,6 +19,7 @@
 
 module Glazier.React.Widget where
 
+import Control.Concurrent.MVar
 import Control.Monad.Cont
 import Control.Monad.Observer
 import Control.Monad.Reader
@@ -87,8 +88,8 @@ type Widget c s =
     (ObserverT (Tagged "Destructor" c) -- 'AskDestructor'
     (ObserverT (Tagged "Constructor" c) -- 'AskConstructor'
     (ReaderT ReactPath -- 'AskReactPath', 'AskLogNameJS'
-    (ReaderT (WeakRef Plan) -- 'AskPlanWeakRef', 'AskLogLevel', 'AskLogId'
-    (ReaderT (Tagged "Model" (WeakRef s)) -- 'AskModelWeakRef'
+    (ReaderT (Weak (IORef Plan)) -- 'AskPlanWeakRef', 'AskLogLevel', 'AskLogId'
+    (ReaderT (Tagged "Model" (Weak (MVar s))) -- 'AskModelWeakRef'
     (ReaderT (Tagged "Model" s) -- 'AskModel'
     (MaybeT -- 'Alternative'
     (ContT () -- 'MonadDelegate'
@@ -152,7 +153,7 @@ instance (Functor m, MonadUnliftWidget c s m) => MonadUnliftWidget c s (Identity
 --     lift $ fmap go $ (`runReaderT` mdl) $ traverse sequenceA ls
 --   where go = JE.toJSRep . J.unwords . fmap fst . filter snd -- . catMaybes
 
-displayPlanWeakRef :: (MonadIO m, PutMarkup m) => WeakRef Plan -> m ()
+displayPlanWeakRef :: (MonadIO m, PutMarkup m) => Weak (IORef Plan) -> m ()
 displayPlanWeakRef that = (`evalMaybeT` ()) $ do
     mdlRef <- MaybeT $ liftIO $ deRefWeak that
     displayPlanRef mdlRef
