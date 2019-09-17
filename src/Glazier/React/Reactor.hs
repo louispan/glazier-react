@@ -119,9 +119,8 @@ data Reactor c where
     --     -> (EventTarget -> c)
     --     -> Reactor c
 
-    -- -- | Notify react to render the 'prerendered' frame
-    -- -- Does nothing if 'rerenderRequired' is RerenderNotRequired
-    -- -- FIXME: Optimise also to use ReactDOM.unstable_batchedUpdates
+    -- -- | Force 'RerenderRequired' and regeneration of the 'prerendered' frame,
+    -- -- and notifies react.
     -- Rerender :: Weak (IORef Plan) -> Reactor c
 
     -- -- | Schedule to rerender
@@ -135,7 +134,10 @@ data Reactor c where
     -- -- When the cycle of 'Mutate' and 'mutatedListener' finishes, the 'mutations' is
     -- -- cleared.
     -- -- Finally 'rerender' is called.
-    Mutate :: Weak (IORef Plan) -> Weak (MVar s) -> ReactPath -> RerenderRequired -> StateT s IO c -> Reactor c
+    -- Modifies the model and flags 'RerenderRequired'
+    -- Also notifier any listener that the model has changes
+    -- so that the listeners can rerender
+    Mutate :: Weak (IORef Plan) -> Weak (MVar s) -> RerenderRequired -> StateT s IO c -> Reactor c
 
     -- FIXME:: Get another widget's model in a safe way where this will be registered
     -- as a listener to be notified of mutations
@@ -207,7 +209,7 @@ instance (IsString str, Semigroup str) => ShowIO str (Reactor c) where
     -- showsPrec _ (SetRender _ _ ) = showString "SetRender"
     -- showsPrec _ (GetReactRef _ _ _) = showString "GetReactRef"
     -- showsPrecIO p (Rerender this) = showParenIO (p >= 11) $ (showStr "Rerender " .) <$> (showsIO this)
-    showsPrecIO p (Mutate _ _ req r _) = showParenIO (p >= 11) $ pure $ (showStr "Mutate ") . (showFromStr $ show req) . (showFromStr " ") . (showFromStr $ show r)
+    showsPrecIO p (Mutate this _ req _) = showParenIO (p >= 11) $ (\x -> (showStr "Mutate ") . x . (showFromStr " ") . (showFromStr $ show req)) <$> (showsIO this)
     -- showsPrec p (NotifyMutated _ k) = showParen (p >= 11) $
     --     showString "NotifyMutated " . shows k
     -- showsPrec p (ResetMutation _ k) = showParen (p >= 11) $
@@ -288,10 +290,6 @@ mkObj :: (HasCallStack, MonadReactor c m)
 mkObj wid logname s = delegatify $ \f ->
     logExec' (Proxy @J.JSString) TRACE callStack $ MkObj wid logname s f
 
-------------------------------------------------------
--- MonadUnliftWidget
-------------------------------------------------------
-
 -- | Convenient variation of 'mkObj' where the widget is unlifted from the given monad.
 -- This is useful for transformer stacks that require addition MonadReader-like effects.
 unliftMkObj :: (HasCallStack, MonadUnliftWidget c s m, MonadReactor c m)
@@ -300,36 +298,11 @@ unliftMkObj m logname s = do
     u <- askUnliftWidget
     mkObj (unliftWidget u m) logname s
 
----------------------------
--- MonadGadget' c s m
----------------------------
-
--- -- | Private function: should only be called by Exec
--- setRender :: (HasCallStack, AsReactor c, MonadGadget' c s m)
---     => Window s () -> m ()
--- setRender win = do
---     obj <- askWeakModelRef
---     logExec' TRACE callStack $ SetRender obj win
-
-
--- -- | Rerender the ShimComponent using the current @Entity@ context
--- rerender :: (HasCallStack, MonadReactor c m, AskPlanWeakRef m) => m ()
--- rerender = do
---     this <- askPlanWeakRef
---     logExecJS' TRACE callStack $ Rerender this
-
-------------------------------------------------------
--- MonadGadget
-------------------------------------------------------
-
--- -- | Get the event target
--- -- If a "ref" callback to update 'reactRef' has not been added;
--- -- then add it, rerender, then return the EventTarget.
--- getReactRef :: (HasCallStack, AsReactor c, MonadGadget c s m) => m EventTarget
--- getReactRef = do
---     obj <- askWeakModelRef
---     i <- askReactId
---     delegatify $ \f -> logExec' TRACE callStack $ GetReactRef obj i f
+-- -- | Reads from an 'Obj', also registering this as a listener
+-- -- so this will get rerendered whenever the 'Obj' is 'mutate'd.
+-- readObj :: (HasCallStack, MonadReactor c m)
+--     => Obj s -> m s
+-- readObj (Obj plnRef mdlVar _) =
 
 -- | 'mutate_' with 'RerenderRequired'
 mutate :: ( HasCallStack, MonadReactor c m, AskModelWeakVar s m, AskPlanWeakRef m)
@@ -345,8 +318,7 @@ mutate_ :: ( HasCallStack, MonadReactor c m, AskModelWeakVar s m, AskPlanWeakRef
 mutate_ r m = do
     mdl <- askModelWeakVar
     this <- askPlanWeakRef
-    p <- askReactPath
-    logExecJS' TRACE callStack $ Mutate this mdl p r (command_ <$> m)
+    logExecJS' TRACE callStack $ Mutate this mdl r (command_ <$> m)
 
 -- | 'mutateThen_' with 'RerenderRequired'
 mutateThen :: ( HasCallStack, MonadReactor c m, AskModelWeakVar s m, AskPlanWeakRef m)
@@ -359,27 +331,12 @@ mutateThen_ :: ( HasCallStack, MonadReactor c m, AskModelWeakVar s m, AskPlanWea
 mutateThen_ r m = do
     mdl <- askModelWeakVar
     this <- askPlanWeakRef
-    p <- askReactPath
     delegate $ \fire -> do
         -- f :: m a -> m ()
         let f n = n >>= fire
         -- f' :: m a -> c
         f' <- codify f
-        logExecJS' TRACE callStack $ Mutate this mdl p r (f' <$> m)
-
--- -- | Same as 'onRendered' but the action only occurs once on the next rerender.
--- onRenderedOnce ::
---     (HasCallStack, AsReactor c, MonadGadget' c s m)
---     => m a -> m a
--- onRenderedOnce m = do
---     obj <- askWeakModelRef
---     delegate $ \fire -> do
---         f <- codify' (m >>= fire)
---         logExec' TRACE callStack $ RegisterRenderedOnceListener obj f
-
-------------------------------------------------------
--- Triggers - MonadGadget')
-------------------------------------------------------
+        logExecJS' TRACE callStack $ Mutate this mdl r (f' <$> m)
 
 -- -- | Create a callback for a 'J.JSVal' and add it to this elementals's dlist of listeners.
 -- -- 'domTrigger' does not expect a 'Notice' as it is not part of React.
@@ -406,66 +363,6 @@ mutateThen_ r m = do
 -- domTrigger_ j n a = do
 --     runGadget $ domTrigger j n (const $ pure ())
 --     pure a
-
--- -- | Register actions to execute after a render.
--- -- It is safe to 'exec'' a 'Mutate' or 'Rerender' in this callback.
--- -- These command will not trigger another rendered event.
--- --
--- -- NB. This is trigged by react 'componentDidMount'
--- -- See jsbits/react.js hgr$shimComponent.
--- -- These callbacks are called after the ref callback by React
--- -- See https://reactjs.org/docs/refs-and-the-dom.html.
--- onMounted ::
---     (HasCallStack, AsReactor c, MonadGadget' c s m)
---     => m a
---     -> m a
--- onMounted m = do
---     obj <- askWeakModelRef
---     delegate $ \fire -> do
---         c <- codify' (m >>= fire)
---         logExec' TRACE callStack $ RegisterMountedListener obj c
-
--- -- | Register actions to execute after a render.
--- -- It is safe to 'exec'' a 'Mutate' or 'Rerender'. These command will not
--- -- trigger another rendered event.
--- --
--- -- NB. This is trigged by react 'componentDidUpdate' and 'componentDidMount'
--- -- so it is also called for the initial render.
--- -- See jsbits/react.js hgr$shimComponent.
--- -- These callbacks are called after the ref callback by React
--- -- See https://reactjs.org/docs/refs-and-the-dom.html.
--- onRendered ::
---     (HasCallStack, AsReactor c, MonadGadget' c s m)
---     => m a
---     -> m a
--- onRendered m = do
---     obj <- askWeakModelRef
---     delegate $ \fire -> do
---         f <- codify' (m >>= fire)
---         logExec' TRACE callStack $ RegisterRenderedListener obj f
-
--- -- | Register actions to execute after the state has been updated with 'mutate'.
--- -- The callback is called` with the 'ReactId' that was passed into 'mutate'.
--- -- To prevent infinite loops, if this 'onMutated' causes another 'mutate'
--- -- with the same 'ReactId', then another 'onMutated' callback will NOT be fired.
--- onMutated ::
---     (HasCallStack, AsReactor c, MonadGadget' c s m)
---     => (ReactId -> m a) -> m a
--- onMutated f = do
---     obj <- askWeakModelRef
---     delegate $ \fire -> do
---         g <- codify ((fire =<<) . f)
---         logExec' TRACE callStack $ RegisterMutatedListener obj g
-
--- -- -- | Variation of 'onMutated' where you don't care about the 'ReactId' that caused the rerender.
--- -- onMutated' ::
--- --     (HasCallStack, MonadGadget' c s m)
--- --     => obj -> m a -> m a
--- -- onMutated' f = onMutated (const f)
-
----------------------------
--- Triggers - MonadGadget
----------------------------
 
 
 -- | This convert the (preprocess, postprocess) into a ghcjs 'Callback'

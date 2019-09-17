@@ -31,7 +31,6 @@ import qualified Data.DList as DL
 import Data.IORef
 import Data.Tagged.Extras
 import Glazier.Command
-import Glazier.React.Common
 import Glazier.React.Markup
 import Glazier.React.Plan.Internal
 import Glazier.React.ReactPath

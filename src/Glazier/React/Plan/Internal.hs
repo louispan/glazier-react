@@ -14,6 +14,7 @@ import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
 import Data.Function.Extras
 import Data.IORef
+import qualified Data.Map.Strict as M
 import Data.Maybe
 import Data.Tagged.Extras
 import qualified GHC.Generics as G
@@ -50,7 +51,7 @@ releaseShimCallbacks (ShimCallbacks a b c) = do
 data Plan = Plan
     -- guaranteed unique for every widget instance
     { reactId :: ReactId
-    , logName :: Tagged "LogName" J.JSString
+    , logName :: LogName
     , logLevel :: IO (Maybe LogLevel)
     , logDepth :: IO (Maybe (Maybe LogCallStackDepth))
 
@@ -65,6 +66,12 @@ data Plan = Plan
 
     -- Optimization varaible: means whether the 'prerendered' frame is stale.
     , rerenderRequired :: RerenderRequired
+
+    -- | listeners that need to be rerendered when this is mutated
+    , listeners :: M.Map ReactId (Weak (IORef Plan))
+
+    -- | notifiers that need to be unsubscribed from when this is destroyed
+    , notifiers :: M.Map ReactId (Weak (IORef Plan))
 
     -- FIXME: TODO
     -- called after state was just updated
@@ -130,8 +137,8 @@ instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Maybe LogLevel) (ReaderT (We
             MaybeT . logLevel $ pln
 
 -- | Get the 'LogName' from a 'WeakRef' 'Plan'
-type AskLogName = MonadAsk (Tagged "LogName" J.JSString)
-askLogName :: AskLogName m => m (Tagged "LogName" J.JSString)
+type AskLogName = MonadAsk LogName
+askLogName :: AskLogName m => m LogName
 askLogName = askContext
 instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Tagged "LogName" J.JSString) (ReaderT (Weak (IORef Plan)) m) where
     askContext = do

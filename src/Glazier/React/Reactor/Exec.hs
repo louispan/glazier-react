@@ -16,6 +16,7 @@
 
 module Glazier.React.Reactor.Exec where
 
+import Control.Also
 import Control.Concurrent.MVar
 import Control.Lens
 import Control.Lens.Misc
@@ -155,25 +156,23 @@ rerenderDirtyPlans = do
         shm <- maybeM $ liftIO $ shimRef <$> readIORef plnRef
         pure $ batchShimRerender shm btch
 
+-- | Called after a mutation
+markPlanDirty :: (MonadIO m, AskDirtyPlan m) => Weak (IORef Plan) -> m ()
+markPlanDirty wk = (`evalMaybeT` ()) $ do
+    fixme $ liftIO $ putStrLn "LOUISDEBUG: markDirty"
+    plnRef <- MaybeT $ liftIO $ deRefWeak wk
+    (oldReq, i) <- liftIO $ atomicModifyIORef' plnRef $ \pln ->
+        let (oldReq, pln') = (pln & _rerenderRequired <<.~ RerenderNotRequired)
+        in (pln', (oldReq, reactId pln))
+    case oldReq of
+        RerenderRequired -> pure () -- we have scheduled already
+        RerenderNotRequired -> do
+            -- Add plan to pending list for worker thread
+            dirtRef <- untag' @"DirtyPlan" <$> askDirtyPlan
+            liftIO $ atomicModifyIORef_' dirtRef $ M.insert i wk
 
 
 
-    -- liftIO $ batchShimRerender btch shm
-    -- on the first time this is called, shimRef will be Nothing
-    -- because the Shim is not mounted yet
-    -- but the pre-rendered frame will be ready when it is mounted
-
-
--- execRerender :: (AskReactBatch m, MonadIO m) => Weak (IORef Plan) -> m ()
--- execRerender wk = (`evalMaybeT` ()) $ do
---     fixme $ liftIO $ putStrLn "LOUISDEBUG: execRerender"
---     plnRef <- MaybeT $ liftIO $ deRefWeak wk
---     pln <- liftIO $ readIORef plnRef
---     fixme $ liftIO $ putStrLn "LOUISDEBUG: execRerender2"
---     liftIO $ case rerenderRequired pln of
---         (Nothing, _) -> pure ()
---         (_, RerenderNotRequired) -> pure ()
---         (Just shm, RerenderRequired) -> rerenderShim shm
 
         -- replace the prerendered frame
 -- -- | renders the given obj onto the given javascript dom
@@ -288,6 +287,8 @@ execMkObj executor wid logName' s = do
                 J.nullRef -- ^ prerendered, null for now
                 mempty -- ^ prerender
                 RerenderRequired -- ^ prerendered is null
+                mempty -- ^ listeners
+                mempty -- ^ notifiers
                 mempty -- ^ rendered
                 mempty -- ^ final cleanup
                 (ShimCallbacks
@@ -314,14 +315,16 @@ execMkObj executor wid logName' s = do
         let Obj _ _ (WeakObj plnWkRef mdlWkVar) = obj
             wid' = do
                 -- only run if 'RerenderRequired'
-                plnRef' <- maybeM $ liftIO $ deRefWeak plnWkRef
-                req <- liftIO $ atomicModifyIORef' plnRef' $ \pln ->
+                plnRef <- maybeM $ liftIO $ deRefWeak plnWkRef
+                req <- liftIO $ atomicModifyIORef' plnRef $ \pln ->
                     swap (pln & _rerenderRequired <<.~ RerenderNotRequired)
 
                 case req of
                     RerenderNotRequired -> pure ()
                     RerenderRequired -> do
-                        wid
+                         -- protect against a 'finish'ed widget,
+                         -- so we can get the partial markup.
+                        wid `also` pure ()
                         -- get the window out of wid and set the rendering function
                         -- the window cannot be obtained from execStateT because it
                         -- will return in the partial result due to StateT instance of 'codify'
@@ -383,7 +386,7 @@ execMkObj executor wid logName' s = do
     liftIO $ prerndr onRendrd onDestruct onConstruct
 
     -- We do not want explicitly tell React to show the prendered frame right now.
-    -- This is the responsiblity of the caller of MkObj, usually via mutate
+    -- This is the responsiblity of the caller of MkObj
 
     -- return the obj created
     pure obj
@@ -417,23 +420,31 @@ execMkObj executor wid logName' s = do
         plnRef <- MaybeT $ deRefWeak wk
         liftIO $ readIORef plnRef >>= rendered
 
--- execMutate ::
---     ( MonadIO m
---     , MonadBenignIO m
---     , AsReactor c
---     )
---     => Weak (IORef Plan)
---     -> WeakRef s
---     -> ReactPath
---     -> RerenderRequired
---     -> StateT s IO c
---     -> m ()
--- execMutate plnWk mdlWk pth req tick = do
---     liftIO $ putStrLn $ "LOUISDEBUG: execMutate " <> show k
---     mdlVar <- MaybeT $ deRefWeak mdlWk
---     s <- takeMVar mdlVar
---     (c, s') <- liftIO $ runStateT tick s
---     putMVar mdlVar s'
+execMutate ::
+    ( MonadIO m, AskDirtyPlan m)
+    => (c -> m ())
+    -> Weak (IORef Plan)
+    -> Weak (MVar s)
+    -> RerenderRequired
+    -> StateT s IO c
+    -> m ()
+execMutate executor plnWk mdlWk req tick = (`evalMaybeT` ()) $ do
+    liftIO $ putStrLn $ "LOUISDEBUG: execMutate"
+    mdlVar <- MaybeT $ liftIO $ deRefWeak mdlWk
+    s <- liftIO $ takeMVar mdlVar
+    (c, s') <- liftIO $ runStateT tick s
+    liftIO $ putMVar mdlVar s'
+    lift $ executor c
+    -- now rerender
+    case req of
+        RerenderNotRequired -> pure ()
+        RerenderRequired -> do
+            plnRef <- MaybeT $ liftIO $ deRefWeak plnWk
+            ls <- liftIO $ listeners <$> readIORef plnRef
+            foldr (\wk b -> markPlanDirty wk *> b) (pure ()) ls
+            markPlanDirty plnWk
+
+
 
 --     -- FIXME: Need to run extra c
 
