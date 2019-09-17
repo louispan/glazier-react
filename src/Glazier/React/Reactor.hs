@@ -110,6 +110,8 @@ data Reactor c where
     -- NB. 'Reactor' is not a functor because of the @Widget c@ in 'MkObj'
     MkObj :: Widget c s () -> LogName -> s -> (Obj s -> c) -> Reactor c
 
+    ReadObj :: Weak (IORef Plan) -> Obj s -> (s -> c) -> Reactor c
+
     -- Get the event target
     -- If a "ref" callback to update 'elementalRef' has not been added;
     -- then add it, rerender, then return the EventTarget.
@@ -206,6 +208,7 @@ instance (IsString str, Semigroup str) => ShowIO str (Reactor c) where
     showsPrecIO p (MkHandler this _ _ _) = showParenIO (p >= 11) $ (showStr "MkHandler " .) <$> (showsIO this)
     showsPrecIO p (MkCallback this _ _) = showParenIO (p >= 11) $ (showStr "MkCallback " .) <$> (showsIO this)
     showsPrecIO p (MkObj _ logname _ _) = showParenIO (p >= 11) $ (showStr "MkObj " .) <$> (showsIO logname)
+    showsPrecIO p (ReadObj this _ _) = showParenIO (p >= 11) $ (showStr "ReadObj " .) <$> (showsIO this)
     -- showsPrec _ (SetRender _ _ ) = showString "SetRender"
     -- showsPrec _ (GetReactRef _ _ _) = showString "GetReactRef"
     -- showsPrecIO p (Rerender this) = showParenIO (p >= 11) $ (showStr "Rerender " .) <$> (showsIO this)
@@ -288,7 +291,7 @@ logInvokeJS_ = logInvoke_ (Proxy @J.JSString)
 mkObj :: (HasCallStack, MonadReactor c m)
     => Widget c s () -> LogName -> s -> m (Obj s)
 mkObj wid logname s = delegatify $ \f ->
-    logExec' (Proxy @J.JSString) TRACE callStack $ MkObj wid logname s f
+    logExecJS' TRACE callStack $ MkObj wid logname s f
 
 -- | Convenient variation of 'mkObj' where the widget is unlifted from the given monad.
 -- This is useful for transformer stacks that require addition MonadReader-like effects.
@@ -298,11 +301,14 @@ unliftMkObj m logname s = do
     u <- askUnliftWidget
     mkObj (unliftWidget u m) logname s
 
--- -- | Reads from an 'Obj', also registering this as a listener
--- -- so this will get rerendered whenever the 'Obj' is 'mutate'd.
--- readObj :: (HasCallStack, MonadReactor c m)
---     => Obj s -> m s
--- readObj (Obj plnRef mdlVar _) =
+-- | Reads from an 'Obj', also registering this as a listener
+-- so this will get rerendered whenever the 'Obj' is 'mutate'd.
+readObj :: (HasCallStack, MonadReactor c m, AskPlanWeakRef m)
+    => Obj s -> m s
+readObj obj = do
+    this <- askPlanWeakRef
+    delegatify $ \f ->
+        logExecJS' TRACE callStack $ ReadObj this obj f
 
 -- | 'mutate_' with 'RerenderRequired'
 mutate :: ( HasCallStack, MonadReactor c m, AskModelWeakVar s m, AskPlanWeakRef m)
