@@ -12,7 +12,7 @@ import Control.Lens.Misc
 import Control.Monad.Context
 import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
-import Data.Function.Extras
+import Data.Foldable
 import Data.IORef
 import qualified Data.Map.Strict as M
 import Data.Maybe
@@ -24,9 +24,9 @@ import Glazier.Logger
 import Glazier.React.Common
 import Glazier.React.ReactId
 import Glazier.React.Shim
+import System.Mem.AnyStableName
 import System.Mem.Weak
 
--- FIXME: field naming, add Tagged types?
 data ShimCallbacks = ShimCallbacks
     -- render function of the ReactComponent
     { shimOnRender :: J.Callback (IO J.JSVal)
@@ -73,34 +73,17 @@ data Plan = Plan
     -- | notifiers that need to be unsubscribed from when this is destroyed
     , notifiers :: M.Map ReactId (Weak (IORef Plan))
 
-    -- FIXME: TODO
-    -- called after state was just updated
-    -- The first arg is the html node that triggers the event
-    -- , mutatedListener :: EventTarget -> IO ()
-
-    -- set of all reactIds that are modifying this widget
-    -- , mutations :: S.Set EventTarget
-
-    -- if rerender is required
-    -- true if rerendering was scheduled
-    -- false if rerendering was not scheduled
-    -- prevents multiple scheduing of the rerender request
-    -- , rerendering :: Rerendering
-
-    -- FIXME: make rendering is two phase
-    -- onRender simply uses  pre-rendered jsval ("deosn't block")
-    -- but on mutated will refresh he pre-rendered jsval
-    -- this way it can "block"
-
     -- Called after every rendered call fromReact
     , rendered :: IO ()
 
     -- | cleanup to call DOM eventTarget.removeEventListener()
     , destructor :: IO ()
 
+    , createdHandlers :: [(AnyStableName, Handler)]
+
+    , createdCallbacks :: [(AnyStableName, J.Callback (J.JSVal -> IO ()))]
+
     , shimCallbacks :: ShimCallbacks
-    -- , createdCallbacks :: StableNameMap (J.JSVal -> IO ()) (J.Callback (J.JSVal -> IO ()))
-    -- , createdCallbacks :: [ (J.JSVal -> IO ()) (J.Callback (J.JSVal -> IO ()))]
 
     } deriving (G.Generic)
 
@@ -108,9 +91,8 @@ makeLenses_ ''Plan
 
 releasePlanCallbacks :: Plan -> IO ()
 releasePlanCallbacks pln = do
-    fixme $ releaseShimCallbacks (shimCallbacks pln)
-    -- FIXME
-    -- traverse_ J.releaseCallback (createdCallbacks pln)
+    releaseShimCallbacks (shimCallbacks pln)
+    traverse_ (J.releaseCallback . snd) (createdCallbacks pln)
 
 instance Show Plan where
     showsPrec p pln = showParen

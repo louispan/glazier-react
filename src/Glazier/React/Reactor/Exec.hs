@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
@@ -18,6 +19,8 @@ module Glazier.React.Reactor.Exec where
 
 import Control.Also
 import Control.Concurrent.MVar
+import Control.Concurrent.STM
+import Control.DeepSeq
 import Control.Lens
 import Control.Lens.Misc
 import Control.Monad.Context
@@ -33,6 +36,7 @@ import Data.Function.Extras
 import qualified Data.HashMap.Strict as HM
 import Data.IORef.Extras
 import qualified Data.JSString as J
+import qualified Data.List as L
 import qualified Data.Map.Strict as M
 import Data.String
 import Data.Tagged.Extras
@@ -55,6 +59,7 @@ import Glazier.React.Shim
 import Glazier.React.Widget
 import qualified JavaScript.Extras as JE
 import System.IO
+import System.Mem.AnyStableName
 import System.Mem.Weak
 
 #if MIN_VERSION_base(4,9,0) && !MIN_VERSION_base(4,10,0)
@@ -262,7 +267,6 @@ execMkObj ::
     , MonadUnliftIO m
     , AskLogConfigRef m
     , AskNextReactIdRef m
-    , AskReactBatch m
     , CmdReactor c
     )
     => (c -> m ())
@@ -275,7 +279,6 @@ execMkObj executor wid logName' s = do
     fixme $ liftIO $ putStrLn "LOUISDEBUG: execMkObj"
     (logLevel', logDepth') <- getLogConfig logName'
     i <- mkReactId
-    btch <- askReactBatch
     (obj, prerndr) <- liftIO $ do
         -- create shim with fake callbacks for now
         let newPlan = Plan
@@ -290,7 +293,9 @@ execMkObj executor wid logName' s = do
                 mempty -- ^ listeners
                 mempty -- ^ notifiers
                 mempty -- ^ rendered
-                mempty -- ^ final cleanup
+                mempty -- ^ destructor
+                mempty -- ^ createdHandlers
+                mempty -- ^ createdCallbacks
                 (ShimCallbacks
                     (J.Callback J.nullRef)
                     (J.Callback J.nullRef)
@@ -400,8 +405,7 @@ execMkObj executor wid logName' s = do
         fixme $ liftIO $ putStrLn "LOUISDEBUG: execSetPrerendered"
         plnRef <- MaybeT $ liftIO $ deRefWeak plnWkRef
         -- replace the prerendered frame
-        liftIO $ atomicModifyIORef_' plnRef $ \pln ->
-            (pln & _prerendered .~ frame)
+        liftIO $ atomicModifyIORef_' plnRef $ (_prerendered .~ frame)
 
     onRenderCb :: Weak (IORef Plan) -> IO J.JSVal
     onRenderCb wk = (`evalMaybeT` J.nullRef) $ do
@@ -451,7 +455,6 @@ execMutate executor plnWk mdlWk req tick = (`evalMaybeT` ()) $ do
             foldr (\wk b -> markPlanDirty wk *> b) (pure ()) ls
             markPlanDirty plnWk
 
-
 execReadObj ::
     ( MonadIO m
     )
@@ -468,6 +471,91 @@ execReadObj thisPlnWk (Obj otherPlnRef otherMdlVar (WeakObj otherPlnWk _)) = do
         liftIO $ atomicModifyIORef_' thisPlnRef (_notifiers.at otherId .~ Just otherPlnWk)
     pure s
 
+execMkHandler :: (NFData a, MonadIO m, MonadUnliftIO m)
+        => (c -> m ())
+        -> Weak (IORef Plan)
+        -> (J.JSVal -> MaybeT IO a)
+        -> (a -> c)
+        -- (preprocess, postprocess)
+        -> MaybeT m Handler
+execMkHandler executor plnkWk goStrict goLazy = do
+    -- 'makeStableName' might return different names if unevaluated
+    -- so use bang patterns to help prevent that.
+    UnliftIO u <- lift $ askUnliftIO
+    let !goStrict' = goStrict
+        !goLazy' = u . executor . goLazy
+    k <- liftIO $ makeAnyStableName (goStrict', goLazy')
+
+    -- check to see if this already has been created
+    plnRef <- MaybeT $ liftIO $ deRefWeak plnkWk
+    hs <- liftIO $ createdHandlers <$> readIORef plnRef
+    case L.find ((== k) . fst) hs of
+        Just (_, v) -> pure v
+        Nothing -> do
+            (x, y) <- liftIO $ mkEventProcessor goStrict'
+            let f = (x, (`evalMaybeT` ()) (y >>= lift . goLazy'))
+            liftIO $ atomicModifyIORef_ plnRef (_createdHandlers %~ ((k, f) :))
+            pure f
+
+-- | Using the NFData idea from React/Flux/PropertiesAndEvents.hs
+-- React re-uses Notice from a pool, which means it may no longer be valid if we lazily
+-- parse it. However, we still want lazy parsing so we don't parse unnecessary fields.
+-- Additionally, we don't want to block during the event handling.The reason this is a problem is
+-- because Javascript is single threaded, but Haskell is lazy.
+-- Therefore GHCJS threads are a strange mixture of synchronous and asynchronous threads,
+-- where a synchronous thread might be converted to an asynchronous thread if a "black hole" is encountered.
+-- See https://github.com/ghcjs/ghcjs-base/blob/master/GHCJS/Concurrent.hs
+-- This safe interface requires two input functions:
+-- 1. a function to reduce Notice to a NFData. The handleEvent will ensure that the
+-- NFData is forced which will ensure all the required fields from Synthetic event has been parsed.
+-- This function must not block.
+-- 2. a second function that uses the NFData. This function is allowed to block.
+-- handleEvent results in a function that you can safely pass into 'GHC.Foreign.Callback.syncCallback1'
+-- with 'GHCJS.Foreign.Callback.ContinueAsync'.
+-- I have innovated further with the NFData idea to return two functions:
+-- 1. (evt -> IO ()) function to preprocess the event, which is guaranteed to be non blocking.
+-- 2. An IO () postprocessor function which may block.
+-- This allows for multiple handlers for the same event to be processed safely,
+-- by allowing a way for all the preprocessor handlers to run first before
+-- running all of the postprocessor handlers.
+mkEventProcessor :: (NFData a) => (evt -> MaybeT IO a) -> IO (evt -> IO (), MaybeT IO a)
+mkEventProcessor goStrict = do
+    liftIO $ putStrLn "LOUISDEBUG: mkEventProcessor"
+    -- create a channel to write preprocessed data for the postprocessor
+    -- 'Chan' guarantees that the writer is never blocked by the reader.
+    -- There is only one reader/writer per channel.
+    c <- newTQueueIO
+    let preprocess evt = (`evalMaybeT` ()) $ do
+            r <- goStrict evt
+            -- This is guaranteed never to block
+            lift $ atomically $ writeTQueue c $!! r
+        -- there might not be a value in the chan
+        -- because the preprocessor might not have produced any values
+        postprocess = MaybeT $ atomically $ tryReadTQueue c
+    pure (preprocess, postprocess)
+
+
+execMkCallback :: (MonadIO m)
+        => Weak (IORef Plan)
+        -> Handler
+        -> MaybeT m (J.Callback (J.JSVal -> IO ()))
+execMkCallback plnkWk (g, h) = do
+    -- 'makeStableName' might return different names if unevaluated
+    -- so use bang patterns to help prevent that.
+    let !g' = g
+        !h' = h
+        !hdl' = (g', h')
+    k <- liftIO $ makeAnyStableName hdl'
+
+    -- check to see if this already has been created
+    plnRef <- MaybeT $ liftIO $ deRefWeak plnkWk
+    cs <- liftIO $ createdCallbacks <$> readIORef plnRef
+    case L.find ((== k) . fst) cs of
+        Just (_, v) -> pure v
+        Nothing -> do
+            f <- liftIO $ J.asyncCallback1 (\j -> g' j *> h')
+            liftIO $ atomicModifyIORef_ plnRef (_createdCallbacks %~ ((k, f) :))
+            pure f
 
 -- mkEventCallback ::
 --     (MonadIO m)
@@ -480,43 +568,6 @@ execReadObj thisPlnWk (Obj otherPlnRef otherMdlVar (WeakObj otherPlnWk _)) = do
 --         preprocessor evt
 --         -- then run all the possibly blocking postprocessors
 --         postprocessor
-
--- -- | Using the NFData idea from React/Flux/PropertiesAndEvents.hs
--- -- React re-uses Notice from a pool, which means it may no longer be valid if we lazily
--- -- parse it. However, we still want lazy parsing so we don't parse unnecessary fields.
--- -- Additionally, we don't want to block during the event handling.The reason this is a problem is
--- -- because Javascript is single threaded, but Haskell is lazy.
--- -- Therefore GHCJS threads are a strange mixture of synchronous and asynchronous threads,
--- -- where a synchronous thread might be converted to an asynchronous thread if a "black hole" is encountered.
--- -- See https://github.com/ghcjs/ghcjs-base/blob/master/GHCJS/Concurrent.hs
--- -- This safe interface requires two input functions:
--- -- 1. a function to reduce Notice to a NFData. The handleEvent will ensure that the
--- -- NFData is forced which will ensure all the required fields from Synthetic event has been parsed.
--- -- This function must not block.
--- -- 2. a second function that uses the NFData. This function is allowed to block.
--- -- handleEvent results in a function that you can safely pass into 'GHC.Foreign.Callback.syncCallback1'
--- -- with 'GHCJS.Foreign.Callback.ContinueAsync'.
--- -- I have innovated further with the NFData idea to return two functions:
--- -- 1. (evt -> IO ()) function to preprocess the event, which is guaranteed to be non blocking.
--- -- 2. An IO () postprocessor function which may block.
--- -- This allows for multiple handlers for the same event to be processed safely,
--- -- by allowing a way for all the preprocessor handlers to run first before
--- -- running all of the postprocessor handlers.
--- mkEventProcessor :: (NFData a) => (evt -> MaybeT IO a) -> IO (evt -> IO (), MaybeT IO a)
--- mkEventProcessor goStrict = do
---     liftIO $ putStrLn "LOUISDEBUG: mkEventProcessor"
---     -- create a channel to write preprocessed data for the postprocessor
---     -- 'Chan' guarantees that the writer is never blocked by the reader.
---     -- There is only one reader/writer per channel.
---     c <- newTQueueIO
---     let preprocess evt = (`evalMaybeT` ()) $ do
---             r <- goStrict evt
---             -- This is guaranteed never to block
---             lift $ atomically $ writeTQueue c $!! r
---         -- there might not be a value in the chan
---         -- because the preprocessor might not have produced any values
---         postprocess = MaybeT $ atomically $ tryReadTQueue c
---     pure (preprocess, postprocess)
 
 -- addEventHandler :: (NFData a)
 --     => (JE.JSRep -> MaybeT IO a)
@@ -780,12 +831,6 @@ execReadObj thisPlnWk (Obj otherPlnRef otherMdlVar (WeakObj otherPlnWk _)) = do
 --         putMVar mdlVar mdl'
 --         -- now add the domListener to the javascript target
 --         addDomListener j n cb
-
--- addDomListener :: JE.JSRep -> J.JSString -> J.Callback (J.JSVal -> IO ()) -> IO ()
--- addDomListener j n cb = js_addDomListener (JE.toJS j) n (JE.toJS cb)
-
--- removeDomListener :: JE.JSRep -> J.JSString -> J.Callback (J.JSVal -> IO ()) -> IO ()
--- removeDomListener j n cb = js_removeDomListener (JE.toJS j) n (JE.toJS cb)
 
 #ifdef __GHCJS__
 

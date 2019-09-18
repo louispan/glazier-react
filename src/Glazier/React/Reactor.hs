@@ -63,45 +63,24 @@ type MonadReactor c m = (Cmd' [] c, CmdReactor c, Alternative m, Also () m, Logg
 
 -- | NB. 'Reactor' is not a functor because of the @Widget c@ in 'MkObj'
 data Reactor c where
-    -- | Using the NFData idea from React/Flux/PropertiesAndEvents.hs
-    -- React re-uses Notice from a pool, which means it may no longer be valid if we lazily
-    -- parse it. However, we still want lazy parsing so we don't parse unnecessary fields.
-    -- Additionally, we don't want to block during the event handling.The reason this is a problem is
-    -- because Javascript is single threaded, but Haskell is lazy.
-    -- Therefore GHCJS threads are a strange mixture of synchronous and asynchronous threads,
-    -- where a synchronous thread might be converted to an asynchronous thread if a "black hole" is encountered.
-    -- See https://github.com/ghcjs/ghcjs-base/blob/master/GHCJS/Concurrent.hs
-    -- This safe interface requires two input functions:
-    -- 1. a function to reduce Notice to a NFData. The handleEvent will ensure that the
-    -- NFData is forced which will ensure all the required fields from Synthetic event has been parsed.
-    -- This function must not block.
-    -- 2. a second function that uses the NFData. This function is allowed to block.
-    -- handleEvent results in a function that you can safely pass into 'GHC.Foreign.Callback.syncCallback1'
-    -- with 'GHCJS.Foreign.Callback.ContinueAsync'.
-    -- I have innovated further with the NFData idea to return two functions:
-    -- 1. (evt -> IO ()) function to preprocess the event, which is guaranteed to be non blocking.
-    -- 2. An IO () postprocessor function which may block.
-    -- This allows for multiple handlers for the same event to be processed safely,
-    -- by allowing a way for all the preprocessor handlers to run first before
-    -- running all of the postprocessor handlers.
-    --
-    -- GHC will try to return the same processor for the same input functions as much as possible
+
+    -- Turn some handling function into a 'Handler'.
+    -- The reason for the two handling functions is detailed in 'Glazier.React.Reactor.Exec.execMkHandler'
+    -- Glazier will try to return the same 'Handler for the same input functions as much as possible
     -- so that it will be relatively efficient to use this function on every rerender.
     MkHandler :: NFData a
         => Weak (IORef Plan)
         -> (J.JSVal -> MaybeT IO a)
         -> (a -> c)
-        -- (preprocess, postprocess)
-        -> ((J.JSVal -> IO (), IO ()) -> c)
+        -> (Handler -> c)
         -> Reactor c
 
-    -- | Turn processor into a 'J.Callback'
-    -- GHC will try to return the same callback for the same input functions as much as possible.
+    -- | Turn 'Handler' into a 'J.Callback' so it can be called from JS.
+    -- Glazier will try to return the same 'J.Callback' for the same input functions as much as possible.
     -- so that it will be relatively efficient to use this function on every rerender.
     MkCallback ::
         Weak (IORef Plan)
-        -- (preprocess, postprocess)
-        -> (J.JSVal -> IO (), IO ())
+        -> Handler
         -> (J.Callback (J.JSVal -> IO ()) -> c)
         -> Reactor c
 
@@ -110,97 +89,32 @@ data Reactor c where
     -- NB. 'Reactor' is not a functor because of the @Widget c@ in 'MkObj'
     MkObj :: Widget c s () -> LogName -> s -> (Obj s -> c) -> Reactor c
 
+    -- | Reads from an 'Obj', also registering this as a listener
+    -- so this will get rerendered whenever the 'Obj' is 'mutate'd.
     ReadObj :: Weak (IORef Plan) -> Obj s -> (s -> c) -> Reactor c
 
-    -- Get the event target
-    -- If a "ref" callback to update 'elementalRef' has not been added;
-    -- then add it, rerender, then return the EventTarget.
-    -- GetReactRef ::
-    --     WeakModelRef s
-    --     -> ReactId
-    --     -> (EventTarget -> c)
-    --     -> Reactor c
-
-    -- -- | Force 'RerenderRequired' and regeneration of the 'prerendered' frame,
-    -- -- and notifies react.
-    -- Rerender :: Weak (IORef Plan) -> Reactor c
-
-    -- -- | Schedule to rerender
-    -- -- FIXME: Optimise also to use ReactDOM.unstable_batchedUpdates
-    -- ScheduleRerender :: Weak (IORef Plan) -> Reactor c
-
-    -- FIXME: TODO
-    -- -- | Update, store 'ReactId' in 'mutataions' and fire 'mutatedListener'.
-    -- -- The 'mutatedListener' may cause another 'Mutate' which will fire another
-    -- -- 'mutatedListener' as long as the 'ReactId' has not been seen before.
-    -- -- When the cycle of 'Mutate' and 'mutatedListener' finishes, the 'mutations' is
-    -- -- cleared.
-    -- -- Finally 'rerender' is called.
     -- Modifies the model and flags 'RerenderRequired'
     -- Also notifier any listener that the model has changes
     -- so that the listeners can rerender
     Mutate :: Weak (IORef Plan) -> Weak (MVar s) -> RerenderRequired -> StateT s IO c -> Reactor c
 
-    -- FIXME:: Get another widget's model in a safe way where this will be registered
-    -- as a listener to be notified of mutations
-    -- GetObjModel :: Weak (IORef Plan) -> WeakObj s -> (s -> c) -> Reactor c
-
-    -- FIXME: TODO
-    -- -- | Private effect used by executor: Calls the meta mutatedListener with 'ReactId'
-    -- -- that caused the mutation.
-    -- -- Should only have one of this per ReactId for multiple Mutate with the same ReactId
-    -- NotifyMutated :: WeakModelRef s -> ReactId -> Reactor c
-
-    -- FIXME: TODO
-    -- -- | Private effect used by executor: Resets the mutated state for this ReactId
-    -- -- If there are no more pending mutations, then rerender.
-    -- -- Should only have one of this per ReactId for multiple Mutate with the same ReactId
-    -- ResetMutation :: WeakModelRef s -> ReactId -> Reactor c
-
-    -- FIXME: TODO
     -- -- | Create and register a dom callback
-    -- RegisterDOMListener :: NFData a
+    -- -- Returns a command that can be used to explicitly remove the dom listener.
+    -- -- Dom listeners are automatically removed on widget destruction.
+    -- AddDomListener :: NFData a
     --     => WeakModelRef s
     --     -> J.JSVal
     --     -> J.JSString
-    --     -> (J.JSVal -> MaybeT IO a)
-    --     -> (a -> c)
+    --     -> (J.Callback (J.JSVal -> IO ()) -> c)
+    --     -> (c -> a -> c)
     --     -> Reactor c
 
-    -- -- | Create and register a react callback
-    -- -- If the callback is for "ref", then an listener to update 'elementalRef' for 'GetEventTarget'
-    -- -- will automatically be added just before the listener in 'RegisterReactListener'.
-    -- RegisterReactListener :: NFData a
-    --     => Weak (IORef Plan)
+    -- -- | Remove a DOM listener
+    -- RemoveDomListener ::
+    --     => WeakModelRef s
     --     -> ReactId
-    --     -> J.JSString
-    --     -> (J.JSVal -> MaybeT IO a)
-    --     -> (a -> c)
     --     -> Reactor c
 
-    -- -- | Create and register a callback for the mounted event
-    -- RegisterMountedListener ::
-    --     WeakModelRef s
-    --     -> c
-    --     -> Reactor c
-
-    -- -- | Create and register a callback for the rendered event
-    -- RegisterRenderedListener ::
-    --     WeakModelRef s
-    --     -> c
-    --     -> Reactor c
-
-    -- -- | Create and register a callback for the rendered event
-    -- RegisterRenderedOnceListener ::
-    --     WeakModelRef s
-    --     -> c
-    --     -> Reactor c
-
-    -- -- | Create and register a callback for the state updated event
-    -- RegisterMutatedListener ::
-    --     WeakModelRef s
-    --     -> (ReactId -> c)
-    --     -> Reactor c
 
 instance (IsString str, Semigroup str) => ShowIO str (Reactor c) where
     -- showsPrecIO p (MkReactId s _) = textParen (p >= 11) $
@@ -269,22 +183,6 @@ logInvokeJS_ = logInvoke_ (Proxy @J.JSString)
 ------------------------------------------------------
 -- Basic
 ------------------------------------------------------
-
--- -- | Make a unique named id
--- mkReactId :: (HasCallStack, MonadReactor c m)
---     => NE.NonEmpty J.JSString -> m ReactId
--- mkReactId n = delegatify $ \f ->
---     logExec' TRACE callStack $ MkReactId n f
-
-
--- mkEventHandler2_ ::
---     (HasCallStack, AsReactor c, MonadCommand c m, AskLogLevel m)
---     => m ()
---     -> m (J.JSVal -> IO (), IO ()) -- (preprocess, postprocess)
--- mkEventHandler2_ f = do
---     f' <- codify' f
---     delegatify $ \k -> do
---         logExec' TRACE callStack $ MakeEventHandler2 (const $ pure ()) (const f') k
 
 -- | Make an initialized 'Obj' for a given meta using the given 'Widget'.
 -- Unlike 'unliftMkObj', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
@@ -371,6 +269,23 @@ mutateThen_ r m = do
 --     pure a
 
 
+
+-- -- | Create a callback for a 'J.JSVal' and add it to this elementals's dlist of listeners.
+-- -- 'domTrigger' does not expect a 'Notice' as it is not part of React.
+-- -- Contrast with 'trigger' which expects a 'Notice'.
+-- addDomListener ::
+--     (HasCallStack, NFData a, MonadReactor c m, AskPlanWeakRef m)
+--     => J.JSVal
+--     -> J.JSString
+--     -> (J.JSVal -> MaybeT IO a)
+--     -> (a -> m ())
+--     -> m c
+-- addDomListener j n goStrict goLazy = do
+--     plnRef <- askPlanWeakRef
+--     delegatify $ \f ->
+--         logExec' TRACE callStack $ RegisterDOMListener obj j n goStrict f
+
+
 -- | This convert the (preprocess, postprocess) into a ghcjs 'Callback'
 mkCallback ::
     (HasCallStack, MonadReactor c m, AskPlanWeakRef m)
@@ -437,7 +352,7 @@ lf ::
     , MonadReactor c m
     )
     => J.JSString-- ^ eg "div" or "input"
-    -> DL.DList (J.JSString, m (J.JSVal -> IO (), IO ()))
+    -> DL.DList (J.JSString, m Handler)
     -> DL.DList (J.JSString, Getting J.JSVal s J.JSVal)
     -> m ()
 lf n gads props = do
@@ -458,7 +373,7 @@ bh ::
     , MonadReactor c m
     )
     => J.JSString-- ^ eg "div" or "input"
-    -> DL.DList (J.JSString, m (J.JSVal -> IO (), IO ()))
+    -> DL.DList (J.JSString, m Handler)
     -> DL.DList (J.JSString, Getting J.JSVal s J.JSVal)
     -> m a
     -> m a
