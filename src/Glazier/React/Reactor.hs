@@ -78,7 +78,7 @@ data Reactor c where
     -- | Turn 'Handler' into a 'J.Callback' so it can be called from JS.
     -- Glazier will try to return the same 'J.Callback' for the same input functions as much as possible.
     -- so that it will be relatively efficient to use this function on every rerender.
-    MkCallback ::
+    MkListener ::
         Weak (IORef Plan)
         -> Handler
         -> (J.Callback (J.JSVal -> IO ()) -> c)
@@ -120,7 +120,7 @@ instance (IsString str, Semigroup str) => ShowIO str (Reactor c) where
     -- showsPrecIO p (MkReactId s _) = textParen (p >= 11) $
     --     "MkReactId " <> showIO s
     showsPrecIO p (MkHandler this _ _ _) = showParenIO (p >= 11) $ (showStr "MkHandler " .) <$> (showsIO this)
-    showsPrecIO p (MkCallback this _ _) = showParenIO (p >= 11) $ (showStr "MkCallback " .) <$> (showsIO this)
+    showsPrecIO p (MkListener this _ _) = showParenIO (p >= 11) $ (showStr "MkListener " .) <$> (showsIO this)
     showsPrecIO p (MkObj _ logname _ _) = showParenIO (p >= 11) $ (showStr "MkObj " .) <$> (showsIO logname)
     showsPrecIO p (ReadObj this _ _) = showParenIO (p >= 11) $ (showStr "ReadObj " .) <$> (showsIO this)
     -- showsPrec _ (SetRender _ _ ) = showString "SetRender"
@@ -287,14 +287,14 @@ mutateThen_ r m = do
 
 
 -- | This convert the (preprocess, postprocess) into a ghcjs 'Callback'
-mkCallback ::
+mkListener ::
     (HasCallStack, MonadReactor c m, AskPlanWeakRef m)
     => (J.JSVal -> IO (), IO ())
     -> m (J.Callback (J.JSVal -> IO ()))
-mkCallback f = do
+mkListener f = do
     plnRef <- askPlanWeakRef
     delegatify $ \k ->
-        logExecJS' TRACE callStack $ MkCallback plnRef f k
+        logExecJS' TRACE callStack $ MkListener plnRef f k
 
 -- | This convert the input @goStrict@ and @f@ into (preprocess, postprocess).
 -- Multiple preprocess must be run for the same event before any of the postprocess,
@@ -358,9 +358,9 @@ lf ::
 lf n gads props = do
     s <- askModel
     putNextReactPath n
-    gads' <- traverse sequenceA (DL.toList gads)
-    let gads'' = M.fromListWith (<>) gads'
-    gads''' <- traverse mkCallback gads''
+    gads' <- traverse sequenceA (DL.toList gads) -- :: m [(JString, Handler)]
+    let gads'' = M.fromListWith (<>) gads' -- combine same keys together
+    gads''' <- traverse mkListener gads'' -- convert to JS callback
     leafMarkup (JE.toJS n)
         (((fmap (`view` s)) <$> props)
             <> (DL.fromList . M.toList $ JE.toJS <$> gads'''))
@@ -380,9 +380,9 @@ bh ::
 bh n gads props child = do
     s <- askModel
     putNextReactPath n
-    gads' <- traverse sequenceA (DL.toList gads)
-    let gads'' = M.fromListWith (<>) gads'
-    gads''' <- traverse mkCallback gads''
+    gads' <- traverse sequenceA (DL.toList gads) -- :: m [(JString, Handler)]
+    let gads'' = M.fromListWith (<>) gads' -- combine same keys together
+    gads''' <- traverse mkListener gads'' -- convert to JS callback
     putPushReactPath
     a <- branchMarkup (JE.toJS n)
         (((fmap (`view` s)) <$> props)

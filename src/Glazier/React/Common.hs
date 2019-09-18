@@ -8,6 +8,7 @@ module Glazier.React.Common where
 import Control.Concurrent.MVar
 import Control.Monad.Context
 import Data.Tagged.Extras
+import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
 import Glazier.ShowIO
 import System.Mem.Weak
@@ -16,7 +17,7 @@ type ShowIOJS = ShowIO J.JSString
 
 type LogName = Tagged "LogName" J.JSString
 
--- | A handler comprises to two functions
+-- | A 'Handler' comprises to two functions
 -- Firstly, a function that is guaranteed to be "GHCJS synchronous"
 -- and not have any black holes that will turn it into an "GHCJS asynchronous" call.
 -- See http://hackage.haskell.org/package/ghcjs-base-0.2.0.0/docs/GHCJS-Concurrent.html
@@ -24,6 +25,9 @@ type LogName = Tagged "LogName" J.JSString
 -- and may continue work asynchronously.
 -- The reason for this is detailed in 'Glazier.React.Reactor.Exec.execMkHandler'
 type Handler = (J.JSVal -> IO (), IO ())
+
+-- A 'Listener' is a callable function from JS that accepts a JS value as in input.
+type Listener = J.Callback (J.JSVal -> IO ())
 
 data RerenderRequired
     = RerenderNotRequired

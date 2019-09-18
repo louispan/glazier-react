@@ -429,7 +429,7 @@ execMkObj executor wid logName' s = do
     unregisterFromNotifier :: ReactId -> Weak (IORef Plan) -> IO ()
     unregisterFromNotifier i wk = (`evalMaybeT` ()) $ do
         plnRef <- MaybeT $ liftIO $ deRefWeak wk
-        liftIO $ atomicModifyIORef_' plnRef (_listeners.at i .~ Nothing)
+        liftIO $ atomicModifyIORef_' plnRef (_watchers.at i .~ Nothing)
 
 execMutate ::
     (MonadIO m, AskDirtyPlan m)
@@ -451,7 +451,7 @@ execMutate executor plnWk mdlWk req tick = (`evalMaybeT` ()) $ do
         RerenderNotRequired -> pure ()
         RerenderRequired -> do
             plnRef <- MaybeT $ liftIO $ deRefWeak plnWk
-            ls <- liftIO $ listeners <$> readIORef plnRef
+            ls <- liftIO $ watchers <$> readIORef plnRef
             foldr (\wk b -> markPlanDirty wk *> b) (pure ()) ls
             markPlanDirty plnWk
 
@@ -467,7 +467,7 @@ execReadObj thisPlnWk (Obj otherPlnRef otherMdlVar (WeakObj otherPlnWk _)) = do
         otherPln <- liftIO $ readIORef otherPlnRef
         let thisId = reactId thisPln
             otherId = reactId otherPln
-        liftIO $ atomicModifyIORef_' otherPlnRef (_listeners.at thisId .~ Just thisPlnWk)
+        liftIO $ atomicModifyIORef_' otherPlnRef (_watchers.at thisId .~ Just thisPlnWk)
         liftIO $ atomicModifyIORef_' thisPlnRef (_notifiers.at otherId .~ Just otherPlnWk)
     pure s
 
@@ -488,13 +488,13 @@ execMkHandler executor plnkWk goStrict goLazy = do
 
     -- check to see if this already has been created
     plnRef <- MaybeT $ liftIO $ deRefWeak plnkWk
-    hs <- liftIO $ createdHandlers <$> readIORef plnRef
+    hs <- liftIO $ handlers <$> readIORef plnRef
     case L.find ((== k) . fst) hs of
         Just (_, v) -> pure v
         Nothing -> do
             (x, y) <- liftIO $ mkEventProcessor goStrict'
             let f = (x, (`evalMaybeT` ()) (y >>= lift . goLazy'))
-            liftIO $ atomicModifyIORef_ plnRef (_createdHandlers %~ ((k, f) :))
+            liftIO $ atomicModifyIORef_ plnRef (_handlers %~ ((k, f) :))
             pure f
 
 -- | Using the NFData idea from React/Flux/PropertiesAndEvents.hs
@@ -535,11 +535,11 @@ mkEventProcessor goStrict = do
     pure (preprocess, postprocess)
 
 
-execMkCallback :: (MonadIO m)
+execMkListener :: (MonadIO m)
         => Weak (IORef Plan)
         -> Handler
         -> MaybeT m (J.Callback (J.JSVal -> IO ()))
-execMkCallback plnkWk (g, h) = do
+execMkListener plnkWk (g, h) = do
     -- 'makeStableName' might return different names if unevaluated
     -- so use bang patterns to help prevent that.
     let !g' = g
@@ -549,12 +549,12 @@ execMkCallback plnkWk (g, h) = do
 
     -- check to see if this already has been created
     plnRef <- MaybeT $ liftIO $ deRefWeak plnkWk
-    cs <- liftIO $ createdCallbacks <$> readIORef plnRef
+    cs <- liftIO $ listeners <$> readIORef plnRef
     case L.find ((== k) . fst) cs of
         Just (_, v) -> pure v
         Nothing -> do
             f <- liftIO $ J.asyncCallback1 (\j -> g' j *> h')
-            liftIO $ atomicModifyIORef_ plnRef (_createdCallbacks %~ ((k, f) :))
+            liftIO $ atomicModifyIORef_ plnRef (_listeners %~ ((k, f) :))
             pure f
 
 -- mkEventCallback ::

@@ -31,7 +31,7 @@ data ShimCallbacks = ShimCallbacks
     -- render function of the ReactComponent
     { shimOnRender :: J.Callback (IO J.JSVal)
     -- updates the shimRef
-    , shimOnRef :: J.Callback (J.JSVal -> IO ())
+    , shimOnRef :: Listener
     -- Run the renderedListener in the plan
     , shimOnRendered :: J.Callback (IO ())
 
@@ -67,8 +67,8 @@ data Plan = Plan
     -- Optimization varaible: means whether the 'prerendered' frame is stale.
     , rerenderRequired :: RerenderRequired
 
-    -- | listeners that need to be rerendered when this is mutated
-    , listeners :: M.Map ReactId (Weak (IORef Plan))
+    -- | watchers that need to be rerendered when this is mutated
+    , watchers :: M.Map ReactId (Weak (IORef Plan))
 
     -- | notifiers that need to be unsubscribed from when this is destroyed
     , notifiers :: M.Map ReactId (Weak (IORef Plan))
@@ -79,9 +79,9 @@ data Plan = Plan
     -- | cleanup to call DOM eventTarget.removeEventListener()
     , destructor :: IO ()
 
-    , createdHandlers :: [(AnyStableName, Handler)]
+    , handlers :: [(AnyStableName, Handler)]
 
-    , createdCallbacks :: [(AnyStableName, J.Callback (J.JSVal -> IO ()))]
+    , listeners :: [(AnyStableName, Listener)]
 
     , shimCallbacks :: ShimCallbacks
 
@@ -92,7 +92,7 @@ makeLenses_ ''Plan
 releasePlanCallbacks :: Plan -> IO ()
 releasePlanCallbacks pln = do
     releaseShimCallbacks (shimCallbacks pln)
-    traverse_ (J.releaseCallback . snd) (createdCallbacks pln)
+    traverse_ (J.releaseCallback . snd) (listeners pln)
 
 instance Show Plan where
     showsPrec p pln = showParen
