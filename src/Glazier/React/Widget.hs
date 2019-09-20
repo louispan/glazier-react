@@ -44,8 +44,9 @@ askConstructor = (. Tagged @"Constructor") <$> askObserver
 
 -- | Register and execute the given monad at construction time.
 -- The registration of the callback is only performed the construction of the widget.
+-- That is, on subsequen rerendesrs, @onConstruction = const $ pure ()@
 -- Do not expect this function to do anything on subsequent rerenders
--- so don't use the function conditionally after construction.
+-- so don't use the function conditionally or inside event handling code.
 onConstruction :: (AskConstructor c m, MonadCodify c m) => m () -> m ()
 onConstruction m = do
     f <- askConstructor
@@ -82,13 +83,13 @@ onRendered m = do
 -- It is expected that the interpreter of the Gizmo will add a final effect
 -- which is to set the final html for the component.
 -- FIXME: onMounted/unmounted listeners are registered via a Observer ReaderT (c -> IO ()) as part of Widget stack
-type Widget c s =
+type Widget s c =
     ObserverT (Tagged "Rendered" c) -- 'AskRendered'
     (ObserverT (Tagged "Destructor" c) -- 'AskDestructor'
     (ObserverT (Tagged "Constructor" c) -- 'AskConstructor'
-    (ReaderT ReactPath -- 'AskReactPath', 'AskLogNameJS'
-    (ReaderT (Weak (IORef Plan)) -- 'AskPlanWeakRef', 'AskLogLevel', 'AskLogId'
-    (ReaderT (Tagged "Model" (Weak (MVar s))) -- 'AskModelWeakRef'
+    (ReaderT ReactPath -- 'AskReactPath', 'AskLogName'
+    (ReaderT (Weak (IORef Plan)) -- 'AskPlanWeakRef', 'AskLogLevel', 'AskLogCallStackDepth'
+    (ReaderT (Tagged "Model" (Weak (MVar s))) -- 'AskModelWeakVar'
     (ReaderT (Tagged "Model" s) -- 'AskModel'
     (MaybeT -- 'Alternative'
     (ContT () -- 'MonadDelegate'
@@ -106,21 +107,21 @@ type Widget c s =
 
 -- | ALlow additional user ReaderT and IdentityT stack on top of Widget c s
 -- Like 'Control.Monad.IO.Unlift.UnliftIO', this newtype wrapper prevents impredicative types.
-newtype UniftWidget c s m = UniftWidget { unliftWidget :: forall a. m a -> Widget c s a }
+newtype UniftWidget s c m = UniftWidget { unliftWidget :: forall a. m a -> Widget s c a }
 
 -- | Similar to 'Control.Monad.IO.Unlift.MonadUnliftIO', except we want to unlift a @Widget (Gizmo c s) a@.
 -- This limits transformers stack to 'ReaderT' and 'IdentityT' on top of @Gizmo c s m@
-class MonadUnliftWidget c s m | m -> c s where
-    askUnliftWidget :: m (UniftWidget c s m)
+class MonadUnliftWidget s c m | m -> s c where
+    askUnliftWidget :: m (UniftWidget s c m)
 
-instance MonadUnliftWidget c s (Widget c s) where
+instance MonadUnliftWidget s c (Widget s c) where
     askUnliftWidget = pure (UniftWidget id)
 
-instance (Functor m, MonadUnliftWidget c s m) => MonadUnliftWidget c s (ReaderT r m) where
+instance (Functor m, MonadUnliftWidget s c m) => MonadUnliftWidget s c (ReaderT r m) where
     askUnliftWidget = ReaderT $ \r ->
         (\u -> UniftWidget (unliftWidget u . flip runReaderT r)) <$> askUnliftWidget
 
-instance (Functor m, MonadUnliftWidget c s m) => MonadUnliftWidget c s (IdentityT m) where
+instance (Functor m, MonadUnliftWidget s c m) => MonadUnliftWidget s c (IdentityT m) where
     askUnliftWidget = IdentityT $
         (\u -> UniftWidget (unliftWidget u . runIdentityT)) <$> askUnliftWidget
 

@@ -30,7 +30,6 @@ import qualified Data.Map.Strict as M
 import Data.String
 import Data.Tagged.Extras
 import GHC.Stack.Extras
-import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
 import Glazier.Command
 import Glazier.Logger
@@ -52,15 +51,36 @@ type CmdReactor c =
     , Cmd (LogLine J.JSString) c
     )
 
-type LoggerJS c m = (Logger J.JSString c m, AskLogName m, AskReactPath m)
+-- | Can log and 'instruct'
+type MonadLoggerJS c m = (MonadLogger J.JSString c m, AskLogName m, AskReactPath m)
 
--- | Doesn't need to know about the model @s@
-type MonadReactor c m = (Cmd' [] c, CmdReactor c, Alternative m, Also () m, LoggerJS c m)
+-- | Can log, and 'instruct' 'Reactor' commands
+type MonadReactor c m = (Cmd' [] c, CmdReactor c, MonadLoggerJS c m)
 
--- | Needs to know about the model @s@ and also modifies markup
--- type MonadWidget c s m = (MonadGadget c s m, AskModelWeakRef s m) --, PutReactId m, PutMarkup m)
+-- | A 'MonadGadget'' is something that can be safely turned into a 'Handler'
+-- and used in event handling code.
+-- It is an instance of 'Alternative' and 'Also' so it can be combined.
+type MonadGadget' c m = (Cmd' [] c, CmdReactor c
+        , MonadLoggerJS c m
+        , AskPlanWeakRef m
+        , Alternative m, Also () m
+        )
 
--- | NB. 'Reactor' is not a functor because of the @Widget c@ in 'MkObj'
+-- | A 'MonadGadget' with an addition type @s@ parameter for modifying the model
+type MonadGadget s c m = (MonadGadget' c m, AskModelWeakVar s m)
+
+-- A 'MonadGadget' that additionally have access to 'onConstruction', 'onDestruction', 'onRendered',
+-- can generate 'Markup' and so should not be be for event handling, sice those
+-- additional effects are ignored inside event handling.
+type MonadWidget' c m = (MonadGadget' c m, PutMarkup m
+        , AskConstructor c m, AskDestructor c m, AskRendered c m)
+
+-- A 'MonadWidget'' with an addition type @s@ parameter for displaying the model
+type MonadWidget s c m = (MonadWidget' c m, AskModelWeakVar s m, AskModel s m)
+
+-- | Describes the effects required by 'Widget' to manipulate 'Obj'.
+-- 'Reactor' is not a functor because of the @Widget c@ in 'MkObj' which
+-- is in a positive agument position.
 data Reactor c where
 
     -- Turn some handling function into a 'Handler'.
@@ -80,13 +100,13 @@ data Reactor c where
     MkListener ::
         Weak (IORef Plan)
         -> Handler
-        -> (J.Callback (J.JSVal -> IO ()) -> c)
+        -> (Listener -> c)
         -> Reactor c
 
     -- | Make a fully initialized object from a widget and meta
-    -- MkObj :: Widget c s s () -> J.JSString -> s -> (Obj s -> c) -> Reactor c
-    -- NB. 'Reactor' is not a functor because of the @Widget c@ in 'MkObj'
-    MkObj :: Widget c s () -> LogName -> s -> (Obj s -> c) -> Reactor c
+    -- 'Reactor' is not a functor because of the @Widget c@ in 'MkObj' which
+    -- is in a positive agument position.
+    MkObj :: Widget s c() -> LogName -> s -> (Obj s -> c) -> Reactor c
 
     -- | Reads from an 'Obj', also registering this as a listener
     -- so this will get rerendered whenever the 'Obj' is 'mutate'd.
@@ -111,12 +131,12 @@ logPrefix = do
     let xs = DL.intersperse "." $ (\(n, i) -> n <> (fromString $ show i)) <$> ps
     pure (foldr (<>) "" xs)
 
-loggedJS :: (HasCallStack, ShowIOJS a, LoggerJS c m) => (a -> m b) -> LogLevel -> a -> m b
+loggedJS :: (HasCallStack, ShowIOJS a, MonadLoggerJS c m) => (a -> m b) -> LogLevel -> a -> m b
 loggedJS go lvl a = withoutCallStack $ do
     logLnJS lvl (showIO a)
     go a
 
-logLnJS :: (HasCallStack, LoggerJS c m)
+logLnJS :: (HasCallStack, MonadLoggerJS c m)
     => LogLevel -> IO J.JSString
     -> m ()
 logLnJS lvl msg = withoutCallStack $ do
@@ -132,13 +152,13 @@ logLnJS lvl msg = withoutCallStack $ do
 -- | Make an initialized 'Obj' for a given meta using the given 'Widget'.
 -- Unlike 'unliftMkObj', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
 mkObj :: (HasCallStack, MonadReactor c m)
-    => Widget c s () -> LogName -> s -> m (Obj s)
+    => Widget s c () -> LogName -> s -> m (Obj s)
 mkObj wid logname s = delegatify $ \f ->
     loggedJS exec' TRACE $ MkObj wid logname s f
 
 -- | Convenient variation of 'mkObj' where the widget is unlifted from the given monad.
 -- This is useful for transformer stacks that require addition MonadReader-like effects.
-unliftMkObj :: (HasCallStack, MonadUnliftWidget c s m, MonadReactor c m)
+unliftMkObj :: (HasCallStack, MonadUnliftWidget s c m, MonadReactor c m)
     => m () -> LogName -> s -> m (Obj s)
 unliftMkObj m logname s = do
     u <- askUnliftWidget
@@ -186,33 +206,6 @@ mutateThen_ r m = do
         -- f' :: m a -> c
         f' <- codify f
         loggedJS exec' TRACE $ Mutate this mdl r (f' <$> m)
-
--- -- | Create a callback for a 'J.JSVal' and add it to this elementals's dlist of listeners.
--- -- 'domTrigger' does not expect a 'Notice' as it is not part of React.
--- -- Contrast with 'trigger' which expects a 'Notice'.
--- domTrigger ::
---     (HasCallStack, NFData a, AsReactor c, MonadGadget' c s m)
---     => J.JSVal
---     -> J.JSString
---     -> (J.JSVal -> MaybeT IO a)
---     -> m a
--- domTrigger j n goStrict = do
---     obj <- askWeakModelRef
---     delegatify $ \f ->
---         logExec' TRACE callStack $ RegisterDOMListener obj j n goStrict f
-
--- -- | A variation of trigger which ignores the event but fires the given arg instead.
--- -- Unlike 'domTrigger' the @a@ does not need to be @NFData a@
--- domTrigger_ ::
---     (HasCallStack, AsReactor c, MonadGadget' c s m)
---     => J.JSVal
---     -> J.JSString
---     -> a
---     -> m a
--- domTrigger_ j n a = do
---     runGadget $ domTrigger j n (const $ pure ())
---     pure a
-
 
 -- | This convert the input @goStrict@ and @f@ into (preprocess, postprocess).
 -- Multiple preprocess must be run for the same event before any of the postprocess,

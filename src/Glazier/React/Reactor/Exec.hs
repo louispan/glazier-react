@@ -270,7 +270,7 @@ execMkObj ::
     , CmdReactor c
     )
     => (c -> m ())
-    -> Widget c s ()
+    -> Widget s c ()
     -> LogName
     -> s
     -> m (Obj s)
