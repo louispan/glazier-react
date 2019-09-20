@@ -51,17 +51,12 @@ type CmdReactor c =
     , Cmd (LogLine J.JSString) c
     )
 
--- | Can log and 'instruct'
-type MonadLoggerJS c m = (MonadLogger J.JSString c m, AskLogName m, AskReactPath m)
-
--- | Can log, and 'instruct' 'Reactor' commands
-type MonadReactor c m = (Cmd' [] c, CmdReactor c, MonadLoggerJS c m)
-
--- | A 'MonadGadget'' is something that can be safely turned into a 'Handler'
+-- | A 'MonadGadget'' is can log, 'instruct' 'Reactor' effects,
+-- and can that can be safely turned into a 'Handler'
 -- and used in event handling code.
 -- It is an instance of 'Alternative' and 'Also' so it can be combined.
 type MonadGadget' c m = (Cmd' [] c, CmdReactor c
-        , MonadLoggerJS c m
+        , MonadLogger J.JSString c m, AskLogName m, AskReactPath m
         , AskPlanWeakRef m
         , Alternative m, Also () m
         )
@@ -72,7 +67,7 @@ type MonadGadget s c m = (MonadGadget' c m, AskModelWeakVar s m)
 -- A 'MonadGadget' that additionally have access to 'onConstruction', 'onDestruction', 'onRendered',
 -- can generate 'Markup' and so should not be be for event handling, sice those
 -- additional effects are ignored inside event handling.
-type MonadWidget' c m = (MonadGadget' c m, PutMarkup m
+type MonadWidget' c m = (MonadGadget' c m, PutMarkup m, PutReactPath m
         , AskConstructor c m, AskDestructor c m, AskRendered c m)
 
 -- A 'MonadWidget'' with an addition type @s@ parameter for displaying the model
@@ -131,12 +126,12 @@ logPrefix = do
     let xs = DL.intersperse "." $ (\(n, i) -> n <> (fromString $ show i)) <$> ps
     pure (foldr (<>) "" xs)
 
-loggedJS :: (HasCallStack, ShowIOJS a, MonadLoggerJS c m) => (a -> m b) -> LogLevel -> a -> m b
+loggedJS :: (HasCallStack, ShowIOJS a, MonadGadget' c m) => (a -> m b) -> LogLevel -> a -> m b
 loggedJS go lvl a = withoutCallStack $ do
     logLnJS lvl (showIO a)
     go a
 
-logLnJS :: (HasCallStack, MonadLoggerJS c m)
+logLnJS :: (HasCallStack, MonadGadget' c m)
     => LogLevel -> IO J.JSString
     -> m ()
 logLnJS lvl msg = withoutCallStack $ do
@@ -151,14 +146,14 @@ logLnJS lvl msg = withoutCallStack $ do
 
 -- | Make an initialized 'Obj' for a given meta using the given 'Widget'.
 -- Unlike 'unliftMkObj', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
-mkObj :: (HasCallStack, MonadReactor c m)
+mkObj :: (HasCallStack, MonadGadget' c m)
     => Widget s c () -> LogName -> s -> m (Obj s)
 mkObj wid logname s = delegatify $ \f ->
     loggedJS exec' TRACE $ MkObj wid logname s f
 
 -- | Convenient variation of 'mkObj' where the widget is unlifted from the given monad.
 -- This is useful for transformer stacks that require addition MonadReader-like effects.
-unliftMkObj :: (HasCallStack, MonadUnliftWidget s c m, MonadReactor c m)
+unliftMkObj :: (HasCallStack, MonadUnliftWidget s c m, MonadGadget' c m)
     => m () -> LogName -> s -> m (Obj s)
 unliftMkObj m logname s = do
     u <- askUnliftWidget
@@ -166,7 +161,7 @@ unliftMkObj m logname s = do
 
 -- | Reads from an 'Obj', also registering this as a listener
 -- so this will get rerendered whenever the 'Obj' is 'mutate'd.
-readObj :: (HasCallStack, MonadReactor c m, AskPlanWeakRef m)
+readObj :: (HasCallStack, MonadGadget' c m)
     => Obj s -> m s
 readObj obj = do
     this <- askPlanWeakRef
@@ -174,7 +169,7 @@ readObj obj = do
         loggedJS exec' TRACE $ ReadObj this obj f
 
 -- | 'mutate_' with 'RerenderRequired'
-mutate :: ( HasCallStack, MonadReactor c m, AskModelWeakVar s m, AskPlanWeakRef m)
+mutate :: (HasCallStack, MonadGadget s c m)
     => StateT s IO () -> m ()
 mutate = mutate_ RerenderRequired
 
@@ -182,7 +177,7 @@ mutate = mutate_ RerenderRequired
 -- Expose 'Rerender' for "uncontrolled (by react)" components like <input>
 -- which doesn't necessarily require a rerender if the model changes.
 -- Mutation notifications are always sent.
-mutate_ :: ( HasCallStack, MonadReactor c m, AskModelWeakVar s m, AskPlanWeakRef m)
+mutate_ :: ( HasCallStack, MonadGadget s c m)
     => RerenderRequired -> StateT s IO () -> m ()
 mutate_ r m = do
     mdl <- askModelWeakVar
@@ -190,12 +185,12 @@ mutate_ r m = do
     loggedJS exec' TRACE $ Mutate this mdl r (command_ <$> m)
 
 -- | 'mutateThen_' with 'RerenderRequired'
-mutateThen :: ( HasCallStack, MonadReactor c m, AskModelWeakVar s m, AskPlanWeakRef m)
+mutateThen :: ( HasCallStack, MonadGadget s c m)
     => StateT s IO (m a) -> m a
 mutateThen = mutateThen_ RerenderRequired
 
 -- | Variation of 'mutate_' which also returns the next action to execute after mutating.
-mutateThen_ :: ( HasCallStack, MonadReactor c m, AskModelWeakVar s m, AskPlanWeakRef m)
+mutateThen_ :: ( HasCallStack, MonadGadget s c m)
     => RerenderRequired -> StateT s IO (m a) -> m a
 mutateThen_ r m = do
     mdl <- askModelWeakVar
@@ -211,7 +206,7 @@ mutateThen_ r m = do
 -- Multiple preprocess must be run for the same event before any of the postprocess,
 -- due to the way ghcjs sync and async threads interact with React js.
 mkHandler ::
-    (HasCallStack, NFData a, MonadReactor c m, AskPlanWeakRef m)
+    (HasCallStack, NFData a, MonadGadget' c m)
     => (J.JSVal -> MaybeT IO a)
     -> (a -> m ())
     -> m (J.JSVal -> IO (), IO ()) -- (preprocess, postprocess)
@@ -225,7 +220,7 @@ handleNotice :: Monad m => (Notice -> MaybeT m a) -> (J.JSVal -> MaybeT m a)
 handleNotice g j = MaybeT (pure $ JE.fromJS j) >>= g
 
 mkNoticeHandler ::
-    (HasCallStack, NFData a, MonadReactor c m, AskPlanWeakRef m)
+    (HasCallStack, NFData a, MonadGadget' c m)
     => (Notice -> MaybeT IO a)
     -> (a -> m ())
     -> m (J.JSVal -> IO (), IO ()) -- (preprocess, postprocess)
@@ -233,7 +228,7 @@ mkNoticeHandler goStrict goLazy = mkHandler (handleNotice goStrict) goLazy
 
 -- | This convert 'Handler' into a ghcjs 'Callback'
 mkListener ::
-    (HasCallStack, MonadReactor c m, AskPlanWeakRef m)
+    (HasCallStack, MonadGadget' c m)
     => Handler
     -> m Listener
 mkListener f = do
@@ -260,18 +255,12 @@ mkListener f = do
 ----------------------------------------------------------------------------------
 
 -- | write some text from the model. Use 'like' to 'const' a string instead.
-rawTxt :: (PutMarkup m, AskModel s m) => Getting J.JSString s J.JSString -> m ()
+rawTxt :: MonadWidget s c m => Getting J.JSString s J.JSString -> m ()
 rawTxt lns = do
     s <- askModel
     rawTextMarkup $ s ^. lns
 
-lf ::
-    ( PutMarkup m
-    , PutReactPath m
-    , AskModel s m
-    , AskPlanWeakRef m
-    , MonadReactor c m
-    )
+lf :: MonadWidget s c m
     => J.JSString-- ^ eg "div" or "input"
     -> DL.DList (J.JSString, m Handler)
     -> DL.DList (J.JSString, Getting J.JSVal s J.JSVal)
@@ -286,13 +275,7 @@ lf n gads props = do
         (((fmap (`view` s)) <$> props)
             <> (DL.fromList . M.toList $ JE.toJS <$> gads'''))
 
-bh ::
-    ( PutMarkup m
-    , PutReactPath m
-    , AskModel s m
-    , AskPlanWeakRef m
-    , MonadReactor c m
-    )
+bh :: MonadWidget s c m
     => J.JSString-- ^ eg "div" or "input"
     -> DL.DList (J.JSString, m Handler)
     -> DL.DList (J.JSString, Getting J.JSVal s J.JSVal)

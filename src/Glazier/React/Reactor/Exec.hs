@@ -347,12 +347,12 @@ execMkObj executor wid logName' s = do
                 -- then get the latest markup using the state
                 liftIO $ execProgramT'
                     $ (`evalStateT` mempty) -- markup
+                    $ (`evalStateT` (ReactPath (Nothing, [])))
                     $ evalContT
                     $ (`evalMaybeT` ())
                     $ (`runReaderT` Tagged @"Model" mdl)
                     $ (`runReaderT` Tagged @"Model" mdlWkVar)
                     $ (`runReaderT` plnWkRef)
-                    $ (`runReaderT` (ReactPath (Nothing, [])))
                     $ (`runObserverT` onConstruct)
                     $ (`runObserverT` onDestruct)
                     $ (`runObserverT` onRendrd)

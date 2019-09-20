@@ -87,22 +87,16 @@ type Widget s c =
     ObserverT (Tagged "Rendered" c) -- 'AskRendered'
     (ObserverT (Tagged "Destructor" c) -- 'AskDestructor'
     (ObserverT (Tagged "Constructor" c) -- 'AskConstructor'
-    (ReaderT ReactPath -- 'AskReactPath', 'AskLogName'
     (ReaderT (Weak (IORef Plan)) -- 'AskPlanWeakRef', 'AskLogLevel', 'AskLogCallStackDepth'
     (ReaderT (Tagged "Model" (Weak (MVar s))) -- 'AskModelWeakVar'
     (ReaderT (Tagged "Model" s) -- 'AskModel'
     (MaybeT -- 'Alternative'
     (ContT () -- 'MonadDelegate'
-    -- State monads must be inside ContT to be 'MonadDelegate'
-    -- (StateT (ReactId) -- 'PutReactId'
+    -- State monads must be inside ContT to be a 'MonadDelegate'
+    (StateT ReactPath -- 'PutReactPath', 'AskReactPath', 'AskLogName'
     (StateT (DL.DList ReactMarkup) -- 'PutMarkup'
     (ProgramT c IO -- 'MonadComand', 'MonadIO'
     ))))))))))
-
--- wack :: Lens' s Bool -> Widget c s Bool
--- wack lns = do
---     s <- askModel
---     pure $ s ^.lns
 
 
 -- | ALlow additional user ReaderT and IdentityT stack on top of Widget c s
