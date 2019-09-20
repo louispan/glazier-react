@@ -27,10 +27,9 @@ import Data.IORef
 import qualified Data.JSString as J
 import qualified Data.List as DL
 import qualified Data.Map.Strict as M
-import Data.Proxy
 import Data.String
 import Data.Tagged.Extras
-import GHC.Stack
+import GHC.Stack.Extras
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
 import Glazier.Command
@@ -94,53 +93,17 @@ data Reactor c where
     ReadObj :: Weak (IORef Plan) -> Obj s -> (s -> c) -> Reactor c
 
     -- Modifies the model and flags 'RerenderRequired'
-    -- Also notifier any listener that the model has changes
-    -- so that the listeners can rerender
+    -- Also notifier any watchers that the model has changes
+    -- so that the watchers can rerender
     Mutate :: Weak (IORef Plan) -> Weak (MVar s) -> RerenderRequired -> StateT s IO c -> Reactor c
-
-    -- -- | Create and register a dom callback
-    -- -- Returns a command that can be used to explicitly remove the dom listener.
-    -- -- Dom listeners are automatically removed on widget destruction.
-    -- AddDomListener :: NFData a
-    --     => WeakModelRef s
-    --     -> J.JSVal
-    --     -> J.JSString
-    --     -> (J.Callback (J.JSVal -> IO ()) -> c)
-    --     -> (c -> a -> c)
-    --     -> Reactor c
-
-    -- -- | Remove a DOM listener
-    -- RemoveDomListener ::
-    --     => WeakModelRef s
-    --     -> ReactId
-    --     -> Reactor c
 
 
 instance (IsString str, Semigroup str) => ShowIO str (Reactor c) where
-    -- showsPrecIO p (MkReactId s _) = textParen (p >= 11) $
-    --     "MkReactId " <> showIO s
     showsPrecIO p (MkHandler this _ _ _) = showParenIO (p >= 11) $ (showStr "MkHandler " .) <$> (showsIO this)
     showsPrecIO p (MkListener this _ _) = showParenIO (p >= 11) $ (showStr "MkListener " .) <$> (showsIO this)
     showsPrecIO p (MkObj _ logname _ _) = showParenIO (p >= 11) $ (showStr "MkObj " .) <$> (showsIO logname)
     showsPrecIO p (ReadObj this _ _) = showParenIO (p >= 11) $ (showStr "ReadObj " .) <$> (showsIO this)
-    -- showsPrec _ (SetRender _ _ ) = showString "SetRender"
-    -- showsPrec _ (GetReactRef _ _ _) = showString "GetReactRef"
-    -- showsPrecIO p (Rerender this) = showParenIO (p >= 11) $ (showStr "Rerender " .) <$> (showsIO this)
-    showsPrecIO p (Mutate this _ req _) = showParenIO (p >= 11) $ (\x -> (showStr "Mutate ") . x . (showFromStr " ") . (showFromStr $ show req)) <$> (showsIO this)
-    -- showsPrec p (NotifyMutated _ k) = showParen (p >= 11) $
-    --     showString "NotifyMutated " . shows k
-    -- showsPrec p (ResetMutation _ k) = showParen (p >= 11) $
-    --     showString "ResetMutation " . shows k
-    -- showsPrec p (RegisterDOMListener _ k n _ _) = showParen (p >= 11) $
-    --     showString "RegisterDOMListener " . shows k . showString " " . shows n
-    -- showsPrec p (RegisterReactListener _ k n _ _) = showParen (p >= 11) $
-    --     showString "RegisterReactListener " . shows k . showString " " . shows n
-    -- showsPrec _ (RegisterMountedListener _ _) = showString "RegisterMountedListener"
-    -- showsPrec _ (RegisterRenderedListener _ _) = showString "RegisterRenderedListener"
-    -- -- showsPrec _ (RegisterRenderedOnceListener _ _) = showString "RegisterRenderedOnceListener"
-    -- showsPrec _ (RegisterMutatedListener _ _) = showString "RegisterMutatedListener"
--- FIXME: Forgot onMounted, onUnMounted
-
+    showsPrecIO p (Mutate this _ req _) = showParenIO (p >= 11) $ (\x -> (showStr "Mutate ") . x . (showFromStr " ") . (showsStr req)) <$> (showsIO this)
 
 logPrefix :: AskReactPath m => m J.JSString
 logPrefix = do
@@ -148,37 +111,19 @@ logPrefix = do
     let xs = DL.intersperse "." $ (\(n, i) -> n <> (fromString $ show i)) <$> ps
     pure (foldr (<>) "" xs)
 
-logLineJS :: LoggerJS c m
-    => LogLevel -> CallStack -> IO J.JSString
+loggedJS :: (HasCallStack, ShowIOJS a, LoggerJS c m) => (a -> m b) -> LogLevel -> a -> m b
+loggedJS go lvl a = withoutCallStack $ do
+    logLnJS lvl (showIO a)
+    go a
+
+logLnJS :: (HasCallStack, LoggerJS c m)
+    => LogLevel -> IO J.JSString
     -> m ()
-logLineJS lvl cs msg = do
+logLnJS lvl msg = withoutCallStack $ do
     p <- logPrefix
     n <- untag' @"LogName" <$> askLogName
-    logLine (Proxy @J.JSString) lvl cs $ (\x -> n <> "<" <> p <> "> " <> x) <$> msg
+    logLine basicLogCallStackDepth lvl $ (\x -> n <> "<" <> p <> "> " <> x) <$> msg
 
-logExecJS :: (ShowIOJS cmd, Cmd cmd c, LoggerJS c m)
-    => LogLevel -> CallStack -> cmd -> m ()
-logExecJS = logExec (Proxy @J.JSString)
-
-logExecJS' :: (ShowIOJS (cmd c), Cmd' cmd c, LoggerJS c m)
-    => LogLevel -> CallStack -> cmd c -> m ()
-logExecJS' = logExec' (Proxy @J.JSString)
-
-logEvalJS :: (ShowIOJS cmd, Cmd cmd c, LoggerJS c m)
-    => LogLevel -> CallStack -> ((a -> c) -> cmd) -> m a
-logEvalJS = logEval (Proxy @J.JSString)
-
-logEvalJS' :: (ShowIOJS (cmd c), Cmd' cmd c, LoggerJS c m)
-    => LogLevel -> CallStack -> ((a -> c) -> cmd c) -> m a
-logEvalJS' = logEval' (Proxy @J.JSString)
-
-logInvokeJS :: (ShowIOJS (cmd c), Cmd' cmd c, Functor cmd, LoggerJS c m)
-    => LogLevel -> CallStack -> cmd a -> m a
-logInvokeJS = logInvoke (Proxy @J.JSString)
-
-logInvokeJS_ :: (ShowIOJS (cmd c), Cmd' cmd c, Cmd' [] c, Functor cmd, LoggerJS c m)
-    => LogLevel -> CallStack -> cmd () -> m ()
-logInvokeJS_ = logInvoke_ (Proxy @J.JSString)
 
 ------------------------------------------------------
 -- Basic
@@ -189,7 +134,7 @@ logInvokeJS_ = logInvoke_ (Proxy @J.JSString)
 mkObj :: (HasCallStack, MonadReactor c m)
     => Widget c s () -> LogName -> s -> m (Obj s)
 mkObj wid logname s = delegatify $ \f ->
-    logExecJS' TRACE callStack $ MkObj wid logname s f
+    loggedJS exec' TRACE $ MkObj wid logname s f
 
 -- | Convenient variation of 'mkObj' where the widget is unlifted from the given monad.
 -- This is useful for transformer stacks that require addition MonadReader-like effects.
@@ -206,7 +151,7 @@ readObj :: (HasCallStack, MonadReactor c m, AskPlanWeakRef m)
 readObj obj = do
     this <- askPlanWeakRef
     delegatify $ \f ->
-        logExecJS' TRACE callStack $ ReadObj this obj f
+        loggedJS exec' TRACE $ ReadObj this obj f
 
 -- | 'mutate_' with 'RerenderRequired'
 mutate :: ( HasCallStack, MonadReactor c m, AskModelWeakVar s m, AskPlanWeakRef m)
@@ -222,7 +167,7 @@ mutate_ :: ( HasCallStack, MonadReactor c m, AskModelWeakVar s m, AskPlanWeakRef
 mutate_ r m = do
     mdl <- askModelWeakVar
     this <- askPlanWeakRef
-    logExecJS' TRACE callStack $ Mutate this mdl r (command_ <$> m)
+    loggedJS exec' TRACE $ Mutate this mdl r (command_ <$> m)
 
 -- | 'mutateThen_' with 'RerenderRequired'
 mutateThen :: ( HasCallStack, MonadReactor c m, AskModelWeakVar s m, AskPlanWeakRef m)
@@ -240,7 +185,7 @@ mutateThen_ r m = do
         let f n = n >>= fire
         -- f' :: m a -> c
         f' <- codify f
-        logExecJS' TRACE callStack $ Mutate this mdl r (f' <$> m)
+        loggedJS exec' TRACE $ Mutate this mdl r (f' <$> m)
 
 -- -- | Create a callback for a 'J.JSVal' and add it to this elementals's dlist of listeners.
 -- -- 'domTrigger' does not expect a 'Notice' as it is not part of React.
@@ -269,33 +214,6 @@ mutateThen_ r m = do
 --     pure a
 
 
-
--- -- | Create a callback for a 'J.JSVal' and add it to this elementals's dlist of listeners.
--- -- 'domTrigger' does not expect a 'Notice' as it is not part of React.
--- -- Contrast with 'trigger' which expects a 'Notice'.
--- addDomListener ::
---     (HasCallStack, NFData a, MonadReactor c m, AskPlanWeakRef m)
---     => J.JSVal
---     -> J.JSString
---     -> (J.JSVal -> MaybeT IO a)
---     -> (a -> m ())
---     -> m c
--- addDomListener j n goStrict goLazy = do
---     plnRef <- askPlanWeakRef
---     delegatify $ \f ->
---         logExec' TRACE callStack $ RegisterDOMListener obj j n goStrict f
-
-
--- | This convert the (preprocess, postprocess) into a ghcjs 'Callback'
-mkListener ::
-    (HasCallStack, MonadReactor c m, AskPlanWeakRef m)
-    => (J.JSVal -> IO (), IO ())
-    -> m (J.Callback (J.JSVal -> IO ()))
-mkListener f = do
-    plnRef <- askPlanWeakRef
-    delegatify $ \k ->
-        logExecJS' TRACE callStack $ MkListener plnRef f k
-
 -- | This convert the input @goStrict@ and @f@ into (preprocess, postprocess).
 -- Multiple preprocess must be run for the same event before any of the postprocess,
 -- due to the way ghcjs sync and async threads interact with React js.
@@ -308,7 +226,7 @@ mkHandler goStrict f = do
     plnRef <- askPlanWeakRef
     f' <- codify f
     delegatify $ \k -> do
-        logExecJS' TRACE callStack $ MkHandler plnRef goStrict f' k
+        loggedJS exec' TRACE $ MkHandler plnRef goStrict f' k
 
 handleNotice :: Monad m => (Notice -> MaybeT m a) -> (J.JSVal -> MaybeT m a)
 handleNotice g j = MaybeT (pure $ JE.fromJS j) >>= g
@@ -319,6 +237,16 @@ mkNoticeHandler ::
     -> (a -> m ())
     -> m (J.JSVal -> IO (), IO ()) -- (preprocess, postprocess)
 mkNoticeHandler goStrict goLazy = mkHandler (handleNotice goStrict) goLazy
+
+-- | This convert 'Handler' into a ghcjs 'Callback'
+mkListener ::
+    (HasCallStack, MonadReactor c m, AskPlanWeakRef m)
+    => Handler
+    -> m Listener
+mkListener f = do
+    plnRef <- askPlanWeakRef
+    delegatify $ \k ->
+        loggedJS exec' TRACE $ MkListener plnRef f k
 
 -- | Orphan instance because it requires AsReactor
 -- LOUISFIXME: Think about this, use ReaderT (s -> Either e Obj s)?

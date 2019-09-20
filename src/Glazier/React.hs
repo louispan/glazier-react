@@ -6,6 +6,7 @@ module Glazier.React
     ( module Glazier.Command
     , module Glazier.Command.Exec
     , module Glazier.Logger
+    , module Glazier.ShowIO
     , module Glazier.React.Common
     , module Glazier.React.EventTarget
     , module Glazier.React.NativeEvent
@@ -19,6 +20,7 @@ module Glazier.React
     , module Glazier.React.Widget
     , module Control.Also
     , module Control.Applicative
+    , module Control.DeepSeq
     , module Control.Monad
     , module Control.Monad.Delegate
     , module Control.Monad.Context
@@ -31,8 +33,11 @@ module Glazier.React
     , module Control.Monad.Trans.Extras
     , module Control.Monad.Trans.Maybe
     , module GHC.Stack
+    , module GHCJS.Types
+    , module JavaScript.Extras
     , module Data.Function.Extras
     , module Data.Proxy
+    , module Data.String
     , module Data.Tagged.Extras
     , module Control.Lens
     , module Control.Lens.Misc
@@ -40,6 +45,7 @@ module Glazier.React
 
 import Control.Also
 import Control.Applicative
+import Control.DeepSeq
 import Control.Lens
 import Control.Lens.Misc
 import Control.Monad
@@ -55,8 +61,10 @@ import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
 import Data.Function.Extras
 import Data.Proxy
+import Data.String
 import Data.Tagged.Extras
 import GHC.Stack
+import GHCJS.Types
 import Glazier.Command
 import Glazier.Command.Exec
 import Glazier.Logger
@@ -71,3 +79,5 @@ import Glazier.React.ReactId
 import Glazier.React.Reactor
 import Glazier.React.Reactor.Exec
 import Glazier.React.Widget
+import Glazier.ShowIO
+import JavaScript.Extras
