@@ -13,10 +13,10 @@ module Glazier.React.ReactElement
     ) where
 
 import qualified GHCJS.Types as J
+import Glazier.React.ReactElement.Internal
 import qualified JavaScript.Array as JA
 import qualified JavaScript.Extras as JE
 import qualified JavaScript.Object as JO
-import Glazier.React.ReactElement.Internal
 
 -- | Create a react element (with children) from a HashMap of properties
 mkBranchElement :: J.JSVal -> [(J.JSString, J.JSVal)] -> [ReactElement] -> IO ReactElement

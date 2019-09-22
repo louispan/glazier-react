@@ -4,20 +4,17 @@
 -- | https://developer.mozilla.org/en-US/docs/Web/API/EventTarget
 module Glazier.React.DOM.EventTarget
     ( EventTarget  -- ^ constructor is not exported
-    , IEventTarget
-    , addEventListener
-    , removeEventListener
-    , dispatchEvent
+    , IEventTarget(..)
     -- , listenEventTarget
     )
     where
 
+import Control.Monad.IO.Class
 import qualified GHCJS.Types as J
 import Glazier.React.Common
 import Glazier.React.DOM.Event
 import Glazier.React.DOM.EventTarget.Internal
 import qualified JavaScript.Extras as JE
-import Control.Monad.IO.Class
 -- import Glazier.React.Reactor
 -- import Glazier.React.Widget
 

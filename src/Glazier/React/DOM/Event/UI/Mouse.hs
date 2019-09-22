@@ -3,45 +3,33 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Glazier.React.DOM.Event.Mouse
-  ( MouseEvent(..)
-  , toMouseEvent
+  ( MouseEvent -- ^ constructor not exported
+  , IMouseEvent(..)
   )
 where
 
-import Control.DeepSeq
-import qualified GHC.Generics as G
-import qualified GHCJS.Types as J
-import Glazier.React.DOM.Event.Notice.Internal
+import Glazier.React.DOM.Event.Mouse.Internal
 import Glazier.React.DOM.EventTarget.Internal
+import qualified GHCJS.Types as J
+import qualified JavaScript.Extras as JE
+import Control.Monad.IO.Class
 
--- | Mouse and Drag/Drop events
--- 'MouseEvent' must only be used in the first part of 'handleEvent'.
--- https://facebook.github.io/react/docs/events.html#mouse-events
--- https://developer.mozilla.org/en-US/docs/Web/Events
--- Event names (eventType)
--- onClick (click) onContextMenu (contextmenu) onDoubleClick (dblclick)
--- onDrag (drag) onDragEnd (dragend) onDragEnter (dragenter) onDragExit (dragexit)
--- onDragLeave (dragleave) onDragOver (dragover) onDragStart (dragstart)
--- onDrop (drop) onMouseDown (mousedown) onMouseEnter (mouseenter) onMouseLeave (mouseleave)
--- onMouseMove (mousemove) onMouseOut (mouseout) onMouseOver (mouseover) onMouseUp (mouseup)
-data MouseEvent = MouseEvent
-  { altKey :: Bool
-  , button :: Int
-  , buttons :: Int
-  , clientX :: Int
-  , clientY :: Int
-  , ctrlKey :: Bool
-  , getModifierState :: J.JSString -> Bool
-  , metaKey :: Bool
-  , pageX :: Int
-  , pageY :: Int
-  , relatedTarget :: EventTarget
-  , screenX :: Int
-  , screenY :: Int
-  , shiftKey :: Bool
-  }
-    deriving (G.Generic)
-instance NFData MouseEvent
+class IEvent j => IMouseEvent j where
+  altKey :: Bool
+  button :: Int
+  buttons :: Int
+  clientX :: Int
+  clientY :: Int
+  ctrlKey :: Bool
+  getModifierState :: J.JSString -> Bool
+  metaKey :: Bool
+  pageX :: Int
+  pageY :: Int
+  relatedTarget :: EventTarget
+  screenX :: Int
+  screenY :: Int
+  shiftKey :: Bool
+
 
 -- | We can lie about this not being in IO because
 -- within the strict part of 'handleEventM'

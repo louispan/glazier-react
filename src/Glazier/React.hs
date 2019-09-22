@@ -1,5 +1,3 @@
--- | NB. Glazier.React.DOM.Event.* are not exported due to duplicate record fields
--- It is up to the user to import the Event modules as required.
 module Glazier.React
     ( module Glazier.Command
     , module Glazier.Command.Exec
@@ -73,5 +71,5 @@ import Glazier.React.ReactId
 -- import Glazier.React.Reactor
 -- import Glazier.React.Reactor.Exec
 import Glazier.React.Widget
-import ShowIO
 import JavaScript.Extras
+import ShowIO

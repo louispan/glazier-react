@@ -7,13 +7,11 @@ module Glazier.React.DOM.EventTarget.Internal
     ) where
 
 import Control.DeepSeq
-import Control.Monad.IO.Class
 import Data.String
 import qualified GHC.Generics as G
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import qualified JavaScript.Extras as JE
-import Glazier.React.Common
 
 -- | The object that dispatched the event.
 -- https://developer.mozilla.org/en-US/docs/Web/API/EventTarget

@@ -1,7 +1,7 @@
 {-# LANGUAGE CPP #-}
 
 module Glazier.React.DOM.Event
-    ( Event  -- constructor is not exported
+    ( Event  -- ^ constructor is not exported
     , IEvent(..)
     )
     where

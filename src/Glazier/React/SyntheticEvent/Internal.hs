@@ -10,8 +10,8 @@ import Data.String
 import qualified GHC.Generics as G
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
-import qualified JavaScript.Extras as JE
 import Glazier.React.DOM.Event
+import qualified JavaScript.Extras as JE
 
 -- | Every event in React is a synthetic event, a cross-browser wrapper around the native event.
 -- which reused from a pool (https://reactjs.org/docs/events.html).
