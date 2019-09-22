@@ -15,12 +15,12 @@
 module Glazier.React.Reactor where
 
 import Control.Also
-import Control.Applicative
 import Control.Concurrent.MVar
 import Control.DeepSeq
 import Control.Lens
 import Control.Monad.Delegate
 import Control.Monad.State.Strict
+import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
 import qualified Data.DList as DL
 import Data.IORef
@@ -34,8 +34,8 @@ import qualified GHCJS.Types as J
 import Glazier.Command
 import Glazier.Logger
 import Glazier.React.Common
+import Glazier.React.DOM.Event.Notice
 import Glazier.React.Markup
-import Glazier.React.Notice
 import Glazier.React.Obj
 import Glazier.React.Plan
 import Glazier.React.ReactPath
@@ -58,7 +58,7 @@ type CmdReactor c =
 type MonadGadget' c m = (Cmd' [] c, CmdReactor c
         , MonadLogger J.JSString c m, AskLogName m, AskReactPath m
         , AskPlanWeakRef m
-        , Alternative m, Also () m
+        , AlternativeIO m, Also () m
         )
 
 -- | A 'MonadGadget' with an addition type @s@ parameter for modifying the model
@@ -148,8 +148,7 @@ logLnJS lvl msg = withoutCallStack $ do
 -- Unlike 'unliftMkObj', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
 mkObj :: (HasCallStack, MonadGadget' c m)
     => Widget s c () -> LogName -> s -> m (Obj s)
-mkObj wid logname s = delegatify $ \f ->
-    loggedJS exec' TRACE $ MkObj wid logname s f
+mkObj wid logname s = delegatify $ loggedJS exec' TRACE . MkObj wid logname s
 
 -- | Convenient variation of 'mkObj' where the widget is unlifted from the given monad.
 -- This is useful for transformer stacks that require addition MonadReader-like effects.
@@ -213,8 +212,7 @@ mkHandler ::
 mkHandler goStrict f = do
     plnRef <- askPlanWeakRef
     f' <- codify f
-    delegatify $ \k -> do
-        loggedJS exec' TRACE $ MkHandler plnRef goStrict f' k
+    delegatify $ loggedJS exec' TRACE . MkHandler plnRef goStrict f'
 
 handleNotice :: Monad m => (Notice -> MaybeT m a) -> (J.JSVal -> MaybeT m a)
 handleNotice g j = MaybeT (pure $ JE.fromJS j) >>= g
@@ -233,8 +231,7 @@ mkListener ::
     -> m Listener
 mkListener f = do
     plnRef <- askPlanWeakRef
-    delegatify $ \k ->
-        loggedJS exec' TRACE $ MkListener plnRef f k
+    delegatify $ loggedJS exec' TRACE . MkListener plnRef f
 
 -- | Orphan instance because it requires AsReactor
 -- LOUISFIXME: Think about this, use ReaderT (s -> Either e Obj s)?

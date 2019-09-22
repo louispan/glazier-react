@@ -20,17 +20,23 @@ library
   exposed-modules:     Glazier.React
                        Glazier.React.Common
                        Glazier.React.Element
-                       Glazier.React.Event.HashChange
-                       Glazier.React.Event.Keyboard
-                       Glazier.React.Event.Mouse
-                       Glazier.React.Event.Synthetic
-                       Glazier.React.EventTarget
-                       Glazier.React.EventTarget.Internal
+                       -- Glazier.DOM
+                       Glazier.React.DOM.Event
+                       Glazier.React.DOM.Event.Internal
+                       -- Glazier.React.DOM.Event.HashChange
+                       -- Glazier.React.DOM.Event.Keyboard
+                       -- Glazier.React.DOM.Event.Mouse
+                       Glazier.React.DOM.EventTarget
+                       Glazier.React.DOM.EventTarget.Internal
+                       -- Glazier.React.DOM.EventTarget.Node
+                       -- Glazier.React.DOM.EventTarget.Node.Internal
+                       -- Glazier.React.DOM.EventTarget.Node.Document
+                       -- Glazier.React.DOM.EventTarget.Node.Element
+                       -- Glazier.React.DOM.EventTarget.Node.Element.HTMLElement
+                       -- Glazier.React.Event.Notice
+                       -- Glazier.React.Event.Notice.Internal
+                       -- Glazier.React.Event.Synthetic
                        Glazier.React.Markup
-                       Glazier.React.NativeEvent
-                       Glazier.React.NativeEvent.Internal
-                       Glazier.React.Notice
-                       Glazier.React.Notice.Internal
                        Glazier.React.Obj
                        Glazier.React.Obj.Internal
                        Glazier.React.Plan
@@ -41,8 +47,8 @@ library
                        Glazier.React.ReactId
                        Glazier.React.ReactId.Internal
                        Glazier.React.ReactPath
-                       Glazier.React.Reactor
-                       Glazier.React.Reactor.Exec
+                       -- Glazier.React.Reactor
+                       -- Glazier.React.Reactor.Exec
                        Glazier.React.Shim
                        Glazier.React.Shim.Internal
                        Glazier.React.Widget

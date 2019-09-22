@@ -2,11 +2,9 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
--- | This module based on React/Flux/PropertiesAndEvents.hs.
-module Glazier.React.NativeEvent.Internal
-  ( NativeEvent(..)
-  , )
-where
+module Glazier.React.DOM.Event.Internal
+( Event(..) -- ^ constructor is exported
+) where
 
 import Control.DeepSeq
 import Data.String
@@ -16,24 +14,25 @@ import qualified GHCJS.Types as J
 import qualified JavaScript.Extras as JE
 
 -- | The native event
--- https://developer.mozilla.org/en-US/docs/Web/API/Event
-newtype NativeEvent =
-    NativeEvent J.JSVal
+newtype Event =
+    Event J.JSVal
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
-instance JE.FromJS NativeEvent where
-    fromJS a | js_isNativeEvent a = Just $ NativeEvent a
+instance JE.FromJS Event where
+    validInstance = js_isEvent
+    fromJS a | js_isEvent a = Just $ Event a
     fromJS _ = Nothing
+
 
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
     "$1 instanceof Event"
-    js_isNativeEvent :: J.JSVal -> Bool
+    js_isEvent :: J.JSVal -> Bool
 
 #else
 
-js_isNativeEvent :: J.JSVal -> Bool
-js_isNativeEvent _ = False
+js_isEvent :: J.JSVal -> Bool
+js_isEvent _ = False
 
 #endif

@@ -1,22 +1,18 @@
-{-# LANGUAGE CPP #-}
-
--- | NB. Glazier.React.Event.* are not exported due to duplicate record fields
+-- | NB. Glazier.React.DOM.Event.* are not exported due to duplicate record fields
 -- It is up to the user to import the Event modules as required.
 module Glazier.React
     ( module Glazier.Command
     , module Glazier.Command.Exec
     , module Glazier.Logger
-    , module Glazier.ShowIO
+    , module ShowIO
     , module Glazier.React.Common
-    , module Glazier.React.EventTarget
-    , module Glazier.React.NativeEvent
-    , module Glazier.React.Notice
+    -- , module Glazier.React.DOM
     , module Glazier.React.Obj
     , module Glazier.React.Plan
     , module Glazier.React.ReactDOM
     , module Glazier.React.ReactId
-    , module Glazier.React.Reactor
-    , module Glazier.React.Reactor.Exec
+    -- , module Glazier.React.Reactor
+    -- , module Glazier.React.Reactor.Exec
     , module Glazier.React.Widget
     , module Control.Also
     , module Control.Applicative
@@ -69,15 +65,13 @@ import Glazier.Command
 import Glazier.Command.Exec
 import Glazier.Logger
 import Glazier.React.Common
-import Glazier.React.EventTarget
-import Glazier.React.NativeEvent
-import Glazier.React.Notice
+-- import Glazier.React.DOM
 import Glazier.React.Obj
 import Glazier.React.Plan
 import Glazier.React.ReactDOM
 import Glazier.React.ReactId
-import Glazier.React.Reactor
-import Glazier.React.Reactor.Exec
+-- import Glazier.React.Reactor
+-- import Glazier.React.Reactor.Exec
 import Glazier.React.Widget
-import Glazier.ShowIO
+import ShowIO
 import JavaScript.Extras

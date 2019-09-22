@@ -10,7 +10,7 @@ import Control.Monad.Context
 import Data.Tagged.Extras
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
-import Glazier.ShowIO
+import ShowIO
 import System.Mem.Weak
 
 type ShowIOJS = ShowIO J.JSString

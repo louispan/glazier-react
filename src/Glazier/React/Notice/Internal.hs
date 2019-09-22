@@ -3,12 +3,8 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Glazier.React.Notice.Internal
-  ( Notice(..)  -- constructor is exported
-  , preventDefault
-  , isDefaultPrevented
-  , stopPropagation
-  , isPropagationStopped
+module Glazier.React.DOM.Event.Notice.Internal
+  ( Notice(..) -- ^ constructor is exported
   , unsafeGetProperty
   , unsafeGetModifierState
   )
@@ -27,24 +23,12 @@ import qualified JavaScript.Extras as JE
 -- All relevant data from the 'Notice' must be consumed as soon you get one.
 -- That is, 'Notice' must only be used in the first part of 'handleEvent'.
 -- It is not an instance of NFData and so cannot be returned into the second lazy part of 'handleEvent'
-newtype Notice = Notice J.JSVal -- not J.JSVal so the show instance is more useful
+newtype Notice = Notice J.JSVal
     deriving (G.Generic, Show)
 
 instance JE.FromJS Notice where
     fromJS a | js_isNotice a = Just $ Notice a
     fromJS _ = Nothing
-
-preventDefault :: Notice -> IO ()
-preventDefault = js_preventDefault
-
-isDefaultPrevented :: Notice -> Bool
-isDefaultPrevented = js_isDefaultPrevented
-
-stopPropagation :: Notice -> IO ()
-stopPropagation = js_stopPropagation
-
-isPropagationStopped :: Notice -> Bool
-isPropagationStopped = js_isPropagationStopped
 
 -- | Within the strict part of 'handleEventM'
 -- the Notice is effectively immutable.
@@ -67,27 +51,11 @@ foreign import javascript unsafe
     "$1 && $1['nativeEvent'] && $1['nativeEvent'] instanceof Event"
     js_isNotice :: J.JSVal -> Bool
 
-foreign import javascript unsafe
-    "$1['preventDefault']()"
-    js_preventDefault :: Notice -> IO ()
-
-foreign import javascript unsafe
-    "$1['isDefaultPrevented']()"
-    js_isDefaultPrevented :: Notice -> Bool
-
-foreign import javascript unsafe
-    "$1['stopPropagation']()"
-    js_stopPropagation :: Notice -> IO ()
-
-foreign import javascript unsafe
-    "$1['isPropagationStopped']()"
-    js_isPropagationStopped :: Notice -> Bool
-
 -- | unsafe and non-IO to enable lazy parsing. See handleEvent
 foreign import javascript unsafe "$1[$2]"
-  js_unsafeGetProperty :: J.JSVal -> J.JSString -> J.JSVal
+    js_unsafeGetProperty :: J.JSVal -> J.JSString -> J.JSVal
 
--- | unsafe to enable lazy parsing. See handleEvent
+-- | unsafe and non-IO to enable lazy parsing. See handleEvent
 foreign import javascript unsafe
     "$1['getModifierState']($2)"
     js_unsafeGetModifierState :: J.JSVal -> J.JSString -> J.JSVal
@@ -97,23 +65,11 @@ foreign import javascript unsafe
 js_isNotice :: J.JSVal -> Bool
 js_isNotice _ = False
 
-js_preventDefault :: Notice -> IO ()
-js_preventDefault _ = pure ()
-
-js_isDefaultPrevented :: Notice -> Bool
-js_isDefaultPrevented _ = False
-
-js_stopPropagation :: Notice -> IO ()
-js_stopPropagation _ = pure ()
-
-js_isPropagationStopped :: Notice -> Bool
-js_isPropagationStopped _ = False
-
--- | unsafe and non-IO to enable lazy parsing. See handleEvent
+-- | unsafe and non-IO to enable lazy parsing.
 js_unsafeGetProperty :: J.JSVal -> J.JSString -> J.JSVal
 js_unsafeGetProperty _ _ = J.nullRef
 
--- | unsafe to enable lazy parsing. See handleEvent
+-- | unsafe to enable lazy parsing
 js_unsafeGetModifierState :: J.JSVal -> J.JSString -> J.JSVal
 js_unsafeGetModifierState _ _ = J.nullRef
 

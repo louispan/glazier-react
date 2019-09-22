@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 -- | This module based on React/Flux/PropertiesAndEvents.hs.
-module Glazier.React.Event.Synthetic
+module Glazier.React.DOM.Event.Synthetic
   ( SyntheticEvent(..)
   , toSyntheticEvent
   )
@@ -11,11 +11,11 @@ where
 import Control.DeepSeq
 import qualified GHC.Generics as G
 import qualified GHCJS.Types as J
-import Glazier.React.EventTarget.Internal
-import Glazier.React.NativeEvent.Internal
-import Glazier.React.Notice.Internal
+import Glazier.React.DOM.Event.Internal
+import Glazier.React.DOM.Event.Notice.Internal
+import Glazier.React.DOM.EventTarget.Internal
 
--- | Every `Notice` can be parsed to an `SyntheticEvent`.
+-- | Every `Notice` can be parsed to an `SyntheticEvent`
 -- 'SyntheticEvent' must only be used in the first part of 'handleEvent'.
 data SyntheticEvent = SyntheticEvent
     { bubbles :: Bool
@@ -24,18 +24,18 @@ data SyntheticEvent = SyntheticEvent
     , defaultPrevented :: Bool
     , eventPhase :: Int
     , isTrusted :: Bool
-    , nativeEvent :: NativeEvent
+    , nativeEvent :: Event
     , target :: EventTarget
     , timeStamp :: Int
-    -- type is a reserved word, so prefix to eventType
+    -- type is a reserved word, so add a prefix to make 'eventType'
     , eventType :: J.JSString
     }
     deriving (G.Generic)
 instance NFData SyntheticEvent
 
 -- | We can lie about this not being in IO because
--- within the strict part of 'handleEventM'
--- the Notice is effectively immutable.
+-- within the strict part of 'Glazier.React.Reactor.MkHandler'
+-- the 'Notice 'is effectively immutable.
 toSyntheticEvent :: Notice -> SyntheticEvent
 toSyntheticEvent (Notice evt) =
     SyntheticEvent
@@ -45,7 +45,7 @@ toSyntheticEvent (Notice evt) =
     , defaultPrevented = unsafeGetProperty evt "defaultPrevented"
     , eventPhase = unsafeGetProperty evt "eventPhase"
     , isTrusted = unsafeGetProperty evt "isTrusted"
-    , nativeEvent = NativeEvent $ evt
+    , nativeEvent = Event $ evt
     , target = EventTarget $ unsafeGetProperty evt "target"
     , timeStamp = unsafeGetProperty evt "timeStamp"
     , eventType = unsafeGetProperty evt "type"

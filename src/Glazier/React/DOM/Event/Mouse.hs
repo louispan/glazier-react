@@ -2,7 +2,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Glazier.React.Event.Mouse
+module Glazier.React.DOM.Event.Mouse
   ( MouseEvent(..)
   , toMouseEvent
   )
@@ -11,8 +11,8 @@ where
 import Control.DeepSeq
 import qualified GHC.Generics as G
 import qualified GHCJS.Types as J
-import Glazier.React.EventTarget.Internal
-import Glazier.React.Notice.Internal
+import Glazier.React.DOM.Event.Notice.Internal
+import Glazier.React.DOM.EventTarget.Internal
 
 -- | Mouse and Drag/Drop events
 -- 'MouseEvent' must only be used in the first part of 'handleEvent'.

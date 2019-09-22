@@ -2,7 +2,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Glazier.React.Event.HashChange
+module Glazier.React.DOM.Event.HashChange
   ( HashChangeEvent(..)
   , toHashChangeEvent
   )
@@ -11,9 +11,9 @@ where
 import Control.DeepSeq
 import qualified GHC.Generics as G
 import qualified GHCJS.Types as J
-import Glazier.React.EventTarget.Internal
-import Glazier.React.NativeEvent.Internal
-import Glazier.React.Notice.Internal
+import Glazier.React.DOM.Event.Internal
+import Glazier.React.DOM.Event.Notice.Internal
+import Glazier.React.DOM.EventTarget.Internal
 import qualified JavaScript.Extras as JE
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/HashChangeEvent
@@ -32,7 +32,7 @@ instance NFData HashChangeEvent
 -- | We can lie about this not being in IO because
 -- within the strict part of 'handleEventM'
 -- the Notice is effectively immutable.
-toHashChangeEvent :: NativeEvent -> Maybe HashChangeEvent
+toHashChangeEvent :: Event -> Maybe HashChangeEvent
 toHashChangeEvent nevt | js_isHashChangeEvent evt = Just $
     HashChangeEvent
     { target = EventTarget $ unsafeGetProperty evt "target"

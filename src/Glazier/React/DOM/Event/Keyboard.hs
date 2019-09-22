@@ -2,7 +2,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Glazier.React.Event.Keyboard
+module Glazier.React.DOM.Event.Keyboard
   ( KeyboardEvent(..)
   , toKeyboardEvent
   )
@@ -11,7 +11,7 @@ where
 import Control.DeepSeq
 import qualified GHC.Generics as G
 import qualified GHCJS.Types as J
-import Glazier.React.Notice.Internal
+import Glazier.React.DOM.Event.Notice.Internal
 import Prelude hiding (repeat)
 
 -- | Keyboard events
