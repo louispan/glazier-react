@@ -30,7 +30,7 @@ module Glazier.React.Markup
 import Control.Monad.Context
 import qualified Data.DList as DL
 import qualified GHCJS.Types as J
-import qualified Glazier.React.Element as Z
+import qualified Glazier.React.ReactElement as Z
 
 type AskMarkup m = MonadAsk (DL.DList ReactMarkup) m
 askMarkup :: AskMarkup m => m (DL.DList ReactMarkup)

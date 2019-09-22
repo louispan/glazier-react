@@ -19,7 +19,8 @@ library
                        jsbits/registry.js
   exposed-modules:     Glazier.React
                        Glazier.React.Common
-                       Glazier.React.Element
+                       Glazier.React.ReactElement
+                       Glazier.React.ReactElement.Internal
                        -- Glazier.DOM
                        Glazier.React.DOM.Event
                        Glazier.React.DOM.Event.Internal
@@ -33,9 +34,6 @@ library
                        -- Glazier.React.DOM.EventTarget.Node.Document
                        -- Glazier.React.DOM.EventTarget.Node.Element
                        -- Glazier.React.DOM.EventTarget.Node.Element.HTMLElement
-                       -- Glazier.React.Event.Notice
-                       -- Glazier.React.Event.Notice.Internal
-                       -- Glazier.React.Event.Synthetic
                        Glazier.React.Markup
                        Glazier.React.Obj
                        Glazier.React.Obj.Internal
@@ -51,6 +49,8 @@ library
                        -- Glazier.React.Reactor.Exec
                        Glazier.React.Shim
                        Glazier.React.Shim.Internal
+                       Glazier.React.SyntheticEvent
+                       Glazier.React.SyntheticEvent.Internal
                        Glazier.React.Widget
   build-depends:       base >= 4.9.0 && < 5
                      , aeson >= 1.4.2.0

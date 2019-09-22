@@ -4,39 +4,19 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 -- | 'Lucid.HtmlT' inspired monad for creating 'ReactElement's
-module Glazier.React.Element
+module Glazier.React.ReactElement
     ( ReactElement -- constructor is not exported
-    , unsafeCoerceElement
     , mkBranchElement
     , mkLeafElement
     , rawTextElement
     , mkCombinedElements
     ) where
 
-import Control.DeepSeq
-import Control.Newtype.Generics
-import Data.String
-import qualified GHC.Generics as G
-import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import qualified JavaScript.Array as JA
 import qualified JavaScript.Extras as JE
 import qualified JavaScript.Object as JO
-
--- | NB. No FromJS provided. See 'unsafeCoerceElement' below.
-newtype ReactElement = ReactElement J.JSVal
-    deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
-
-instance Newtype ReactElement
-
--- | Unfortunately, ReactJS did not export an easy way to check if something is a ReactElement,
--- although they do so in the internal code with REACT_ELEMENT_TYPE.
--- This function allow coercing a ReactElement from a JSVal
--- and is named unsafe as a reminder that the coersion is unchecked.
--- This function is required when receiving ReactElement from javascript (eg in a callback)
--- or to interface with foreign React Elements.
-unsafeCoerceElement :: J.JSVal -> ReactElement
-unsafeCoerceElement = ReactElement
+import Glazier.React.ReactElement.Internal
 
 -- | Create a react element (with children) from a HashMap of properties
 mkBranchElement :: J.JSVal -> [(J.JSString, J.JSVal)] -> [ReactElement] -> IO ReactElement

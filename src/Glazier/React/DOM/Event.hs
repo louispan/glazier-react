@@ -15,7 +15,6 @@ import Control.Monad.IO.Class
 -- Subset of https://developer.mozilla.org/en-US/docs/Web/API/Event
 -- Not providing @isPropagationStopped@ as it is not supported natively by JavaScript
 class JE.ToJS j => IEvent j where
-    -- properties --
     bubbles :: j -> Bool
     bubbles = js_bubbles . JE.toJS
 
@@ -34,23 +33,16 @@ class JE.ToJS j => IEvent j where
     isTrusted :: j -> Bool
     isTrusted = js_isTrusted . JE.toJS
 
-    -- nativeEvent :: Event
-
     target :: j -> EventTarget
     target = EventTarget . js_target . JE.toJS
 
     timeStamp :: j -> Int
     timeStamp = js_timeStamp . JE.toJS
 
-    -- type is a reserved word, so add a prefix to make 'eventType'
+    -- @type@ is a reserved word, so add a prefix to make 'eventType'
     eventType :: j -> J.JSString
     eventType = js_eventType . JE.toJS
 
-    -- not supported natively
-    -- isPropagationStopped :: j -> Bool
-    -- isPropagationStopped = js_isPropagationStopped
-
-    -- actions --
     preventDefault :: MonadIO m => j -> m ()
     preventDefault = js_preventDefault . JE.toJS
 
@@ -92,7 +84,7 @@ foreign import javascript unsafe
     js_timeStamp :: J.JSVal -> Int
 
 foreign import javascript unsafe
-    "$r = $1['eventType']"
+    "$r = $1['type']"
     js_eventType :: J.JSVal -> J.JSString
 
 foreign import javascript unsafe

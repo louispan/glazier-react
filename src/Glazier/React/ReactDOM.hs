@@ -6,7 +6,7 @@ module Glazier.React.ReactDOM
   ) where
 
 import qualified GHCJS.Types as J
-import Glazier.React.Element
+import Glazier.React.ReactElement
 
 -- | Using a React Element (first arg) give React rendering control over a DOM element (second arg).
 -- This should only be called for the topmost component.
@@ -17,7 +17,7 @@ renderDOM = js_render
 
 foreign import javascript unsafe
   "hgr$ReactDOM().render($1, $2);"
-  js_render :: ReactElement-> J.JSVal -> IO ()
+  js_render :: ReactElement -> J.JSVal -> IO ()
 
 #else
 
