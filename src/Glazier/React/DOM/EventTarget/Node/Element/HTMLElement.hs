@@ -36,7 +36,7 @@ blur j = liftIO $ js_focus j
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
-    "$1 instanceof HTMLElement"
+    "$1 != undefined && $1 instanceof HTMLElement"
     js_isHTMLElement :: J.JSVal -> Bool
 
 foreign import javascript unsafe

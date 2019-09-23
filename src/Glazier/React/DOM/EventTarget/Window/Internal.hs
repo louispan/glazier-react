@@ -3,8 +3,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
-module Glazier.React.DOM.EventTarget.Node.Internal
-    ( Node(..)
+module Glazier.React.DOM.EventTarget.Window.Internal
+    ( Window(..)
     ) where
 
 import Control.DeepSeq
@@ -16,24 +16,24 @@ import Glazier.React.DOM.EventTarget
 import Glazier.React.DOM.EventTarget.Internal
 import qualified JavaScript.Extras as JE
 
-newtype Node = Node EventTarget
+newtype Window = Window EventTarget
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
-instance JE.FromJS Node where
-    fromJS a | js_isNode a = Just $ Node $ EventTarget a
+instance JE.FromJS Window where
+    fromJS a | js_isWindow a = Just $ Window $ EventTarget a
     fromJS _ = Nothing
 
-instance IEventTarget Node
+instance IEventTarget Window
 
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
-    "$1 != undefined && $1 instanceof Node"
-    js_isNode :: J.JSVal -> Bool
+    "$1 != undefined && $1 instanceof Window"
+    js_isWindow :: J.JSVal -> Bool
 
 #else
 
-js_isNode :: J.JSVal -> Bool
-js_isNode _ = False
+js_isWindow :: J.JSVal -> Bool
+js_isWindow _ = False
 
 #endif

@@ -2,7 +2,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
-module Glazier.React.DOM.Event.Mouse.Internal
+module Glazier.React.DOM.Event.UI.Mouse.Internal
 ( MouseEvent(..) -- ^ constructor is exported
 ) where
 
@@ -11,31 +11,28 @@ import Data.String
 import qualified GHC.Generics as G
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
+import Glazier.React.DOM.Event
+import Glazier.React.DOM.Event.Internal
+import Glazier.React.DOM.Event.UI
+import Glazier.React.DOM.Event.UI.Internal
 import qualified JavaScript.Extras as JE
 
--- | Mouse and Drag/Drop events
--- https://facebook.github.io/react/docs/events.html#mouse-events
--- https://developer.mozilla.org/en-US/docs/Web/Events
--- Event names (eventType)
--- onClick (click) onContextMenu (contextmenu) onDoubleClick (dblclick)
--- onDrag (drag) onDragEnd (dragend) onDragEnter (dragenter) onDragExit (dragexit)
--- onDragLeave (dragleave) onDragOver (dragover) onDragStart (dragstart)
--- onDrop (drop) onMouseDown (mousedown) onMouseEnter (mouseenter) onMouseLeave (mouseleave)
--- onMouseMove (mousemove) onMouseOut (mouseout) onMouseOver (mouseover) onMouseUp (mouseup)
 newtype MouseEvent =
-    MouseEvent J.JSVal
+    MouseEvent UIEvent
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
 instance JE.FromJS MouseEvent where
     validInstance = js_isMouseEvent
-    fromJS a | js_isEvent a = Just $ MouseEvent a
+    fromJS a | js_isMouseEvent a = Just $ MouseEvent $ UIEvent $ Event a
     fromJS _ = Nothing
 
+instance IEvent MouseEvent
+instance IUIEvent MouseEvent
 
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
-    "$1 instanceof MouseEvent"
+    "$1 != undefined && $1 instanceof MouseEvent"
     js_isMouseEvent :: J.JSVal -> Bool
 
 #else

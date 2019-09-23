@@ -48,7 +48,7 @@ toHashChangeEvent _ | otherwise = Nothing
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
-    "($1 instanceof HashChangeEvent)"
+    "$1 != undefined && $1 instanceof HashChangeEvent"
     js_isHashChangeEvent :: J.JSVal -> Bool
 
 #else

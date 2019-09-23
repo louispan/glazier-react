@@ -61,7 +61,7 @@ toKeyboardEvent _ | otherwise = Nothing
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
-    "($1 instanceof KeyboardEvent)"
+    "$1 != undefined && $1 instanceof KeyboardEvent"
     js_isKeyboardEvent :: J.JSVal -> Bool
 
 #else

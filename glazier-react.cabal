@@ -24,19 +24,22 @@ library
                        -- Glazier.DOM
                        Glazier.React.DOM.Event
                        Glazier.React.DOM.Event.Internal
-                       -- Glazier.React.DOM.Event.UI
-                       -- Glazier.React.DOM.Event.UI.Internal
-                       -- Glazier.React.DOM.Event.UI.Mouse
-                       -- Glazier.React.DOM.Event.UI.Mouse.Internal
+                       Glazier.React.DOM.Event.UI
+                       Glazier.React.DOM.Event.UI.Internal
+                       Glazier.React.DOM.Event.UI.Mouse
+                       Glazier.React.DOM.Event.UI.Mouse.Internal
                        -- Glazier.React.DOM.Event.HashChange
                        -- Glazier.React.DOM.Event.Keyboard
                        Glazier.React.DOM.EventTarget
                        Glazier.React.DOM.EventTarget.Internal
                        Glazier.React.DOM.EventTarget.Node
                        Glazier.React.DOM.EventTarget.Node.Internal
-                       -- Glazier.React.DOM.EventTarget.Node.Document
+                       Glazier.React.DOM.EventTarget.Node.Document
+                       Glazier.React.DOM.EventTarget.Node.Document.Internal
                        -- Glazier.React.DOM.EventTarget.Node.Element
                        -- Glazier.React.DOM.EventTarget.Node.Element.HTMLElement
+                       Glazier.React.DOM.EventTarget.Window
+                       Glazier.React.DOM.EventTarget.Window.Internal
                        Glazier.React.Markup
                        Glazier.React.Obj
                        Glazier.React.Obj.Internal

@@ -27,7 +27,7 @@ instance JE.FromJS Event where
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
-    "$1 instanceof Event"
+    "$1 != undefined && $1 instanceof Event"
     js_isEvent :: J.JSVal -> Bool
 
 #else

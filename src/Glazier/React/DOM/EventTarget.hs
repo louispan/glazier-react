@@ -33,6 +33,8 @@ import qualified JavaScript.Extras as JE
 --   where
 --     j' = toJS j
 
+-- | The object that dispatched the event.
+-- https://developer.mozilla.org/en-US/docs/Web/API/EventTarget
 class JE.ToJS j => IEventTarget j where
     addEventListener :: MonadIO m => j -> J.JSString -> Listener -> m ()
     addEventListener j n cb = liftIO $ js_addEventListener (JE.toJS j) n cb

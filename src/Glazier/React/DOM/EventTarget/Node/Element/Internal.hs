@@ -40,7 +40,7 @@ instance ToEventTarget Element where
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
-    "$1 instanceof Element"
+    "$1 != undefined && $1 instanceof Element"
     js_isElement :: J.JSVal -> Bool
 
 #else
