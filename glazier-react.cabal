@@ -26,10 +26,12 @@ library
                        Glazier.React.DOM.Event.Internal
                        Glazier.React.DOM.Event.UI
                        Glazier.React.DOM.Event.UI.Internal
+                       Glazier.React.DOM.Event.UI.Keyboard
+                       Glazier.React.DOM.Event.UI.Keyboard.Internal
                        Glazier.React.DOM.Event.UI.Mouse
                        Glazier.React.DOM.Event.UI.Mouse.Internal
-                       -- Glazier.React.DOM.Event.HashChange
-                       -- Glazier.React.DOM.Event.Keyboard
+                       Glazier.React.DOM.Event.HashChange
+                       Glazier.React.DOM.Event.HashChange.Internal
                        Glazier.React.DOM.EventTarget
                        Glazier.React.DOM.EventTarget.Internal
                        Glazier.React.DOM.EventTarget.Node
@@ -55,8 +57,6 @@ library
                        -- Glazier.React.Reactor.Exec
                        Glazier.React.Shim
                        Glazier.React.Shim.Internal
-                       -- Glazier.React.SyntheticEvent
-                       -- Glazier.React.SyntheticEvent.Internal
                        Glazier.React.Widget
   build-depends:       base >= 4.9.0 && < 5
                      , aeson >= 1.4.2.0

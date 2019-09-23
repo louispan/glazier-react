@@ -42,11 +42,11 @@ instance JE.FromJS SyntheticEvent where
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
-    "$1 != undefined && $1 instanceof Event"
+    "typeof $1 !== 'undefined' && $1 instanceof Event"
     js_isEvent :: J.JSVal -> Bool
 
 foreign import javascript unsafe
-    "$1 && $1['nativeEvent'] && $1['nativeEvent'] instanceof Event"
+    "typeof $1 !== 'undefined' && $1 instanceof Object && typeof $1 !== 'undefined'  && $1['nativeEvent'] && $1['nativeEvent'] instanceof Event"
     js_isSyntheticEvent :: J.JSVal -> Bool
 
 #else
