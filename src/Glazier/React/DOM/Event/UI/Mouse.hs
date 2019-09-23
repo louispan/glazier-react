@@ -3,7 +3,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Glazier.React.DOM.Event.UI.Mouse
-  ( MouseEvent -- ^ constructor not exported
+  ( NativeMouseEvent -- ^ constructor not exported
+  , SyntheticMouseEvent -- ^ constructor not exported
   , IMouseEvent(..)
   )
 where
@@ -66,7 +67,8 @@ class IUIEvent j => IMouseEvent j where
   shiftKey :: j -> Bool
   shiftKey = js_shiftKey . JE.toJS
 
-instance IMouseEvent MouseEvent
+instance IMouseEvent NativeMouseEvent
+instance IMouseEvent SyntheticMouseEvent
 
 #ifdef __GHCJS__
 

@@ -3,7 +3,8 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Glazier.React.DOM.Event.UI.Mouse.Internal
-( MouseEvent(..) -- ^ constructor is exported
+( NativeMouseEvent(..)
+, SyntheticMouseEvent(..)
 ) where
 
 import Control.DeepSeq
@@ -12,32 +13,47 @@ import qualified GHC.Generics as G
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import Glazier.React.DOM.Event
-import Glazier.React.DOM.Event.Internal
 import Glazier.React.DOM.Event.UI
-import Glazier.React.DOM.Event.UI.Internal
 import qualified JavaScript.Extras as JE
 
-newtype MouseEvent =
-    MouseEvent UIEvent
+newtype NativeMouseEvent = NativeMouseEvent J.JSVal
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
-instance JE.FromJS MouseEvent where
-    validInstance = js_isMouseEvent
-    fromJS a | js_isMouseEvent a = Just $ MouseEvent $ UIEvent $ Event a
+newtype SyntheticMouseEvent = SyntheticMouseEvent J.JSVal
+    deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString)
+
+instance JE.FromJS NativeMouseEvent where
+    validInstance = js_isNativeMouseEvent
+    fromJS a | js_isNativeMouseEvent a = Just $ NativeMouseEvent a
     fromJS _ = Nothing
 
-instance IEvent MouseEvent
-instance IUIEvent MouseEvent
+instance JE.FromJS SyntheticMouseEvent where
+    validInstance = js_isSyntheticMouseEvent
+    fromJS a | js_isSyntheticMouseEvent a = Just $ SyntheticMouseEvent a
+    fromJS _ = Nothing
+
+instance IEvent NativeMouseEvent
+instance IUIEvent NativeMouseEvent
+
+instance IEvent SyntheticMouseEvent
+instance IUIEvent SyntheticMouseEvent
 
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
     "$1 != undefined && $1 instanceof MouseEvent"
-    js_isMouseEvent :: J.JSVal -> Bool
+    js_isNativeMouseEvent :: J.JSVal -> Bool
+
+foreign import javascript unsafe
+    "$1 && $1['nativeEvent'] && $1['nativeEvent'] instanceof MouseEvent"
+    js_isSyntheticMouseEvent :: J.JSVal -> Bool
 
 #else
 
-js_isMouseEvent :: J.JSVal -> Bool
-js_isMouseEvent _ = False
+js_isNativeMouseEvent :: J.JSVal -> Bool
+js_isNativeMouseEvent _ = False
+
+js_isSyntheticMouseEvent :: J.JSVal -> Bool
+js_isSyntheticMouseEvent _ = False
 
 #endif

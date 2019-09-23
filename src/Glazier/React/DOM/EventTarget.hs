@@ -3,7 +3,7 @@
 
 -- | https://developer.mozilla.org/en-US/docs/Web/API/EventTarget
 module Glazier.React.DOM.EventTarget
-    ( EventTarget  -- ^ constructor is not exported
+    ( EventTarget -- ^ constructor is not exported
     , IEventTarget(..)
     -- , listenEventTarget
     )
@@ -44,7 +44,7 @@ class JE.ToJS j => IEventTarget j where
 
     -- | throws, therefore @foreign import javascript safe@ so exceptions can be
     -- handled without killing haskell thread
-    dispatchEvent :: MonadIO m => j -> Event -> m ()
+    dispatchEvent :: MonadIO m => j -> NativeEvent -> m ()
     dispatchEvent j e = liftIO $ js_dispatchEvent (JE.toJS j) e
 
 instance IEventTarget EventTarget
@@ -61,7 +61,7 @@ foreign import javascript unsafe
 
 foreign import javascript safe -- since 'dispatchEvent throws
     "if ($1 && $1['dispatchEvent']) { $1['dispatchEvent']($2); }"
-    js_dispatchEvent :: J.JSVal -> Event -> IO ()
+    js_dispatchEvent :: J.JSVal -> NativeEvent -> IO ()
 
 #else
 
@@ -71,7 +71,7 @@ js_addEventListener _ _ _ = pure ()
 js_removeEventListener :: J.JSVal -> J.JSString -> Listener -> IO ()
 js_removeEventListener _ _ _ = pure ()
 
-js_dispatchEvent :: J.JSVal -> Event -> IO ()
+js_dispatchEvent :: J.JSVal -> NativeEvent -> IO ()
 js_dispatchEvent _ _ = pure ()
 
 #endif

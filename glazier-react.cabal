@@ -55,8 +55,8 @@ library
                        -- Glazier.React.Reactor.Exec
                        Glazier.React.Shim
                        Glazier.React.Shim.Internal
-                       Glazier.React.SyntheticEvent
-                       Glazier.React.SyntheticEvent.Internal
+                       -- Glazier.React.SyntheticEvent
+                       -- Glazier.React.SyntheticEvent.Internal
                        Glazier.React.Widget
   build-depends:       base >= 4.9.0 && < 5
                      , aeson >= 1.4.2.0

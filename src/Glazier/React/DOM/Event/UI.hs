@@ -3,7 +3,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Glazier.React.DOM.Event.UI
-  ( UIEvent -- ^ constructor not exported
+  ( NativeUIEvent -- ^ constructor not exported
+  , SyntheticUIEvent -- ^ constructor not exported
   , IUIEvent(..)
   )
 where
@@ -24,7 +25,8 @@ class IEvent j => IUIEvent j where
   view :: j -> Maybe Window
   view  = JE.fromJS . js_view . JE.toJS
 
-instance IUIEvent UIEvent
+instance IUIEvent NativeUIEvent
+instance IUIEvent SyntheticUIEvent
 
 #ifdef __GHCJS__
 

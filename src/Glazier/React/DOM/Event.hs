@@ -1,8 +1,10 @@
 {-# LANGUAGE CPP #-}
 
 module Glazier.React.DOM.Event
-    ( Event  -- ^ constructor is not exported
+    ( NativeEvent  -- ^ constructor is not exported
+    , SyntheticEvent -- ^ constructor is not exported
     , IEvent(..)
+    , ISyntheticEvent(..)
     )
     where
 
@@ -48,6 +50,19 @@ class JE.ToJS j => IEvent j where
 
     stopPropagation :: MonadIO m => j -> m ()
     stopPropagation = js_stopPropagation . JE.toJS
+
+instance IEvent NativeEvent
+instance IEvent SyntheticEvent
+
+-- | https://reactjs.org/docs/events.html
+class IEvent j => ISyntheticEvent j where
+    isPropagationStopped :: j -> Bool
+    isPropagationStopped = js_isPropagationStopped . JE.toJS
+
+    nativeEvent :: j -> NativeEvent
+    nativeEvent = NativeEvent . js_nativeEvent . JE.toJS
+
+instance ISyntheticEvent SyntheticEvent
 
 #ifdef __GHCJS__
 
@@ -95,6 +110,14 @@ foreign import javascript unsafe
     "$1['stopPropagation']()"
     js_stopPropagation :: MonadIO m => J.JSVal -> m ()
 
+foreign import javascript unsafe
+    "$r = $1['nativeEvent']"
+    js_nativeEvent :: J.JSVal -> J.JSVal
+
+foreign import javascript unsafe
+    "$r = $1['isPropagationStopped']"
+    js_isPropagationStopped :: J.JSVal -> Bool
+
 #else
 
 js_bubbles:: J.JSVal -> Bool
@@ -129,5 +152,11 @@ js_preventDefault _ = pure ()
 
 js_stopPropagation :: MonadIO m => J.JSVal -> m ()
 js_stopPropagation _ = pure ()
+
+js_isPropagationStopped :: J.JSVal -> Bool
+js_isPropagationStopped _ = False
+
+js_nativeEvent :: J.JSVal -> J.JSVal
+js_nativeEvent _ = J.nullRef
 
 #endif

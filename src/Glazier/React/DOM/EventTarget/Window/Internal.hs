@@ -13,14 +13,13 @@ import qualified GHC.Generics as G
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import Glazier.React.DOM.EventTarget
-import Glazier.React.DOM.EventTarget.Internal
 import qualified JavaScript.Extras as JE
 
-newtype Window = Window EventTarget
+newtype Window = Window J.JSVal
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
 instance JE.FromJS Window where
-    fromJS a | js_isWindow a = Just $ Window $ EventTarget a
+    fromJS a | js_isWindow a = Just $ Window a
     fromJS _ = Nothing
 
 instance IEventTarget Window

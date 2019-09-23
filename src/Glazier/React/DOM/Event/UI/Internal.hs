@@ -3,7 +3,8 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Glazier.React.DOM.Event.UI.Internal
-( UIEvent(..) -- ^ constructor is exported
+( NativeUIEvent(..)
+, SyntheticUIEvent(..)
 ) where
 
 import Control.DeepSeq
@@ -12,29 +13,45 @@ import qualified GHC.Generics as G
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import Glazier.React.DOM.Event
-import Glazier.React.DOM.Event.Internal
 import qualified JavaScript.Extras as JE
 
-newtype UIEvent =
-    UIEvent Event
+newtype NativeUIEvent = NativeUIEvent J.JSVal
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
-instance JE.FromJS UIEvent where
-    validInstance = js_isUIEvent
-    fromJS a | js_isUIEvent a = Just $ UIEvent $ Event a
+newtype SyntheticUIEvent = SyntheticUIEvent J.JSVal
+    deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString)
+
+instance JE.FromJS NativeUIEvent where
+    validInstance = js_isNativeUIEvent
+    fromJS a | js_isNativeUIEvent a = Just $ NativeUIEvent a
     fromJS _ = Nothing
 
-instance IEvent UIEvent
+instance JE.FromJS SyntheticUIEvent where
+    validInstance = js_isSyntheticUIEvent
+    fromJS a | js_isSyntheticUIEvent a = Just $ SyntheticUIEvent a
+    fromJS _ = Nothing
+
+instance IEvent NativeUIEvent
+
+instance IEvent SyntheticUIEvent
 
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
     "$1 != undefined && $1 instanceof UIEvent"
-    js_isUIEvent :: J.JSVal -> Bool
+    js_isNativeUIEvent :: J.JSVal -> Bool
+
+foreign import javascript unsafe
+    "$1 && $1['nativeEvent'] && $1['nativeEvent'] instanceof UIEvent"
+    js_isSyntheticUIEvent :: J.JSVal -> Bool
 
 #else
 
-js_isUIEvent :: J.JSVal -> Bool
-js_isUIEvent _ = False
+js_isNativeUIEvent :: J.JSVal -> Bool
+js_isNativeUIEvent _ = False
+
+
+js_isSyntheticUIEvent :: J.JSVal -> Bool
+js_isSyntheticUIEvent _ = False
 
 #endif

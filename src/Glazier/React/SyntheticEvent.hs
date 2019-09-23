@@ -7,14 +7,13 @@ module Glazier.React.SyntheticEvent
 where
 
 import qualified GHCJS.Types as J
-import Glazier.React.DOM.Event.Internal
 import Glazier.React.DOM.Event
+import Glazier.React.DOM.Event.Internal
 import Glazier.React.SyntheticEvent.Internal
 import qualified JavaScript.Extras as JE
 
 -- | https://reactjs.org/docs/events.html
 class IEvent j => ISyntheticEvent j where
-    -- not supported natively
     isPropagationStopped :: j -> Bool
     isPropagationStopped = js_isPropagationStopped . JE.toJS
 

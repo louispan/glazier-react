@@ -13,14 +13,13 @@ import qualified GHC.Generics as G
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import Glazier.React.DOM.EventTarget
-import Glazier.React.DOM.EventTarget.Internal
 import qualified JavaScript.Extras as JE
 
-newtype Node = Node EventTarget
+newtype Node = Node J.JSVal
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
 instance JE.FromJS Node where
-    fromJS a | js_isNode a = Just $ Node $ EventTarget a
+    fromJS a | js_isNode a = Just $ Node a
     fromJS _ = Nothing
 
 instance IEventTarget Node
