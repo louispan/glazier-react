@@ -4,7 +4,7 @@ module Glazier.React
     , module Glazier.Logger
     , module ShowIO
     , module Glazier.React.Common
-    -- , module Glazier.React.DOM
+    -- , module Glazier.DOM
     , module Glazier.React.Obj
     , module Glazier.React.Plan
     , module Glazier.React.ReactDOM
@@ -63,7 +63,7 @@ import Glazier.Command
 import Glazier.Command.Exec
 import Glazier.Logger
 import Glazier.React.Common
--- import Glazier.React.DOM
+-- import Glazier.DOM
 import Glazier.React.Obj
 import Glazier.React.Plan
 import Glazier.React.ReactDOM

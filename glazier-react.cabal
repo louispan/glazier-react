@@ -19,29 +19,31 @@ library
                        jsbits/registry.js
   exposed-modules:     Glazier.React
                        Glazier.React.Common
+                       -- Glazier.DOM
+                       Glazier.DOM.Event
+                       Glazier.DOM.Event.Internal
+                       Glazier.DOM.Event.UI
+                       Glazier.DOM.Event.UI.Internal
+                       Glazier.DOM.Event.UI.Keyboard
+                       Glazier.DOM.Event.UI.Keyboard.Internal
+                       Glazier.DOM.Event.UI.Mouse
+                       Glazier.DOM.Event.UI.Mouse.Internal
+                       Glazier.DOM.Event.HashChange
+                       Glazier.DOM.Event.HashChange.Internal
+                       Glazier.DOM.EventTarget
+                       Glazier.DOM.EventTarget.Internal
+                       Glazier.DOM.EventTarget.Node
+                       Glazier.DOM.EventTarget.Node.Internal
+                       Glazier.DOM.EventTarget.Node.Document
+                       Glazier.DOM.EventTarget.Node.Document.Internal
+                       Glazier.DOM.EventTarget.Node.Element
+                       Glazier.DOM.EventTarget.Node.Element.Internal
+                       Glazier.DOM.EventTarget.Node.Element.HTML
+                       Glazier.DOM.EventTarget.Node.Element.HTML.Internal
+                       Glazier.DOM.EventTarget.Window
+                       Glazier.DOM.EventTarget.Window.Internal
                        Glazier.React.ReactElement
                        Glazier.React.ReactElement.Internal
-                       -- Glazier.DOM
-                       Glazier.React.DOM.Event
-                       Glazier.React.DOM.Event.Internal
-                       Glazier.React.DOM.Event.UI
-                       Glazier.React.DOM.Event.UI.Internal
-                       Glazier.React.DOM.Event.UI.Keyboard
-                       Glazier.React.DOM.Event.UI.Keyboard.Internal
-                       Glazier.React.DOM.Event.UI.Mouse
-                       Glazier.React.DOM.Event.UI.Mouse.Internal
-                       Glazier.React.DOM.Event.HashChange
-                       Glazier.React.DOM.Event.HashChange.Internal
-                       Glazier.React.DOM.EventTarget
-                       Glazier.React.DOM.EventTarget.Internal
-                       Glazier.React.DOM.EventTarget.Node
-                       Glazier.React.DOM.EventTarget.Node.Internal
-                       Glazier.React.DOM.EventTarget.Node.Document
-                       Glazier.React.DOM.EventTarget.Node.Document.Internal
-                       -- Glazier.React.DOM.EventTarget.Node.Element
-                       -- Glazier.React.DOM.EventTarget.Node.Element.HTMLElement
-                       Glazier.React.DOM.EventTarget.Window
-                       Glazier.React.DOM.EventTarget.Window.Internal
                        Glazier.React.Markup
                        Glazier.React.Obj
                        Glazier.React.Obj.Internal
@@ -53,8 +55,8 @@ library
                        Glazier.React.ReactId
                        Glazier.React.ReactId.Internal
                        Glazier.React.ReactPath
-                       -- Glazier.React.Reactor
-                       -- Glazier.React.Reactor.Exec
+                       Glazier.React.Reactor
+                       Glazier.React.Reactor.Exec
                        Glazier.React.Shim
                        Glazier.React.Shim.Internal
                        Glazier.React.Widget

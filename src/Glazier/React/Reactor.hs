@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-redundant-constraints #-}
+
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
@@ -32,16 +34,16 @@ import Data.Tagged.Extras
 import GHC.Stack.Extras
 import qualified GHCJS.Types as J
 import Glazier.Command
+import Glazier.DOM.Event
 import Glazier.Logger
 import Glazier.React.Common
-import Glazier.React.DOM.Event.Notice
 import Glazier.React.Markup
 import Glazier.React.Obj
 import Glazier.React.Plan
 import Glazier.React.ReactPath
 import Glazier.React.Widget
-import Glazier.ShowIO
 import qualified JavaScript.Extras as JE
+import ShowIO
 import System.Mem.Weak
 
 -----------------------------------------------------------------
@@ -55,7 +57,7 @@ type CmdReactor c =
 -- and can that can be safely turned into a 'Handler'
 -- and used in event handling code.
 -- It is an instance of 'Alternative' and 'Also' so it can be combined.
-type MonadGadget' c m = (Cmd' [] c, CmdReactor c
+type MonadGadget' c m = (HasCallStack, Cmd' [] c, CmdReactor c
         , MonadLogger J.JSString c m, AskLogName m, AskReactPath m
         , AskPlanWeakRef m
         , AlternativeIO m, Also () m
@@ -126,15 +128,15 @@ logPrefix = do
     let xs = DL.intersperse "." $ (\(n, i) -> n <> (fromString $ show i)) <$> ps
     pure (foldr (<>) "" xs)
 
-loggedJS :: (HasCallStack, ShowIOJS a, MonadGadget' c m) => (a -> m b) -> LogLevel -> a -> m b
-loggedJS go lvl a = withoutCallStack $ do
-    logLnJS lvl (showIO a)
-    go a
+-- loggedJS :: (HasCallStack, ShowIOJS a, MonadGadget' c m) => (a -> m b) -> LogLevel -> a -> m b
+-- loggedJS go lvl a = withoutCallStack $ do
+--     logLnJS lvl (showIO a)
+--     go a
 
-logLnJS :: (HasCallStack, MonadGadget' c m)
+logJS :: (HasCallStack, MonadGadget' c m)
     => LogLevel -> IO J.JSString
     -> m ()
-logLnJS lvl msg = withoutCallStack $ do
+logJS lvl msg = withoutCallStack $ do
     p <- logPrefix
     n <- untag' @"LogName" <$> askLogName
     logLine basicLogCallStackDepth lvl $ (\x -> n <> "<" <> p <> "> " <> x) <$> msg
@@ -146,13 +148,12 @@ logLnJS lvl msg = withoutCallStack $ do
 
 -- | Make an initialized 'Obj' for a given meta using the given 'Widget'.
 -- Unlike 'unliftMkObj', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
-mkObj :: (HasCallStack, MonadGadget' c m)
-    => Widget s c () -> LogName -> s -> m (Obj s)
-mkObj wid logname s = delegatify $ loggedJS exec' TRACE . MkObj wid logname s
+mkObj :: MonadGadget' c m  => Widget s c () -> LogName -> s -> m (Obj s)
+mkObj wid logname s = delegatify $ exec' . MkObj wid logname s
 
 -- | Convenient variation of 'mkObj' where the widget is unlifted from the given monad.
 -- This is useful for transformer stacks that require addition MonadReader-like effects.
-unliftMkObj :: (HasCallStack, MonadUnliftWidget s c m, MonadGadget' c m)
+unliftMkObj :: (MonadUnliftWidget s c m, MonadGadget' c m)
     => m () -> LogName -> s -> m (Obj s)
 unliftMkObj m logname s = do
     u <- askUnliftWidget
@@ -160,37 +161,31 @@ unliftMkObj m logname s = do
 
 -- | Reads from an 'Obj', also registering this as a listener
 -- so this will get rerendered whenever the 'Obj' is 'mutate'd.
-readObj :: (HasCallStack, MonadGadget' c m)
-    => Obj s -> m s
+readObj :: MonadGadget' c m => Obj s -> m s
 readObj obj = do
     this <- askPlanWeakRef
-    delegatify $ \f ->
-        loggedJS exec' TRACE $ ReadObj this obj f
+    delegatify $ exec' . ReadObj this obj
 
 -- | 'mutate_' with 'RerenderRequired'
-mutate :: (HasCallStack, MonadGadget s c m)
-    => StateT s IO () -> m ()
+mutate :: (MonadGadget s c m) => StateT s IO () -> m ()
 mutate = mutate_ RerenderRequired
 
 -- | Mutates the Model for the current widget.
 -- Expose 'Rerender' for "uncontrolled (by react)" components like <input>
 -- which doesn't necessarily require a rerender if the model changes.
 -- Mutation notifications are always sent.
-mutate_ :: ( HasCallStack, MonadGadget s c m)
-    => RerenderRequired -> StateT s IO () -> m ()
+mutate_ :: MonadGadget s c m => RerenderRequired -> StateT s IO () -> m ()
 mutate_ r m = do
     mdl <- askModelWeakVar
     this <- askPlanWeakRef
-    loggedJS exec' TRACE $ Mutate this mdl r (command_ <$> m)
+    exec' $ Mutate this mdl r (command_ <$> m)
 
 -- | 'mutateThen_' with 'RerenderRequired'
-mutateThen :: ( HasCallStack, MonadGadget s c m)
-    => StateT s IO (m a) -> m a
+mutateThen :: MonadGadget s c m => StateT s IO (m a) -> m a
 mutateThen = mutateThen_ RerenderRequired
 
 -- | Variation of 'mutate_' which also returns the next action to execute after mutating.
-mutateThen_ :: ( HasCallStack, MonadGadget s c m)
-    => RerenderRequired -> StateT s IO (m a) -> m a
+mutateThen_ :: MonadGadget s c m => RerenderRequired -> StateT s IO (m a) -> m a
 mutateThen_ r m = do
     mdl <- askModelWeakVar
     this <- askPlanWeakRef
@@ -199,39 +194,39 @@ mutateThen_ r m = do
         let f n = n >>= fire
         -- f' :: m a -> c
         f' <- codify f
-        loggedJS exec' TRACE $ Mutate this mdl r (f' <$> m)
+        exec' $ Mutate this mdl r (f' <$> m)
 
 -- | This convert the input @goStrict@ and @f@ into (preprocess, postprocess).
 -- Multiple preprocess must be run for the same event before any of the postprocess,
 -- due to the way ghcjs sync and async threads interact with React js.
 mkHandler ::
-    (HasCallStack, NFData a, MonadGadget' c m)
+    (NFData a, MonadGadget' c m)
     => (J.JSVal -> MaybeT IO a)
     -> (a -> m ())
     -> m (J.JSVal -> IO (), IO ()) -- (preprocess, postprocess)
 mkHandler goStrict f = do
     plnRef <- askPlanWeakRef
     f' <- codify f
-    delegatify $ loggedJS exec' TRACE . MkHandler plnRef goStrict f'
+    delegatify $ exec' . MkHandler plnRef goStrict f'
 
-handleNotice :: Monad m => (Notice -> MaybeT m a) -> (J.JSVal -> MaybeT m a)
-handleNotice g j = MaybeT (pure $ JE.fromJS j) >>= g
+handleSyntheticEvent :: Monad m => (SyntheticEvent -> MaybeT m a) -> (J.JSVal -> MaybeT m a)
+handleSyntheticEvent g j = MaybeT (pure $ JE.fromJS j) >>= g
 
-mkNoticeHandler ::
-    (HasCallStack, NFData a, MonadGadget' c m)
-    => (Notice -> MaybeT IO a)
+mkSyntheticHandler ::
+    (NFData a, MonadGadget' c m)
+    => (SyntheticEvent -> MaybeT IO a)
     -> (a -> m ())
     -> m (J.JSVal -> IO (), IO ()) -- (preprocess, postprocess)
-mkNoticeHandler goStrict goLazy = mkHandler (handleNotice goStrict) goLazy
+mkSyntheticHandler goStrict goLazy = mkHandler (handleSyntheticEvent goStrict) goLazy
 
 -- | This convert 'Handler' into a ghcjs 'Callback'
 mkListener ::
-    (HasCallStack, MonadGadget' c m)
+    (MonadGadget' c m)
     => Handler
     -> m Listener
 mkListener f = do
     plnRef <- askPlanWeakRef
-    delegatify $ loggedJS exec' TRACE . MkListener plnRef f
+    delegatify $ exec' . MkListener plnRef f
 
 -- | Orphan instance because it requires AsReactor
 -- LOUISFIXME: Think about this, use ReaderT (s -> Either e Obj s)?
