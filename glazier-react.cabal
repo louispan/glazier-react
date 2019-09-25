@@ -19,7 +19,7 @@ library
                        jsbits/registry.js
   exposed-modules:     Glazier.React
                        Glazier.React.Common
-                       -- Glazier.DOM
+                       Glazier.DOM
                        Glazier.DOM.Event
                        Glazier.DOM.Event.Internal
                        Glazier.DOM.Event.UI

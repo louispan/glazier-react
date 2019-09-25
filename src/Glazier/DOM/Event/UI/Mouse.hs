@@ -11,6 +11,7 @@ where
 
 import qualified GHCJS.Types as J
 import Glazier.DOM.Event.UI
+import Glazier.DOM.Event.UI.Keyboard
 import Glazier.DOM.Event.UI.Mouse.Internal
 import Glazier.DOM.EventTarget.Internal
 import qualified JavaScript.Extras as JE
@@ -24,10 +25,7 @@ import qualified JavaScript.Extras as JE
 -- onDragLeave (dragleave) onDragOver (dragover) onDragStart (dragstart)
 -- onDrop (drop) onMouseDown (mousedown) onMouseEnter (mouseenter) onMouseLeave (mouseleave)
 -- onMouseMove (mousemove) onMouseOut (mouseout) onMouseOver (mouseover) onMouseUp (mouseup)
-class IUIEvent j => IMouseEvent j where
-  altKey :: j -> Bool
-  altKey = js_altKey . JE.toJS
-
+class ICommonKeyboardEvent j => IMouseEvent j where
   button :: j -> Int
   button = js_button . JE.toJS
 
@@ -39,15 +37,6 @@ class IUIEvent j => IMouseEvent j where
 
   clientY :: j -> Int
   clientY = js_clientY . JE.toJS
-
-  ctrlKey :: j -> Bool
-  ctrlKey = js_ctrlKey . JE.toJS
-
-  getModifierState :: j -> J.JSString -> Bool
-  getModifierState j n = js_getModifierState (JE.toJS j) n
-
-  metaKey :: j -> Bool
-  metaKey = js_metaKey . JE.toJS
 
   pageX :: j -> Int
   pageX = js_pageX . JE.toJS
@@ -64,17 +53,10 @@ class IUIEvent j => IMouseEvent j where
   screenY :: j -> Int
   screenY = js_screenY . JE.toJS
 
-  shiftKey :: j -> Bool
-  shiftKey = js_shiftKey . JE.toJS
-
 instance IMouseEvent NativeMouseEvent
 instance IMouseEvent SyntheticMouseEvent
 
 #ifdef __GHCJS__
-
-foreign import javascript unsafe
-    "$r = $1['altKey']"
-    js_altKey :: J.JSVal -> Bool
 
 foreign import javascript unsafe
     "$r = $1['button']"
@@ -91,18 +73,6 @@ foreign import javascript unsafe
 foreign import javascript unsafe
     "$r = $1['clientY']"
     js_clientY :: J.JSVal -> Int
-
-foreign import javascript unsafe
-    "$r = $1['ctrlKey']"
-    js_ctrlKey :: J.JSVal -> Bool
-
-foreign import javascript unsafe
-    "$r = $1['getModifierState']($2)"
-    js_getModifierState :: J.JSVal -> J.JSString -> Bool
-
-foreign import javascript unsafe
-    "$r = $1['metaKey']"
-    js_metaKey :: J.JSVal -> Bool
 
 foreign import javascript unsafe
     "$r = $1['pageX']"
@@ -124,14 +94,7 @@ foreign import javascript unsafe
     "$r = $1['screenY']"
     js_screenY :: J.JSVal -> Int
 
-foreign import javascript unsafe
-    "$r = $1['shiftKey']"
-    js_shiftKey :: J.JSVal -> Bool
-
 #else
-
-js_altKey :: J.JSVal -> Bool
-js_altKey _ = False
 
 js_button :: J.JSVal -> Int
 js_button _ = 0
@@ -144,15 +107,6 @@ js_clientX _ = 0
 
 js_clientY :: J.JSVal -> Int
 js_clientY _ = 0
-
-js_ctrlKey :: J.JSVal -> Bool
-js_ctrlKey _ = False
-
-js_getModifierState :: J.JSVal -> J.JSString -> Bool
-js_getModifierState _ _ = False
-
-js_metaKey :: J.JSVal -> Bool
-js_metaKey _ = False
 
 js_pageX :: J.JSVal -> Int
 js_pageX _ = 0
@@ -168,8 +122,5 @@ js_screenX _ = 0
 
 js_screenY :: J.JSVal -> Int
 js_screenY _ = 0
-
-js_shiftKey :: J.JSVal -> Bool
-js_shiftKey _ = False
 
 #endif

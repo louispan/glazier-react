@@ -1,20 +1,27 @@
--- | NB. Glazier.DOM.Event.* are not exported due to duplicate record fields
--- It is up to the user to import the Event modules as required.
+-- | You probably want to import this qualified as the DOM has lot of names that might clash
 module Glazier.DOM
-    ( module Glazier.DOM.EventTarget
-    , module Glazier.DOM.Event
+    (
+      module Glazier.DOM.Event
+    , module Glazier.DOM.Event.UI
+    , module Glazier.DOM.Event.UI.Keyboard
+    , module Glazier.DOM.Event.UI.Mouse
+    , module Glazier.DOM.Event.HashChange
+    , module Glazier.DOM.EventTarget
+    , module Glazier.DOM.EventTarget.Node
+    , module Glazier.DOM.EventTarget.Node.Document
+    , module Glazier.DOM.EventTarget.Node.Element
+    , module Glazier.DOM.EventTarget.Node.Element.HTML
+    , module Glazier.DOM.EventTarget.Window
     ) where
 
 import Glazier.DOM.Event
+import Glazier.DOM.Event.HashChange
+import Glazier.DOM.Event.UI
+import Glazier.DOM.Event.UI.Keyboard
+import Glazier.DOM.Event.UI.Mouse
 import Glazier.DOM.EventTarget
-
-import Data.Coerce
 import Glazier.DOM.EventTarget.Node
-
-wack :: Node -> EventTarget
-wack = fromNode
-
-
-
-
-
+import Glazier.DOM.EventTarget.Node.Document
+import Glazier.DOM.EventTarget.Node.Element
+import Glazier.DOM.EventTarget.Node.Element.HTML
+import Glazier.DOM.EventTarget.Window

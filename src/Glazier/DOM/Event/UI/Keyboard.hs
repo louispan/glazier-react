@@ -6,6 +6,7 @@ module Glazier.DOM.Event.UI.Keyboard
   ( NativeKeyboardEvent -- ^ constructor not exported
   , SyntheticKeyboardEvent -- ^ constructor not exported
   , IKeyboardEvent(..)
+  , ICommonKeyboardEvent(..)
   )
 where
 
@@ -14,23 +15,34 @@ import Glazier.DOM.Event.UI
 import Glazier.DOM.Event.UI.Keyboard.Internal
 import qualified JavaScript.Extras as JE
 
--- | Keyboard events
--- https://facebook.github.io/react/docs/events.html#keyboard-events
--- https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent
--- Event names (eventType)
--- onKeyDown (keydown) onKeyPress (keypress) onKeyUp (keyyp)
-class IUIEvent j => IKeyboardEvent j where
+-- | common api between 'IKeyboardEvent' and 'Glazier.DOM.Event.UI.Mouse.IMouseEvent'
+class IUIEvent j => ICommonKeyboardEvent j where
   altKey :: j -> Bool
   altKey = js_altKey . JE.toJS
-
-  charCode :: j -> Int
-  charCode = js_charCode . JE.toJS
 
   ctrlKey :: j -> Bool
   ctrlKey = js_ctrlKey . JE.toJS
 
   getModifierState :: j -> J.JSString -> Bool
   getModifierState j n = js_getModifierState (JE.toJS j) n
+
+  metaKey :: j -> Bool
+  metaKey = js_metaKey . JE.toJS
+
+  shiftKey :: j -> Bool
+  shiftKey = js_shiftKey . JE.toJS
+
+instance ICommonKeyboardEvent NativeKeyboardEvent
+instance ICommonKeyboardEvent SyntheticKeyboardEvent
+
+-- | Keyboard events
+-- https://facebook.github.io/react/docs/events.html#keyboard-events
+-- https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent
+-- Event names (eventType)
+-- onKeyDown (keydown) onKeyPress (keypress) onKeyUp (keyyp)
+class ICommonKeyboardEvent j => IKeyboardEvent j where
+  charCode :: j -> Int
+  charCode = js_charCode . JE.toJS
 
   key :: j -> J.JSString
   key = js_key . JE.toJS
@@ -44,14 +56,8 @@ class IUIEvent j => IKeyboardEvent j where
   location :: j -> Int
   location = js_location . JE.toJS
 
-  metaKey :: j -> Bool
-  metaKey = js_metaKey . JE.toJS
-
   repeat :: j -> Bool
   repeat = js_repeat . JE.toJS
-
-  shiftKey :: j -> Bool
-  shiftKey = js_shiftKey . JE.toJS
 
   which :: j -> Int
   which = js_which . JE.toJS

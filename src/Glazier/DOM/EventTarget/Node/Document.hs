@@ -3,7 +3,7 @@
 module Glazier.DOM.EventTarget.Node.Document
     ( Document -- ^ constructor not exported
     , IDocument(..)
-    , document
+    , globalDocument
     ) where
 
 import qualified GHCJS.Types as J
@@ -19,8 +19,8 @@ class INode j => IDocument j where
 
 instance IDocument Document
 
-document :: Maybe Document
-document = JE.fromJS js_document
+globalDocument :: Maybe Document
+globalDocument = JE.fromJS js_document
 
 #ifdef __GHCJS__
 

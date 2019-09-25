@@ -3,7 +3,7 @@
 module Glazier.DOM.EventTarget.Window
     ( Window -- ^ constructor not exported
     , IWindow(..)
-    , window
+    , globalWindow
     ) where
 
 import qualified GHCJS.Types as J
@@ -19,8 +19,8 @@ class IEventTarget j => IWindow j where
 
 instance IWindow Window
 
-window :: Maybe Window
-window = JE.fromJS js_window
+globalWindow :: Maybe Window
+globalWindow = JE.fromJS js_window
 
 #ifdef __GHCJS__
 

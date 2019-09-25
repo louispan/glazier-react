@@ -13,8 +13,8 @@ import qualified GHC.Generics as G
 import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import Glazier.DOM.EventTarget
-import qualified JavaScript.Extras as JE
 import Glazier.DOM.EventTarget.Node
+import qualified JavaScript.Extras as JE
 
 newtype Element = Element J.JSVal
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)

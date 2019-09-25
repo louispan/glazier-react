@@ -14,6 +14,7 @@ import qualified GHCJS.Marshal.Pure as J
 import qualified GHCJS.Types as J
 import Glazier.DOM.Event
 import Glazier.DOM.Event.UI
+import Glazier.DOM.Event.UI.Keyboard
 import qualified JavaScript.Extras as JE
 
 newtype NativeMouseEvent = NativeMouseEvent J.JSVal
@@ -34,9 +35,11 @@ instance JE.FromJS SyntheticMouseEvent where
 
 instance IEvent NativeMouseEvent
 instance IUIEvent NativeMouseEvent
+instance ICommonKeyboardEvent NativeMouseEvent
 
 instance IEvent SyntheticMouseEvent
 instance IUIEvent SyntheticMouseEvent
+instance ICommonKeyboardEvent SyntheticMouseEvent
 
 #ifdef __GHCJS__
 
