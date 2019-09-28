@@ -22,17 +22,17 @@ function hgr$ReactDOM() {
     return hgr$ReactDOM_;
 }
 
-var hgr$ShimComponent_ = null;
-function hgr$ShimComponent() {
-    if (!hgr$ShimComponent_) {
+var hgr$Shim_ = null;
+function hgr$Shim() {
+    if (!hgr$Shim_) {
+        const ReactPureComponent = hgr$React()["PureComponent"];
+
         // The state in the Shim contains
         //   frame :: A GHCJS.Foreign.Export of the haskell state to render.
         // Inheriting from Component means every call to this.setState will result in a render.
         // Inheriting from PureComponet means a shallow comparison will be made.
         // Protect "PureComponent" from closure compiler because it's not in the official externs.
-        var ReactPureComponent = hgr$React()["PureComponent"];
-
-        class Shim extends ReactPureComponent {
+        class ShimComponent extends ReactPureComponent {
 
             constructor(props) {
                 super(props);
@@ -56,9 +56,9 @@ function hgr$ShimComponent() {
                 return null;
             }
         }
-        hgr$ShimComponent_ = Shim;
+        hgr$Shim_ = Shim;
     }
-    return hgr$ShimComponent_;
+    return hgr$Shim_;
 }
 
 class hgr$ReactBatcher {
@@ -71,7 +71,7 @@ class hgr$ReactBatcher {
     }
 
     runBatch() {
-      var btch = this.batch;
+      const btch = this.batch;
       this.batch = []
       hgr$ReactDOM().unstable_batchedUpdates(() => {
         for (const f of btch){
@@ -100,3 +100,4 @@ function hgr$mkCombinedElements(elements) {
     }
     return null;
 }
+

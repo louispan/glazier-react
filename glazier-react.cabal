@@ -15,10 +15,11 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  js-sources:          jsbits/react.js
-                       jsbits/registry.js
+  js-sources:          jsbits/glazier-react.js
   exposed-modules:     Glazier.React
                        Glazier.React.Common
+                       Glazier.React.Component
+                       Glazier.React.Component.Internal
                        Glazier.DOM
                        Glazier.DOM.Event
                        Glazier.DOM.Event.Internal
@@ -57,8 +58,6 @@ library
                        Glazier.React.ReactPath
                        Glazier.React.Reactor
                        Glazier.React.Reactor.Exec
-                       Glazier.React.Shim
-                       Glazier.React.Shim.Internal
                        Glazier.React.Widget
   build-depends:       base >= 4.9.0 && < 5
                      , aeson >= 1.4.2.0

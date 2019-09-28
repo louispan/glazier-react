@@ -22,8 +22,8 @@ import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
 import Glazier.Logger
 import Glazier.React.Common
+import Glazier.React.Component
 import Glazier.React.ReactId
-import Glazier.React.Shim
 import System.Mem.AnyStableName
 import System.Mem.Weak
 

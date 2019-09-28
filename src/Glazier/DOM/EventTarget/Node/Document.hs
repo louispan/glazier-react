@@ -25,7 +25,7 @@ globalDocument = JE.fromJS js_document
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
-    "$r = document"
+    "$r = globalThis.document"
     js_document :: J.JSVal
 
 foreign import javascript unsafe

@@ -31,10 +31,10 @@ import qualified Data.DList as DL
 import Data.IORef
 import Data.Tagged.Extras
 import Glazier.Command
+import Glazier.React.Component
 import Glazier.React.Markup
 import Glazier.React.Plan.Internal
 import Glazier.React.ReactPath
-import Glazier.React.Shim
 import qualified JavaScript.Extras as JE
 import System.Mem.Weak
 

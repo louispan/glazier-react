@@ -1,13 +1,15 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings #-}
 
-module Glazier.React.Shim.Internal
-    ( ShimComponent(..) -- constructor exported
+module Glazier.React.Component.Internal
+    ( Component(..)
+    , ShimComponent(..)
     , shimComponent
     , rerenderShim
     , batchShimRerender
-    , ShimRef(..) -- constructor exported
+    , ShimRef(..)
     ) where
 
 import Control.DeepSeq
@@ -18,6 +20,16 @@ import qualified GHCJS.Types as J
 import Glazier.React.ReactBatch
 import qualified JavaScript.Extras as JE
 
+
+class JE.ToJS j => Component j where
+  componentName :: j -> J.JSString
+
+instance Component J.JSString where
+  componentName = id
+
+instance Component ShimComponent where
+  componentName _ = "shim"
+
 -- | Returns a reference to the javascript *class* definition
 -- of the shim wrapper around ReactPureComponent
 newtype ShimComponent = ShimComponent J.JSVal
@@ -25,8 +37,8 @@ newtype ShimComponent = ShimComponent J.JSVal
 
 -- | This returns the javascript class definition of ShimComponent.
 -- There is ever only one shim class, so it is purely available
-shimComponent :: ShimComponent
-shimComponent = ShimComponent js_shimComponent
+shim :: ShimComponent
+shim = ShimComponent js_shim
 
 -- | Rerenders an instance of a component created using ShimComponent.
 rerenderShim :: ShimRef -> IO ()
@@ -47,8 +59,8 @@ instance JE.FromJS ShimRef where
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
-  "$r = hgr$ShimComponent();"
-  js_shimComponent :: J.JSVal
+  "$r = hgr$Shim();"
+  js_shim :: J.JSVal
 
 -- !!blah is javascript way of converting to bool
 -- using undocumented api to check if something is react component
@@ -67,8 +79,8 @@ foreign import javascript unsafe
 
 #else
 
-js_shimComponent :: J.JSVal
-js_shimComponent = J.nullRef
+js_shim :: J.JSVal
+js_shim = J.nullRef
 
 js_isReactComponent :: J.JSVal -> Bool
 js_isReactComponent _ = False

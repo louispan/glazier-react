@@ -1,4 +1,4 @@
-module Glazier.React.Shim
+module Glazier.React.Component
     ( Component(..)
     , ShimComponent -- constructor not exported
     , shimComponent
@@ -7,4 +7,4 @@ module Glazier.React.Shim
     , ShimRef -- constructor not exported
     ) where
 
-import Glazier.React.Shim.Internal
+import Glazier.React.Component.Internal

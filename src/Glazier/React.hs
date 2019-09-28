@@ -1,16 +1,14 @@
 module Glazier.React
     ( module Glazier.Command
-    , module Glazier.Command.Exec
     , module Glazier.Logger
     , module ShowIO
     , module Glazier.React.Common
-    -- , module Glazier.DOM
+    , module Glazier.React.Component
     , module Glazier.React.Obj
     , module Glazier.React.Plan
     , module Glazier.React.ReactDOM
     , module Glazier.React.ReactId
-    -- , module Glazier.React.Reactor
-    -- , module Glazier.React.Reactor.Exec
+    , module Glazier.React.Reactor
     , module Glazier.React.Widget
     , module Control.Also
     , module Control.Applicative
@@ -33,14 +31,12 @@ module Glazier.React
     , module Data.Proxy
     , module Data.String
     , module Data.Tagged.Extras
-    , module Control.Lens
     , module Control.Lens.Misc
     ) where
 
 import Control.Also
 import Control.Applicative
 import Control.DeepSeq
-import Control.Lens
 import Control.Lens.Misc
 import Control.Monad
 import Control.Monad.Context
@@ -60,16 +56,14 @@ import Data.Tagged.Extras
 import GHC.Stack
 import GHCJS.Types
 import Glazier.Command
-import Glazier.Command.Exec
 import Glazier.Logger
 import Glazier.React.Common
--- import Glazier.DOM
+import Glazier.React.Component
 import Glazier.React.Obj
 import Glazier.React.Plan
 import Glazier.React.ReactDOM
 import Glazier.React.ReactId
--- import Glazier.React.Reactor
--- import Glazier.React.Reactor.Exec
+import Glazier.React.Reactor
 import Glazier.React.Widget
 import JavaScript.Extras
 import ShowIO

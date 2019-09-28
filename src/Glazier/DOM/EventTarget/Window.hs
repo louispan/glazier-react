@@ -25,7 +25,7 @@ globalWindow = JE.fromJS js_window
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
-    "$r = window"
+    "$r = globalThis.window"
     js_window :: J.JSVal
 
 foreign import javascript unsafe

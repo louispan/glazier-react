@@ -37,6 +37,7 @@ import Glazier.Command
 import Glazier.DOM.Event
 import Glazier.Logger
 import Glazier.React.Common
+import Glazier.React.Component
 import Glazier.React.Markup
 import Glazier.React.Obj
 import Glazier.React.Plan
@@ -252,35 +253,35 @@ rawTxt lns = do
     s <- askModel
     rawTextMarkup $ s ^. lns
 
-lf :: MonadWidget s c m
-    => J.JSString-- ^ eg "div" or "input"
+lf :: (Component j, MonadWidget s c m)
+    => j -- ^ "input" or a @ReactComponent@
     -> DL.DList (J.JSString, m Handler)
     -> DL.DList (J.JSString, Getting J.JSVal s J.JSVal)
     -> m ()
-lf n gads props = do
+lf j gads props = do
     s <- askModel
-    putNextReactPath n
+    putNextReactPath (componentName j)
     gads' <- traverse sequenceA (DL.toList gads) -- :: m [(JString, Handler)]
     let gads'' = M.fromListWith (<>) gads' -- combine same keys together
     gads''' <- traverse mkListener gads'' -- convert to JS callback
-    leafMarkup (JE.toJS n)
+    leafMarkup (JE.toJS j)
         (((fmap (`view` s)) <$> props)
             <> (DL.fromList . M.toList $ JE.toJS <$> gads'''))
 
-bh :: MonadWidget s c m
-    => J.JSString-- ^ eg "div" or "input"
+bh :: (Component j, MonadWidget s c m)
+    => j-- ^ eg "div" or a @ReactComponent@
     -> DL.DList (J.JSString, m Handler)
     -> DL.DList (J.JSString, Getting J.JSVal s J.JSVal)
     -> m a
     -> m a
-bh n gads props child = do
+bh j gads props child = do
     s <- askModel
-    putNextReactPath n
+    putNextReactPath (componentName j)
     gads' <- traverse sequenceA (DL.toList gads) -- :: m [(JString, Handler)]
     let gads'' = M.fromListWith (<>) gads' -- combine same keys together
     gads''' <- traverse mkListener gads'' -- convert to JS callback
     putPushReactPath
-    a <- branchMarkup (JE.toJS n)
+    a <- branchMarkup (JE.toJS j)
         (((fmap (`view` s)) <$> props)
             <> (DL.fromList . M.toList $ JE.toJS <$> gads'''))
         child

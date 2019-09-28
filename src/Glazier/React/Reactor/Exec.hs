@@ -13,7 +13,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE TypeApplications #-}
 
 module Glazier.React.Reactor.Exec where
 
@@ -48,6 +47,7 @@ import qualified GHCJS.Types as J
 import Glazier.Command
 import Glazier.Logger
 import Glazier.React.Common
+import Glazier.React.Component
 import Glazier.React.Markup
 import Glazier.React.Obj.Internal
 import Glazier.React.Plan.Internal
@@ -55,7 +55,6 @@ import Glazier.React.ReactBatch
 import Glazier.React.ReactId.Internal
 import Glazier.React.Reactor
 import Glazier.React.ReactPath
-import Glazier.React.Shim
 import Glazier.React.Widget
 import qualified JavaScript.Extras as JE
 import System.IO
