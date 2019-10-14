@@ -10,7 +10,6 @@ module Glazier.DOM.Event.UI.Mouse
 where
 
 import qualified GHCJS.Types as J
-import Glazier.DOM.Event.UI
 import Glazier.DOM.Event.UI.Keyboard
 import Glazier.DOM.Event.UI.Mouse.Internal
 import Glazier.DOM.EventTarget.Internal

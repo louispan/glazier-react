@@ -37,8 +37,8 @@ newtype ShimComponent = ShimComponent J.JSVal
 
 -- | This returns the javascript class definition of ShimComponent.
 -- There is ever only one shim class, so it is purely available
-shim :: ShimComponent
-shim = ShimComponent js_shim
+shimComponent :: ShimComponent
+shimComponent = ShimComponent js_shim
 
 -- | Rerenders an instance of a component created using ShimComponent.
 rerenderShim :: ShimRef -> IO ()
