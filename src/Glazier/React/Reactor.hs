@@ -19,7 +19,6 @@ module Glazier.React.Reactor where
 import Control.Also
 import Control.Concurrent.MVar
 import Control.DeepSeq
-import Control.Lens.Misc
 import Control.Monad.Delegate
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Extras
@@ -29,6 +28,7 @@ import Data.IORef
 import qualified Data.JSString as J
 import qualified Data.List as DL
 import qualified Data.Map.Strict as M
+import Data.Maybe
 import Data.String
 import Data.Tagged.Extras
 import GHC.Stack
@@ -246,19 +246,21 @@ mkListener f = do
 
 ----------------------------------------------------------------------------------
 
--- | write some text from the model. Use 'like' to 'const' a string instead.
-rawTxt :: MonadWidget s c m => Getting' s J.JSString -> m ()
-rawTxt lns = do
+-- | write some text from the model.
+strTxt :: MonadWidget s c m => (s -> J.JSString) -> m ()
+strTxt f = do
     s <- askModel
-    rawTextMarkup $ s ^. lns
+    rawTextMarkup $ f s
 
-strProp :: J.JSString -> Getting' s J.JSVal
-strProp j = like j.JE.toJS_
+type Prop s = s -> Maybe J.JSVal
+
+strProp :: J.JSString -> Prop s
+strProp = const . Just . JE.toJS
 
 lf :: (Component j, MonadWidget s c m)
     => j -- ^ "input" or a @ReactComponent@
     -> DL.DList (J.JSString, m Handler)
-    -> DL.DList (J.JSString, Getting' s J.JSVal)
+    -> DL.DList (J.JSString, Prop s)
     -> m ()
 lf j gads props = do
     s <- askModel
@@ -267,13 +269,13 @@ lf j gads props = do
     let gads'' = M.fromListWith (<>) gads' -- combine same keys together
     gads''' <- traverse mkListener gads'' -- convert to JS callback
     leafMarkup (JE.toJS j)
-        (((fmap (`view` s)) <$> props)
+        (((fmap (fromMaybe J.nullRef . ($ s))) <$> props)
             <> (DL.fromList . M.toList $ JE.toJS <$> gads'''))
 
 bh :: (Component j, MonadWidget s c m)
     => j-- ^ eg "div" or a @ReactComponent@
     -> DL.DList (J.JSString, m Handler)
-    -> DL.DList (J.JSString, Getting' s J.JSVal)
+    -> DL.DList (J.JSString, Prop s)
     -> m a
     -> m a
 bh j gads props child = do
@@ -284,7 +286,7 @@ bh j gads props child = do
     gads''' <- traverse mkListener gads'' -- convert to JS callback
     putPushReactPath
     a <- branchMarkup (JE.toJS j)
-        (((fmap (`view` s)) <$> props)
+        (((fmap (fromMaybe J.nullRef . ($ s))) <$> props)
             <> (DL.fromList . M.toList $ JE.toJS <$> gads'''))
         child
     putPopReactPath

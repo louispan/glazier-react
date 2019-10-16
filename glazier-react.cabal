@@ -72,7 +72,7 @@ library
                     , ghcjs-base-stub >= 0.3.0.2
                     , glazier >= 2.0
                     , hashable >= 1.2
-                    , javascript-extras >= 0.7
+                    , javascript-extras >= 0.6
                     , lens >= 4
                     , lens-misc >= 0.0.3
                     , mmorph >= 1
