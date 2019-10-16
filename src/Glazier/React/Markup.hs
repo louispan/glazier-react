@@ -22,7 +22,7 @@ module Glazier.React.Markup
     , fromElement
     , toElements
     , toElement
-    , rawTextMarkup
+    , textMarkup
     , leafMarkup
     , branchMarkup
     ) where
@@ -59,7 +59,7 @@ data LeafParam = LeafParam
 
 data ReactMarkup
     = ElementMarkup Z.ReactElement
-    | RawTextMarkup J.JSString
+    | TextMarkup J.JSString
     | BranchMarkup BranchParam
     | LeafMarkup LeafParam
 
@@ -72,7 +72,7 @@ fromMarkup (BranchMarkup (BranchParam n props xs)) = do
 fromMarkup (LeafMarkup (LeafParam n props)) =
     Z.mkLeafElement n (DL.toList props)
 
-fromMarkup (RawTextMarkup str) = pure $ Z.rawTextElement str
+fromMarkup (TextMarkup str) = pure $ Z.rawTextElement str
 
 fromMarkup (ElementMarkup e) = pure e
 
@@ -95,8 +95,8 @@ toElement xs = toElements xs >>= Z.mkCombinedElements
 -------------------------------------------------
 
 -- | For raw text content
-rawTextMarkup :: PutMarkup m => J.JSString -> m ()
-rawTextMarkup n = modifyMarkup (`DL.snoc` RawTextMarkup n)
+textMarkup :: PutMarkup m => J.JSString -> m ()
+textMarkup n = modifyMarkup (`DL.snoc` TextMarkup n)
 
 -- | For the contentless elements: eg 'br_'.
 -- Memonic: lf for leaf.

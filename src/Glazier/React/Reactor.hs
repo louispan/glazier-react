@@ -250,7 +250,7 @@ mkListener f = do
 strTxt :: MonadWidget s c m => (s -> J.JSString) -> m ()
 strTxt f = do
     s <- askModel
-    rawTextMarkup $ f s
+    textMarkup $ f s
 
 type Prop s = s -> Maybe J.JSVal
 
