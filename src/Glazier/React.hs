@@ -1,7 +1,6 @@
 module Glazier.React
     ( module Glazier.Command
     , module Glazier.Logger
-    , module ShowIO
     , module Glazier.React.Common
     , module Glazier.React.Component
     , module Glazier.React.Obj
@@ -66,4 +65,3 @@ import Glazier.React.ReactId
 import Glazier.React.Reactor
 import Glazier.React.Widget
 import JavaScript.Extras
-import ShowIO

@@ -44,7 +44,6 @@ import Glazier.React.Plan
 import Glazier.React.ReactPath
 import Glazier.React.Widget
 import qualified JavaScript.Extras as JE
-import ShowIO
 import System.Mem.Weak
 
 -----------------------------------------------------------------
@@ -116,12 +115,12 @@ data Reactor c where
     Mutate :: Weak (IORef Plan) -> Weak (MVar s) -> RerenderRequired -> StateT s IO c -> Reactor c
 
 
-instance (IsString str, Semigroup str) => ShowIO str (Reactor c) where
-    showsPrecIO p (MkHandler this _ _ _) = showParenIO (p >= 11) $ (showStr "MkHandler " .) <$> (showsIO this)
-    showsPrecIO p (MkListener this _ _) = showParenIO (p >= 11) $ (showStr "MkListener " .) <$> (showsIO this)
-    showsPrecIO p (MkObj _ logname _ _) = showParenIO (p >= 11) $ (showStr "MkObj " .) <$> (showsIO logname)
-    showsPrecIO p (ReadObj this _ _) = showParenIO (p >= 11) $ (showStr "ReadObj " .) <$> (showsIO this)
-    showsPrecIO p (Mutate this _ req _) = showParenIO (p >= 11) $ (\x -> (showStr "Mutate ") . x . (showFromStr " ") . (showsStr req)) <$> (showsIO this)
+-- instance (IsString str, Semigroup str) => ShowIO str (Reactor c) where
+--     showsPrecIO p (MkHandler this _ _ _) = showParenIO (p >= 11) $ (showStr "MkHandler " .) <$> (showsIO this)
+--     showsPrecIO p (MkListener this _ _) = showParenIO (p >= 11) $ (showStr "MkListener " .) <$> (showsIO this)
+--     showsPrecIO p (MkObj _ logname _ _) = showParenIO (p >= 11) $ (showStr "MkObj " .) <$> (showsIO logname)
+--     showsPrecIO p (ReadObj this _ _) = showParenIO (p >= 11) $ (showStr "ReadObj " .) <$> (showsIO this)
+--     showsPrecIO p (Mutate this _ req _) = showParenIO (p >= 11) $ (\x -> (showStr "Mutate ") . x . (showFromStr " ") . (showsStr req)) <$> (showsIO this)
 
 logPrefix :: AskReactPath m => m J.JSString
 logPrefix = do
@@ -252,6 +251,9 @@ rawTxt :: MonadWidget s c m => Getting' s J.JSString -> m ()
 rawTxt lns = do
     s <- askModel
     rawTextMarkup $ s ^. lns
+
+strProp :: J.JSString -> Getting' s J.JSVal
+strProp j = like j.JE.toJS_
 
 lf :: (Component j, MonadWidget s c m)
     => j -- ^ "input" or a @ReactComponent@

@@ -31,7 +31,7 @@ instance Component J.JSString where
 instance Component WidgetComponent where
   componentName _ = "widget"
 
--- | Returns a reference to the javascript *class* definition of the WidgetComponent
+-- | Returns a reference to the javascript *class* definition of the react component
 newtype WidgetComponent = WidgetComponent J.JSVal
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
