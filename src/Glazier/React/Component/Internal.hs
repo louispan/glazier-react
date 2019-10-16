@@ -5,11 +5,11 @@
 
 module Glazier.React.Component.Internal
     ( Component(..)
-    , ShimComponent(..)
-    , shimComponent
-    , rerenderShim
-    , batchShimRerender
-    , ShimRef(..)
+    , WidgetComponent(..)
+    , widgetComponent
+    , WidgetRef(..)
+    , rerenderWidget
+    , batchWidgetRerender
     ) where
 
 import Control.DeepSeq
@@ -24,71 +24,75 @@ import qualified JavaScript.Extras as JE
 class JE.ToJS j => Component j where
   componentName :: j -> J.JSString
 
+-- The componentName is used for making the ReactPath for logging
 instance Component J.JSString where
   componentName = id
 
-instance Component ShimComponent where
-  componentName _ = "shim"
+instance Component WidgetComponent where
+  componentName _ = "widget"
 
--- | Returns a reference to the javascript *class* definition
--- of the shim wrapper around ReactPureComponent
-newtype ShimComponent = ShimComponent J.JSVal
+-- | Returns a reference to the javascript *class* definition of the WidgetComponent
+newtype WidgetComponent = WidgetComponent J.JSVal
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
--- | This returns the javascript class definition of ShimComponent.
--- There is ever only one shim class, so it is purely available
-shimComponent :: ShimComponent
-shimComponent = ShimComponent js_shim
+-- | This returns the javascript class definition of WidgetComponent.
+-- There is ever only one WidgetComponent class, so it is purely available
+widgetComponent :: WidgetComponent
+widgetComponent = WidgetComponent js_widgetComponent
 
--- | Rerenders an instance of a component created using ShimComponent.
-rerenderShim :: ShimRef -> IO ()
-rerenderShim = js_rerenderShim
+-- | Rerenders an instance of a component created using WidgetComponent.
+rerenderWidget :: WidgetRef -> IO ()
+rerenderWidget = js_rerenderWidget
 
--- | batch rerendering of a shim
-batchShimRerender :: ShimRef -> ReactBatch -> IO ()
-batchShimRerender b s = js_batchShimRerender (JE.toJS s) (JE.toJS b)
+-- | batch rerendering of a WidgetRef
+batchWidgetRerender :: ReactBatch -> WidgetRef -> IO ()
+batchWidgetRerender b w = js_batchWidgetRerender b w
 
 -- | This is used store the react "ref" to a javascript instance of a react Component.
-newtype ShimRef = ShimRef J.JSVal
+newtype WidgetRef = WidgetRef J.JSVal
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
-instance JE.FromJS ShimRef where
-    fromJS a | js_isReactComponent a = Just $ ShimRef a
+instance JE.FromJS WidgetRef where
+    fromJS a | js_isWidgetComponent a = Just $ WidgetRef a
     fromJS _ = Nothing
 
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
-  "$r = hgr$Shim();"
-  js_shim :: J.JSVal
+  "$r = hgr$WidgetComponent();"
+  js_widgetComponent :: J.JSVal
 
--- !!blah is javascript way of converting to bool
--- using undocumented api to check if something is react component
--- https://stackoverflow.com/questions/33199959/how-to-detect-a-react-component-vs-a-react-element
-foreign import javascript unsafe
-  "!(!($1 && !(!($1['isReactComponent']))))"
-  js_isReactComponent :: J.JSVal -> Bool
-
-foreign import javascript unsafe
-  "if ($1 && $1['rerender']){$1['rerender']()};"
-  js_rerenderShim :: ShimRef -> IO ()
+-- -- !!blah is javascript way of converting to bool
+-- -- using undocumented api to check if something is react component
+-- -- https://stackoverflow.com/questions/33199959/how-to-detect-a-react-component-vs-a-react-element
+-- foreign import javascript unsafe
+--   "!(!($1 && !(!($1['isReactComponent']))))"
+--   js_isReactComponent :: J.JSVal -> Bool
 
 foreign import javascript unsafe
-  "if ($1 && $1['rerender'] && $2 && $2['batch']){$2['batch'](function(){$1['rerender']()})};"
-  js_batchShimRerender :: J.JSVal -> J.JSVal -> IO ()
+    "$1 != undefined && $1 instanceof hgr$WidgetComponent"
+    js_isWidgetComponent :: J.JSVal -> Bool
+
+foreign import javascript unsafe
+    "if ($1 && $1['rerender']){$1['rerender']()};"
+    js_rerenderWidget :: WidgetRef -> IO ()
+
+foreign import javascript unsafe
+    "if ($2 && $2['rerender'] && $1 && $1['batch']){$1['batch'](function(){$2['rerender']()})};"
+    js_batchWidgetRerender :: ReactBatch -> WidgetRef -> IO ()
 
 #else
 
-js_shim :: J.JSVal
-js_shim = J.nullRef
+js_widgetComponent :: J.JSVal
+js_widgetComponent = J.nullRef
 
-js_isReactComponent :: J.JSVal -> Bool
-js_isReactComponent _ = False
+js_isWidgetComponent :: J.JSVal -> Bool
+js_isWidgetComponent _ = False
 
-js_rerenderShim :: ShimRef -> IO ()
-js_rerenderShim _ = pure ()
+js_rerenderWidget :: WidgetRef -> IO ()
+js_rerenderWidget _ = pure ()
 
-js_batchShimRerender :: J.JSVal -> J.JSVal -> IO ()
-js_batchShimRerender _ _ = pure ()
+js_batchWidgetRerender :: ReactBatch -> WidgetRef -> IO ()
+js_batchWidgetRerender _ _ = pure ()
 
 #endif

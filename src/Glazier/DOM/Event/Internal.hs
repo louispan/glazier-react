@@ -43,7 +43,7 @@ instance JE.FromJS SyntheticEvent where
 
 foreign import javascript unsafe
     "typeof $1 !== 'undefined' && $1 instanceof Event"
-    js_isEvent :: J.JSVal -> Bool
+    js_isNativeEvent :: J.JSVal -> Bool
 
 foreign import javascript unsafe
     "typeof $1 !== 'undefined' && $1 instanceof Object && $1['nativeEvent'] && $1['nativeEvent'] instanceof Event"

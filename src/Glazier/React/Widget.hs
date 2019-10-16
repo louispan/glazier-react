@@ -44,7 +44,7 @@ askConstructor = (. Tagged @"Constructor") <$> askObserver
 
 -- | Register and execute the given monad at construction time.
 -- The registration of the callback is only performed the construction of the widget.
--- That is, on subsequen rerendesrs, @onConstruction = const $ pure ()@
+-- That is, on subsequent rerendesrs, @onConstruction = const $ pure ()@
 -- Do not expect this function to do anything on subsequent rerenders
 -- so don't use the function conditionally or inside event handling code.
 onConstruction :: (AskConstructor c m, MonadCodify c m) => m () -> m ()
@@ -159,14 +159,14 @@ displayPlanRef mdlRef = do
 
 displayPlan :: PutMarkup m => Plan -> m ()
 displayPlan pln = do
-    let scb = shimCallbacks pln
-        renderCb = shimOnRender scb
-        refCb = shimOnRef scb
-        renderedCb = shimOnRendered scb
+    let cbs = widgetCallbacks pln
+        renderCb = widgetOnRender cbs
+        refCb = widgetOnRef cbs
+        renderedCb = widgetOnRendered cbs
         n = logName pln
     -- These are the callbacks on the 'ShimComponent'
     -- See jsbits/react.js
-    leafMarkup (JE.toJS shimComponent)
+    leafMarkup (JE.toJS widgetComponent)
         [ ("key", JE.toJS $ untag' @"LogName" n)
         , ("render", JE.toJS renderCb)
         , ("ref", JE.toJS refCb)

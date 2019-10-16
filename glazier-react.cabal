@@ -1,97 +1,97 @@
-cabal-version:       2.2
-name:                glazier-react
-version:             2.0.0.0
-synopsis:            ReactJS binding using Glazier.Command.
-description:         ReactJS binding using Glazier.Commmand. Please see README.md.
-homepage:            https://github.com/louispan/glazier-react#readme
-license:             BSD-3-Clause
-license-file:        LICENSE
-author:              Louis Pan
-maintainer:          louis@pan.me
-copyright:           2019 Louis Pan
-category:            Web, GUI
-build-type:          Simple
-extra-source-files:  README.md
+cabal-version:        2.2
+name:                 glazier-react
+version:              2.0.0.0
+synopsis:             ReactJS binding using Glazier.Command.
+description:          ReactJS binding using Glazier.Commmand. Please see README.md.
+homepage:             https://github.com/louispan/glazier-react#readme
+license:              BSD-3-Clause
+license-file:         LICENSE
+author:               Louis Pan
+maintainer:           louis@pan.me
+copyright:            2019 Louis Pan
+category:             Web, GUI
+build-type:           Simple
+extra-source-files:   README.md
 
 library
-  hs-source-dirs:      src
-  js-sources:          jsbits/glazier-react.js
-  exposed-modules:     Glazier.React
-                       Glazier.React.Common
-                       Glazier.React.Component
-                       Glazier.React.Component.Internal
-                       Glazier.DOM
-                       Glazier.DOM.Event
-                       Glazier.DOM.Event.Internal
-                       Glazier.DOM.Event.UI
-                       Glazier.DOM.Event.UI.Internal
-                       Glazier.DOM.Event.UI.Keyboard
-                       Glazier.DOM.Event.UI.Keyboard.Internal
-                       Glazier.DOM.Event.UI.Mouse
-                       Glazier.DOM.Event.UI.Mouse.Internal
-                       Glazier.DOM.Event.HashChange
-                       Glazier.DOM.Event.HashChange.Internal
-                       Glazier.DOM.EventTarget
-                       Glazier.DOM.EventTarget.Internal
-                       Glazier.DOM.EventTarget.Node
-                       Glazier.DOM.EventTarget.Node.Internal
-                       Glazier.DOM.EventTarget.Node.Document
-                       Glazier.DOM.EventTarget.Node.Document.Internal
-                       Glazier.DOM.EventTarget.Node.Element
-                       Glazier.DOM.EventTarget.Node.Element.Internal
-                       Glazier.DOM.EventTarget.Node.Element.HTML
-                       Glazier.DOM.EventTarget.Node.Element.HTML.Internal
-                       Glazier.DOM.EventTarget.Window
-                       Glazier.DOM.EventTarget.Window.Internal
-                       Glazier.React.ReactElement
-                       Glazier.React.ReactElement.Internal
-                       Glazier.React.Markup
-                       Glazier.React.Obj
-                       Glazier.React.Obj.Internal
-                       Glazier.React.Plan
-                       Glazier.React.Plan.Internal
-                       Glazier.React.ReactBatch
-                       Glazier.React.ReactBatch.Internal
-                       Glazier.React.ReactDOM
-                       Glazier.React.ReactId
-                       Glazier.React.ReactId.Internal
-                       Glazier.React.ReactPath
-                       Glazier.React.Reactor
-                       Glazier.React.Reactor.Exec
-                       Glazier.React.Widget
-  build-depends:       base >= 4.9.0 && < 5
-                     , aeson >= 1.4.2.0
-                     , aeson-applicative >= 1.4
-                     , async >= 2.2
-                     , alternators >= 2.0
-                     , containers >= 0.5
-                     , data-diverse >= 4.6
-                     , data-diverse-lens >= 4.3
-                     , deepseq >= 1.4
-                     , dlist >= 0.8
-                     , ghcjs-base-stub >= 0.3.0.2
-                     , glazier >= 2.0
-                     , hashable >= 1.2
-                     , javascript-extras >= 0.7
-                     , lens >= 4
-                     , lens-misc >= 0.0.3
-                     , mmorph >= 1
-                     , mtl >= 2
-                     , newtype-generics >= 0.5
-                     , profunctors >= 2.5
-                     , stm >= 2.5
-                     , StateVar >= 1.1.1
-                     , tagged >= 0.8
-                     , text >= 1.2
-                     , transformers >= 0.4
-                     , unordered-containers >= 0.2.8
-                     , unliftio >= 0.2.10
-                     , unliftio-core >= 0.1.2
-                     , vector >= 0.11
-  default-language:    Haskell2010
-  default-extensions:  ApplicativeDo
-  ghc-options:         -Wall
+  hs-source-dirs:     src
+  js-sources:         jsbits/glazier-react.js
+  exposed-modules:    Glazier.React
+                      Glazier.React.Common
+                      Glazier.React.Component
+                      Glazier.React.Component.Internal
+                      Glazier.DOM
+                      Glazier.DOM.Event
+                      Glazier.DOM.Event.Internal
+                      Glazier.DOM.Event.UI
+                      Glazier.DOM.Event.UI.Internal
+                      Glazier.DOM.Event.UI.Keyboard
+                      Glazier.DOM.Event.UI.Keyboard.Internal
+                      Glazier.DOM.Event.UI.Mouse
+                      Glazier.DOM.Event.UI.Mouse.Internal
+                      Glazier.DOM.Event.HashChange
+                      Glazier.DOM.Event.HashChange.Internal
+                      Glazier.DOM.EventTarget
+                      Glazier.DOM.EventTarget.Internal
+                      Glazier.DOM.EventTarget.Node
+                      Glazier.DOM.EventTarget.Node.Internal
+                      Glazier.DOM.EventTarget.Node.Document
+                      Glazier.DOM.EventTarget.Node.Document.Internal
+                      Glazier.DOM.EventTarget.Node.Element
+                      Glazier.DOM.EventTarget.Node.Element.Internal
+                      Glazier.DOM.EventTarget.Node.Element.HTML
+                      Glazier.DOM.EventTarget.Node.Element.HTML.Internal
+                      Glazier.DOM.EventTarget.Window
+                      Glazier.DOM.EventTarget.Window.Internal
+                      Glazier.React.ReactElement
+                      Glazier.React.ReactElement.Internal
+                      Glazier.React.Markup
+                      Glazier.React.Obj
+                      Glazier.React.Obj.Internal
+                      Glazier.React.Plan
+                      Glazier.React.Plan.Internal
+                      Glazier.React.ReactBatch
+                      Glazier.React.ReactBatch.Internal
+                      Glazier.React.ReactDOM
+                      Glazier.React.ReactId
+                      Glazier.React.ReactId.Internal
+                      Glazier.React.ReactPath
+                      Glazier.React.Reactor
+                      Glazier.React.Reactor.Exec
+                      Glazier.React.Widget
+  build-depends:      base >= 4.9.0 && < 5
+                    , aeson >= 1.4.2.0
+                    , aeson-applicative >= 1.4
+                    , async >= 2.2
+                    , alternators >= 2.0
+                    , containers >= 0.5
+                    , data-diverse >= 4.6
+                    , data-diverse-lens >= 4.3
+                    , deepseq >= 1.4
+                    , dlist >= 0.8
+                    , ghcjs-base-stub >= 0.3.0.2
+                    , glazier >= 2.0
+                    , hashable >= 1.2
+                    , javascript-extras >= 0.7
+                    , lens >= 4
+                    , lens-misc >= 0.0.3
+                    , mmorph >= 1
+                    , mtl >= 2
+                    , newtype-generics >= 0.5
+                    , profunctors >= 2.5
+                    , stm >= 2.5
+                    , StateVar >= 1.1.1
+                    , tagged >= 0.8
+                    , text >= 1.2
+                    , transformers >= 0.4
+                    , unordered-containers >= 0.2.8
+                    , unliftio >= 0.2.10
+                    , unliftio-core >= 0.1.2
+                    , vector >= 0.11
+  default-language:   Haskell2010
+  default-extensions: ApplicativeDo
+  ghc-options:        -Wall
 
 source-repository head
-  type:     git
-  location: https://github.com/louispan/glazier-react
+  type:               git
+  location:           https://github.com/louispan/glazier-react

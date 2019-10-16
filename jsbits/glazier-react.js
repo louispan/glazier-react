@@ -22,9 +22,20 @@ function hgr$ReactDOM() {
     return hgr$ReactDOM_;
 }
 
-var hgr$Shim_ = null;
-function hgr$Shim() {
-    if (!hgr$Shim_) {
+// frrom babel generated code
+function hgr$objectWithoutProperties(obj, keys) {
+    var target = {};
+    for (var i in obj) {
+        if (keys.indexOf(i) >= 0) continue;
+        if (!Object.prototype.hasOwnProperty.call(obj, i)) continue;
+        target[i] = obj[i];
+    }
+    return target;
+}
+
+var hgr$WidgetComponent_ = null;
+function hgr$WidgetComponent() {
+    if (!hgr$WidgetComponent_) {
         const ReactPureComponent = hgr$React()["PureComponent"];
 
         // The state in the Shim contains
@@ -32,7 +43,7 @@ function hgr$Shim() {
         // Inheriting from Component means every call to this.setState will result in a render.
         // Inheriting from PureComponet means a shallow comparison will be made.
         // Protect "PureComponent" from closure compiler because it's not in the official externs.
-        class ShimComponent extends ReactPureComponent {
+        class WidgetComponent extends ReactPureComponent {
 
             constructor(props) {
                 super(props);
@@ -56,9 +67,9 @@ function hgr$Shim() {
                 return null;
             }
         }
-        hgr$Shim_ = Shim;
+        hgr$WidgetComponent_ = WidgetComponent;
     }
-    return hgr$Shim_;
+    return hgr$WidgetComponent_;
 }
 
 class hgr$ReactBatcher {

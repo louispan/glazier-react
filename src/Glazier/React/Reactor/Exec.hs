@@ -40,7 +40,7 @@ import qualified Data.Map.Strict as M
 import Data.String
 import Data.Tagged.Extras
 import Data.Tuple
-import GHC.Stack.Extras
+import GHC.Stack
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Foreign.Callback.Internal as J
 import qualified GHCJS.Types as J
@@ -148,17 +148,17 @@ rerenderDirtyPlans = do
     -- by this time, there is a possibilty that shms were removed,
     -- only only batch shms that are still valid
     btch <- askReactBatch
-    liftIO $ foldMap (batchShim btch) ds >>= liftIO -- ^ possibly async GHCJS
+    liftIO $ foldMap (batchWid btch) ds >>= liftIO -- ^ possibly async GHCJS
     -- now run the batch tell react to use the prerendered frames
     liftIO $ runReactBatch btch
   where
     prerndr plnWkRef = (`evalMaybeT` (pure ())) $ do
         plnRef <- maybeIO $ deRefWeak plnWkRef
         liftIO $ prerender <$> readIORef plnRef
-    batchShim btch plnWkRef = (`evalMaybeT` (pure ())) $ do
+    batchWid btch plnWkRef = (`evalMaybeT` (pure ())) $ do
         plnRef <- maybeIO $ deRefWeak plnWkRef
-        shm <- maybeIO $ shimRef <$> readIORef plnRef
-        pure $ batchShimRerender shm btch
+        wid <- maybeIO $ widgetRef <$> readIORef plnRef
+        pure $ batchWidgetRerender btch wid
 
 -- | Called after a mutation
 markPlanDirty :: (AlternativeIO m, AskDirtyPlan m) => Weak (IORef Plan) -> m ()
@@ -279,7 +279,7 @@ execMkObj executor wid logName' s = do
     (logLevel', logDepth') <- getLogConfig logName'
     i <- mkReactId
     (obj, prerndr) <- liftIO $ do
-        -- create shim with fake callbacks for now
+        -- create with fake callbacks for now
         let newPlan = Plan
                 i
                 logName'
@@ -295,7 +295,7 @@ execMkObj executor wid logName' s = do
                 mempty -- ^ destructor
                 mempty -- ^ createdHandlers
                 mempty -- ^ createdCallbacks
-                (ShimCallbacks
+                (WidgetCallbacks
                     (J.Callback J.nullRef)
                     (J.Callback J.nullRef)
                     (J.Callback J.nullRef))
@@ -379,10 +379,10 @@ execMkObj executor wid logName' s = do
     refCb <- liftIO . J.syncCallback1 J.ContinueAsync $ onRefCb plnWkRef
     renderedCb <- liftIO . J.syncCallback J.ContinueAsync $ onRenderedCb plnWkRef
 
-    -- update the plan to include the real shimcallbacks and prerender functon
+    -- update the plan to include the real WidgetCallbacks and prerender functon
     liftIO $ atomicModifyIORef_' (planRef obj) $ \pln ->
         (pln
-            { shimCallbacks = ShimCallbacks renderCb refCb renderedCb
+            { widgetCallbacks = WidgetCallbacks renderCb refCb renderedCb
             -- ^ when rerendering, don't do anything during onConstruction calls
             , prerender = prerndr (const $ pure ()) (const $ pure ()) (const $ pure ())
             })
@@ -418,7 +418,7 @@ execMkObj executor wid logName' s = do
     onRefCb :: Weak (IORef Plan) -> J.JSVal -> IO ()
     onRefCb wk j = (`evalMaybeT` ()) $ do
         plnRef <- maybeIO $ deRefWeak wk
-        liftIO $ atomicModifyIORef_' plnRef (_shimRef .~ JE.fromJS j)
+        liftIO $ atomicModifyIORef_' plnRef (_widgetRef .~ JE.fromJS j)
 
     onRenderedCb :: Weak (IORef Plan) -> IO ()
     onRenderedCb wk = (`evalMaybeT` ()) $ do

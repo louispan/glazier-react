@@ -8,11 +8,11 @@ module Glazier.DOM.Event
     )
     where
 
+import Control.Monad.IO.Class
+import qualified GHCJS.Types as J
 import Glazier.DOM.Event.Internal
 import Glazier.DOM.EventTarget.Internal
-import qualified GHCJS.Types as J
 import qualified JavaScript.Extras as JE
-import Control.Monad.IO.Class
 
 -- Subset of https://developer.mozilla.org/en-US/docs/Web/API/Event
 -- Not providing @isPropagationStopped@ as it is not supported natively by JavaScript
@@ -46,10 +46,10 @@ class JE.ToJS j => IEvent j where
     eventType = js_eventType . JE.toJS
 
     preventDefault :: MonadIO m => j -> m ()
-    preventDefault = js_preventDefault . JE.toJS
+    preventDefault = liftIO . js_preventDefault . JE.toJS
 
     stopPropagation :: MonadIO m => j -> m ()
-    stopPropagation = js_stopPropagation . JE.toJS
+    stopPropagation = liftIO . js_stopPropagation . JE.toJS
 
 instance IEvent NativeEvent
 instance IEvent SyntheticEvent
@@ -80,7 +80,7 @@ foreign import javascript unsafe
 
 foreign import javascript unsafe
     "$1['preventDefault']()"
-    js_preventDefault :: MonadIO m => J.JSVal -> m ()
+    js_preventDefault :: J.JSVal -> IO ()
 
 foreign import javascript unsafe
     "$r = $1['eventPhase']"
@@ -108,7 +108,7 @@ foreign import javascript unsafe
 
 foreign import javascript unsafe
     "$1['stopPropagation']()"
-    js_stopPropagation :: MonadIO m => J.JSVal -> m ()
+    js_stopPropagation :: J.JSVal -> IO ()
 
 foreign import javascript unsafe
     "$r = $1['nativeEvent']"
@@ -147,10 +147,10 @@ js_timeStamp _ = 0
 js_eventType :: J.JSVal -> J.JSString
 js_eventType _ = mempty
 
-js_preventDefault :: MonadIO m => J.JSVal -> m ()
+js_preventDefault :: J.JSVal -> IO ()
 js_preventDefault _ = pure ()
 
-js_stopPropagation :: MonadIO m => J.JSVal -> m ()
+js_stopPropagation :: J.JSVal -> IO ()
 js_stopPropagation _ = pure ()
 
 js_isPropagationStopped :: J.JSVal -> Bool

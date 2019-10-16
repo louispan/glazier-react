@@ -1,10 +1,10 @@
 module Glazier.React.Component
     ( Component(..)
-    , ShimComponent -- constructor not exported
-    , shimComponent
-    , rerenderShim
-    , batchShimRerender
-    , ShimRef -- constructor not exported
+    , WidgetComponent -- constructor not exported
+    , widgetComponent
+    , WidgetRef -- constructor not exported
+    , rerenderWidget
+    , batchWidgetRerender
     ) where
 
 import Glazier.React.Component.Internal

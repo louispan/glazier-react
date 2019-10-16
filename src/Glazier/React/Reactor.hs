@@ -19,7 +19,7 @@ module Glazier.React.Reactor where
 import Control.Also
 import Control.Concurrent.MVar
 import Control.DeepSeq
-import Control.Lens
+import Control.Lens.Misc
 import Control.Monad.Delegate
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Extras
@@ -31,7 +31,7 @@ import qualified Data.List as DL
 import qualified Data.Map.Strict as M
 import Data.String
 import Data.Tagged.Extras
-import GHC.Stack.Extras
+import GHC.Stack
 import qualified GHCJS.Types as J
 import Glazier.Command
 import Glazier.DOM.Event
@@ -137,7 +137,7 @@ logPrefix = do
 logJS :: (HasCallStack, MonadGadget' c m)
     => LogLevel -> IO J.JSString
     -> m ()
-logJS lvl msg = withoutCallStack $ do
+logJS lvl msg = withFrozenCallStack $ do
     p <- logPrefix
     n <- untag' @"LogName" <$> askLogName
     logLine basicLogCallStackDepth lvl $ (\x -> n <> "<" <> p <> "> " <> x) <$> msg
@@ -167,27 +167,27 @@ readObj obj = do
     this <- askPlanWeakRef
     delegatify $ exec' . ReadObj this obj
 
--- | 'mutate_' with 'RerenderRequired'
-mutate :: (MonadGadget s c m) => StateT s IO () -> m ()
-mutate = mutate_ RerenderRequired
+-- | 'mutate' with 'RerenderRequired'
+mutate' :: (MonadGadget s c m) => StateT s IO () -> m ()
+mutate' = mutate RerenderRequired
 
 -- | Mutates the Model for the current widget.
 -- Expose 'Rerender' for "uncontrolled (by react)" components like <input>
 -- which doesn't necessarily require a rerender if the model changes.
 -- Mutation notifications are always sent.
-mutate_ :: MonadGadget s c m => RerenderRequired -> StateT s IO () -> m ()
-mutate_ r m = do
+mutate :: MonadGadget s c m => RerenderRequired -> StateT s IO () -> m ()
+mutate r m = do
     mdl <- askModelWeakVar
     this <- askPlanWeakRef
     exec' $ Mutate this mdl r (command_ <$> m)
 
 -- | 'mutateThen_' with 'RerenderRequired'
-mutateThen :: MonadGadget s c m => StateT s IO (m a) -> m a
-mutateThen = mutateThen_ RerenderRequired
+mutateThen' :: MonadGadget s c m => StateT s IO (m a) -> m a
+mutateThen' = mutateThen RerenderRequired
 
--- | Variation of 'mutate_' which also returns the next action to execute after mutating.
-mutateThen_ :: MonadGadget s c m => RerenderRequired -> StateT s IO (m a) -> m a
-mutateThen_ r m = do
+-- | Variation of 'mutate' which also returns the next action to execute after mutating.
+mutateThen :: MonadGadget s c m => RerenderRequired -> StateT s IO (m a) -> m a
+mutateThen r m = do
     mdl <- askModelWeakVar
     this <- askPlanWeakRef
     delegate $ \fire -> do
@@ -204,7 +204,7 @@ mkHandler ::
     (NFData a, MonadGadget' c m)
     => (J.JSVal -> MaybeT IO a)
     -> (a -> m ())
-    -> m (J.JSVal -> IO (), IO ()) -- (preprocess, postprocess)
+    -> m Handler -- (preprocess, postprocess)
 mkHandler goStrict f = do
     plnRef <- askPlanWeakRef
     f' <- codify f
@@ -217,7 +217,7 @@ mkSyntheticHandler ::
     (NFData a, MonadGadget' c m)
     => (SyntheticEvent -> MaybeT IO a)
     -> (a -> m ())
-    -> m (J.JSVal -> IO (), IO ()) -- (preprocess, postprocess)
+    -> m Handler
 mkSyntheticHandler goStrict goLazy = mkHandler (handleSyntheticEvent goStrict) goLazy
 
 -- | This convert 'Handler' into a ghcjs 'Callback'
@@ -248,7 +248,7 @@ mkListener f = do
 ----------------------------------------------------------------------------------
 
 -- | write some text from the model. Use 'like' to 'const' a string instead.
-rawTxt :: MonadWidget s c m => Getting J.JSString s J.JSString -> m ()
+rawTxt :: MonadWidget s c m => Getting' s J.JSString -> m ()
 rawTxt lns = do
     s <- askModel
     rawTextMarkup $ s ^. lns
@@ -256,7 +256,7 @@ rawTxt lns = do
 lf :: (Component j, MonadWidget s c m)
     => j -- ^ "input" or a @ReactComponent@
     -> DL.DList (J.JSString, m Handler)
-    -> DL.DList (J.JSString, Getting J.JSVal s J.JSVal)
+    -> DL.DList (J.JSString, Getting' s J.JSVal)
     -> m ()
 lf j gads props = do
     s <- askModel
@@ -271,7 +271,7 @@ lf j gads props = do
 bh :: (Component j, MonadWidget s c m)
     => j-- ^ eg "div" or a @ReactComponent@
     -> DL.DList (J.JSString, m Handler)
-    -> DL.DList (J.JSString, Getting J.JSVal s J.JSVal)
+    -> DL.DList (J.JSString, Getting' s J.JSVal)
     -> m a
     -> m a
 bh j gads props child = do

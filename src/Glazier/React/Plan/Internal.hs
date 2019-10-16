@@ -27,20 +27,20 @@ import Glazier.React.ReactId
 import System.Mem.AnyStableName
 import System.Mem.Weak
 
-data ShimCallbacks = ShimCallbacks
+data WidgetCallbacks = WidgetCallbacks
     -- render function of the ReactComponent
-    { shimOnRender :: J.Callback (IO J.JSVal)
+    { widgetOnRender :: J.Callback (IO J.JSVal)
     -- updates the shimRef
-    , shimOnRef :: Listener
+    , widgetOnRef :: Listener
     -- Run the renderedListener in the plan
-    , shimOnRendered :: J.Callback (IO ())
+    , widgetOnRendered :: J.Callback (IO ())
 
     } deriving (G.Generic)
 
-makeLenses_ ''ShimCallbacks
+makeLenses_ ''WidgetCallbacks
 
-releaseShimCallbacks :: ShimCallbacks -> IO ()
-releaseShimCallbacks (ShimCallbacks a b c) = do
+releaseWidgetCallbacks :: WidgetCallbacks -> IO ()
+releaseWidgetCallbacks (WidgetCallbacks a b c) = do
     J.releaseCallback a
     J.releaseCallback b
     J.releaseCallback c
@@ -57,7 +57,7 @@ data Plan = Plan
 
     -- a react "ref" to the javascript instance of ReactComponent
     -- so that react "componentRef.setState()" can be called.
-    , shimRef :: Maybe ShimRef
+    , widgetRef :: Maybe WidgetRef
 
     -- The prerendered back buffer
     , prerendered :: J.JSVal
@@ -83,7 +83,7 @@ data Plan = Plan
 
     , listeners :: [(AnyStableName, Listener)]
 
-    , shimCallbacks :: ShimCallbacks
+    , widgetCallbacks :: WidgetCallbacks
 
     } deriving (G.Generic)
 
@@ -91,7 +91,7 @@ makeLenses_ ''Plan
 
 releasePlanCallbacks :: Plan -> IO ()
 releasePlanCallbacks pln = do
-    releaseShimCallbacks (shimCallbacks pln)
+    releaseWidgetCallbacks (widgetCallbacks pln)
     traverse_ (J.releaseCallback . snd) (listeners pln)
 
 instance Show Plan where
