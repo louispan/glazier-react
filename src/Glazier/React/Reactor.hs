@@ -257,6 +257,9 @@ type Prop s = s -> Maybe J.JSVal
 strProp :: J.JSString -> Prop s
 strProp = const . Just . JE.toJS
 
+strProp' :: J.JSString -> J.JSVal
+strProp' = JE.toJS
+
 lf :: (Component j, MonadWidget s c m)
     => j -- ^ "input" or a @ReactComponent@
     -> DL.DList (J.JSString, m Handler)
@@ -264,13 +267,20 @@ lf :: (Component j, MonadWidget s c m)
     -> m ()
 lf j gads props = do
     s <- askModel
+    lf' j gads ((fmap (fromMaybe J.nullRef . ($ s))) <$> props)
+
+lf' :: (Component j, MonadWidget' c m)
+    => j -- ^ "input" or a @ReactComponent@
+    -> DL.DList (J.JSString, m Handler)
+    -> DL.DList (J.JSString, J.JSVal)
+    -> m ()
+lf' j gads props = do
     putNextReactPath (componentName j)
     gads' <- traverse sequenceA (DL.toList gads) -- :: m [(JString, Handler)]
     let gads'' = M.fromListWith (<>) gads' -- combine same keys together
     gads''' <- traverse mkListener gads'' -- convert to JS callback
     leafMarkup (JE.toJS j)
-        (((fmap (fromMaybe J.nullRef . ($ s))) <$> props)
-            <> (DL.fromList . M.toList $ JE.toJS <$> gads'''))
+        (props <> (DL.fromList . M.toList $ JE.toJS <$> gads'''))
 
 bh :: (Component j, MonadWidget s c m)
     => j-- ^ eg "div" or a @ReactComponent@
@@ -280,14 +290,22 @@ bh :: (Component j, MonadWidget s c m)
     -> m a
 bh j gads props child = do
     s <- askModel
+    bh' j gads ((fmap (fromMaybe J.nullRef . ($ s))) <$> props) child
+
+bh' :: (Component j, MonadWidget' c m)
+    => j-- ^ eg "div" or a @ReactComponent@
+    -> DL.DList (J.JSString, m Handler)
+    -> DL.DList (J.JSString, J.JSVal)
+    -> m a
+    -> m a
+bh' j gads props child = do
     putNextReactPath (componentName j)
     gads' <- traverse sequenceA (DL.toList gads) -- :: m [(JString, Handler)]
     let gads'' = M.fromListWith (<>) gads' -- combine same keys together
     gads''' <- traverse mkListener gads'' -- convert to JS callback
     putPushReactPath
     a <- branchMarkup (JE.toJS j)
-        (((fmap (fromMaybe J.nullRef . ($ s))) <$> props)
-            <> (DL.fromList . M.toList $ JE.toJS <$> gads'''))
+        (props <> (DL.fromList . M.toList $ JE.toJS <$> gads'''))
         child
     putPopReactPath
     pure a

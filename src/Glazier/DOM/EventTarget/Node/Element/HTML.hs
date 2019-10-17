@@ -5,6 +5,7 @@ module Glazier.DOM.EventTarget.Node.Element.HTML
     , IHTMLElement(..)
     ) where
 
+import Control.Monad.IO.Class
 import qualified GHCJS.Types as J
 import Glazier.DOM.EventTarget.Node.Element
 import Glazier.DOM.EventTarget.Node.Element.HTML.Internal
@@ -13,11 +14,11 @@ import Prelude hiding (id)
 
 -- | https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement
 class IElement j => IHTMLElement j where
-    focus :: j -> IO ()
-    focus = js_focus . JE.toJS
+    focus :: MonadIO m => j -> m ()
+    focus = liftIO . js_focus . JE.toJS
 
-    blur :: j -> IO ()
-    blur = js_blur . JE.toJS
+    blur :: MonadIO m => j -> m ()
+    blur = liftIO . js_blur . JE.toJS
 
 instance IHTMLElement HTMLElement
 
