@@ -98,7 +98,6 @@ type Widget s c =
     (ProgramT c IO -- 'MonadComand', 'MonadIO'
     ))))))))))
 
-
 -- | ALlow additional user ReaderT and IdentityT stack on top of Widget c s
 -- Like 'Control.Monad.IO.Unlift.UnliftIO', this newtype wrapper prevents impredicative types.
 newtype UniftWidget s c m = UniftWidget { unliftWidget :: forall a. m a -> Widget s c a }

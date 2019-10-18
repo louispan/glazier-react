@@ -146,30 +146,41 @@ logJS lvl msg = withFrozenCallStack $ do
     n <- untag' @"LogName" <$> askLogName
     logLine basicLogCallStackDepth lvl $ (\x -> n <> "<" <> p <> "> " <> x) <$> msg
 
-
 ------------------------------------------------------
 -- Basic
 ------------------------------------------------------
 
+-- | Make a 'MVar' and 'Weak' 'MVar' for a model.
+-- This is used if you want to share the same model between different widgets.
 mkModelVar :: MonadIO m => s -> m (ModelVar s)
 mkModelVar s = liftIO $ do
     mdlVar <- newMVar s
     mdlWkVar <- mkWeakMVar mdlVar (pure ())
     pure (mdlVar, mdlWkVar)
 
-
--- | Make an initialized 'Obj' for a given meta using the given 'Widget'.
+-- | Make an initialized 'Obj' for a given meta using the given 'Widget' and 'ModelVar'
 -- Unlike 'unliftMkObj', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
+-- The same 'ModelVar' can be used for different 'mkObj'
 mkObj :: MonadGadget' c m  => Widget s c () -> LogName -> ModelVar s -> m (Obj s)
 mkObj wid logname s = delegatify $ exec' . MkObj wid logname s
 
+-- | This does 'mkModelVar' and 'mkObj' in one step.
+mkObj' :: MonadGadget' c m  => Widget s c () -> LogName -> s -> m (Obj s)
+mkObj' wid logname s = mkModelVar s >>= mkObj wid logname
+
 -- | Convenient variation of 'mkObj' where the widget is unlifted from the given monad.
 -- This is useful for transformer stacks that require addition MonadReader-like effects.
+-- The same 'ModelVar' can be used for different 'unliftMkObj'
 unliftMkObj :: (MonadUnliftWidget s c m, MonadGadget' c m)
     => m () -> LogName -> ModelVar s -> m (Obj s)
 unliftMkObj m logname s = do
     u <- askUnliftWidget
     mkObj (unliftWidget u m) logname s
+
+-- | 'mkModelVar' and 'unliftMkObj' in one step
+unliftMkObj' :: (MonadUnliftWidget s c m, MonadGadget' c m)
+    => m () -> LogName -> s -> m (Obj s)
+unliftMkObj' m logname s = mkModelVar s >>= unliftMkObj m logname
 
 -- | Reads from an 'Obj', also registering this as a listener
 -- so this will get rerendered whenever the 'Obj' is 'mutate'd.
