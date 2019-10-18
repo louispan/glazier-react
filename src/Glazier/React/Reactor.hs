@@ -19,7 +19,6 @@ module Glazier.React.Reactor where
 import Control.Also
 import Control.Concurrent.MVar
 import Control.DeepSeq
-import Control.Monad.Delegate
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
@@ -39,7 +38,6 @@ import Glazier.Logger
 import Glazier.React.Common
 import Glazier.React.Component
 import Glazier.React.Markup
-import Glazier.React.Obj
 import Glazier.React.Plan
 import Glazier.React.ReactPath
 import Glazier.React.Widget
@@ -47,6 +45,13 @@ import qualified JavaScript.Extras as JE
 import System.Mem.Weak
 
 -----------------------------------------------------------------
+
+type PlanRef = (IORef Plan, Weak (IORef Plan))
+
+type ModelVar s = (MVar s, Weak (MVar s))
+
+type Obj s = (PlanRef, ModelVar s)
+
 type CmdReactor c =
     ( Cmd' [] c -- required by 'command_'
     , Cmd' Reactor c
@@ -103,7 +108,7 @@ data Reactor c where
     -- | Make a fully initialized object from a widget and meta
     -- 'Reactor' is not a functor because of the @Widget c@ in 'MkObj' which
     -- is in a positive agument position.
-    MkObj :: Widget s c() -> LogName -> s -> (Obj s -> c) -> Reactor c
+    MkObj :: Widget s c() -> LogName -> ModelVar s -> (Obj s -> c) -> Reactor c
 
     -- | Reads from an 'Obj', also registering this as a listener
     -- so this will get rerendered whenever the 'Obj' is 'mutate'd.
@@ -146,15 +151,22 @@ logJS lvl msg = withFrozenCallStack $ do
 -- Basic
 ------------------------------------------------------
 
+mkModelVar :: MonadIO m => s -> m (ModelVar s)
+mkModelVar s = liftIO $ do
+    mdlVar <- newMVar s
+    mdlWkVar <- mkWeakMVar mdlVar (pure ())
+    pure (mdlVar, mdlWkVar)
+
+
 -- | Make an initialized 'Obj' for a given meta using the given 'Widget'.
 -- Unlike 'unliftMkObj', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
-mkObj :: MonadGadget' c m  => Widget s c () -> LogName -> s -> m (Obj s)
+mkObj :: MonadGadget' c m  => Widget s c () -> LogName -> ModelVar s -> m (Obj s)
 mkObj wid logname s = delegatify $ exec' . MkObj wid logname s
 
 -- | Convenient variation of 'mkObj' where the widget is unlifted from the given monad.
 -- This is useful for transformer stacks that require addition MonadReader-like effects.
 unliftMkObj :: (MonadUnliftWidget s c m, MonadGadget' c m)
-    => m () -> LogName -> s -> m (Obj s)
+    => m () -> LogName -> ModelVar s -> m (Obj s)
 unliftMkObj m logname s = do
     u <- askUnliftWidget
     mkObj (unliftWidget u m) logname s
@@ -167,34 +179,18 @@ readObj obj = do
     delegatify $ exec' . ReadObj this obj
 
 -- | 'mutate' with 'RerenderRequired'
-mutate' :: (MonadGadget s c m) => StateT s IO () -> m ()
+mutate' :: (MonadGadget s c m) => StateT s IO a -> m a
 mutate' = mutate RerenderRequired
 
 -- | Mutates the Model for the current widget.
 -- Expose 'Rerender' for "uncontrolled (by react)" components like <input>
 -- which doesn't necessarily require a rerender if the model changes.
 -- Mutation notifications are always sent.
-mutate :: MonadGadget s c m => RerenderRequired -> StateT s IO () -> m ()
+mutate :: MonadGadget s c m => RerenderRequired -> StateT s IO a -> m a
 mutate r m = do
     mdl <- askModelWeakVar
     this <- askPlanWeakRef
-    exec' $ Mutate this mdl r (command_ <$> m)
-
--- | 'mutateThen_' with 'RerenderRequired'
-mutateThen' :: MonadGadget s c m => StateT s IO (m a) -> m a
-mutateThen' = mutateThen RerenderRequired
-
--- | Variation of 'mutate' which also returns the next action to execute after mutating.
-mutateThen :: MonadGadget s c m => RerenderRequired -> StateT s IO (m a) -> m a
-mutateThen r m = do
-    mdl <- askModelWeakVar
-    this <- askPlanWeakRef
-    delegate $ \fire -> do
-        -- f :: m a -> m ()
-        let f n = n >>= fire
-        -- f' :: m a -> c
-        f' <- codify f
-        exec' $ Mutate this mdl r (f' <$> m)
+    delegatify $ \f -> exec' $ Mutate this mdl r (f <$> m)
 
 -- | This convert the input @goStrict@ and @f@ into (preprocess, postprocess).
 -- Multiple preprocess must be run for the same event before any of the postprocess,
@@ -259,6 +255,17 @@ strProp = const . Just . JE.toJS
 
 strProp' :: J.JSString -> J.JSVal
 strProp' = JE.toJS
+
+-- | Creates a JE.JSRep single string for "className" property from a list of (JSString, Bool)
+-- Idea from https://github.com/JedWatson/classnames
+classNames :: [(J.JSString, s -> Maybe Bool)] -> Prop s
+classNames xs s =
+    Just
+    . JE.toJS
+    . J.unwords
+    . fmap fst
+    . filter (fromMaybe False . snd)
+    $ (fmap ($ s)) <$> xs
 
 lf :: (Component j, MonadWidget s c m)
     => j -- ^ "input" or a @ReactComponent@

@@ -49,7 +49,6 @@ import Glazier.Logger
 import Glazier.React.Common
 import Glazier.React.Component
 import Glazier.React.Markup
-import Glazier.React.Obj.Internal
 import Glazier.React.Plan.Internal
 import Glazier.React.ReactBatch
 import Glazier.React.ReactId.Internal
@@ -271,9 +270,9 @@ execMkObj ::
     => (c -> m ())
     -> Widget s c ()
     -> LogName
-    -> s
+    -> ModelVar s
     -> m (Obj s)
-execMkObj executor wid logName' s = do
+execMkObj executor wid logName' (mdlVar, mdlWkVar) = do
     UnliftIO u <- askUnliftIO
     fixme $ liftIO $ putStrLn "LOUISDEBUG: execMkObj"
     (logLevel', logDepth') <- getLogConfig logName'
@@ -303,7 +302,7 @@ execMkObj executor wid logName' s = do
         -- scoped block to return just obj to avoid accidently using the strong refs
         obj <- liftIO $ do
             plnRef <- newIORef newPlan
-            mdlVar <- newMVar s
+            -- mdlVar <- newMVar s
             -- Create automatic garbage collection of the callbacks
             -- that will run when the Obj is garbage collected.
             plnWkRef <- mkWeakIORef plnRef $ do
@@ -312,13 +311,13 @@ execMkObj executor wid logName' s = do
                 foldMap (unregisterFromNotifier i) (notifiers pln)
                 destructor pln
                 releasePlanCallbacks pln
-            mdlWkVar <- mkWeakMVar mdlVar (pure ())
+            -- mdlWkVar <- mkWeakMVar mdlVar (pure ())
 
 
-            pure $ Obj plnRef mdlVar $ WeakObj plnWkRef mdlWkVar
+            pure ((plnRef, plnWkRef), (mdlVar, mdlWkVar))
 
         -- Now we have enough to run the widget
-        let Obj _ _ (WeakObj plnWkRef mdlWkVar) = obj
+        let ((_, plnWkRef), (_, mdlWkVar)) = obj
             wid' = do
                 -- only run if 'RerenderRequired'
                 plnRef <- maybeIO $ deRefWeak plnWkRef
@@ -363,7 +362,7 @@ execMkObj executor wid logName' s = do
         pure (obj, prerndr)
 
     -- Create callbacks
-    let plnWkRef = planWeakRef $ weakObj obj
+    let ((planRef, plnWkRef), _) = obj
         -- onXXXX :: MonadIO m => c -> m ()
         onConstruct = instruct . untag' @"Constructor"
         onDestruct c = do
@@ -380,7 +379,7 @@ execMkObj executor wid logName' s = do
     renderedCb <- liftIO . J.syncCallback J.ContinueAsync $ onRenderedCb plnWkRef
 
     -- update the plan to include the real WidgetCallbacks and prerender functon
-    liftIO $ atomicModifyIORef_' (planRef obj) $ \pln ->
+    liftIO $ atomicModifyIORef_' planRef $ \pln ->
         (pln
             { widgetCallbacks = WidgetCallbacks renderCb refCb renderedCb
             -- ^ when rerendering, don't do anything during onConstruction calls
@@ -458,7 +457,7 @@ execReadObj ::
     ( AlternativeIO m
     )
     => Weak (IORef Plan) -> Obj s -> m s
-execReadObj thisPlnWk (Obj otherPlnRef otherMdlVar (WeakObj otherPlnWk _)) = do
+execReadObj thisPlnWk ((otherPlnRef, otherPlnWk), (otherMdlVar, _)) = do
     s <- liftIO $ readMVar otherMdlVar
     thisPlnRef <- maybeIO $ deRefWeak thisPlnWk
     thisPln <- liftIO $ readIORef thisPlnRef

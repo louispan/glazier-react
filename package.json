@@ -1,0 +1,12 @@
+{
+  "name": "glazier-react",
+  "version": "1.0.0",
+  "private": true,
+  "license": "BSD-3-Clause",
+  "description": "This npm module used just for specify node dependencies, since ghcjs code is compiled all.js",
+  "files": [],
+  "repository": "github:louispan/glazier-react",
+  "dependencies": {
+    "javascript-extras": "louispan/javascript-extras"
+  }
+}

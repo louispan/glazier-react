@@ -39,40 +39,40 @@ import qualified JavaScript.Extras as JE
 import System.Mem.Weak
 
 type AskConstructor c m = MonadObserver (Tagged "Constructor" c) m
-askConstructor :: AskConstructor c m => m (c -> m ())
+askConstructor :: forall c m. AskConstructor c m => m (c -> m ())
 askConstructor = (. Tagged @"Constructor") <$> askObserver
+
+type AskDestructor c m = MonadObserver (Tagged "Destructor" c) m
+askDestructor :: forall c m. AskDestructor c m => m (c -> m ())
+askDestructor = (. Tagged @"Destructor") <$> askObserver
+
+type AskRendered c m = MonadObserver (Tagged "Rendered" c) m
+askRendered :: forall c m. AskRendered c m => m (c -> m ())
+askRendered = (. Tagged @"Rendered") <$> askObserver
 
 -- | Register and execute the given monad at construction time.
 -- The registration of the callback is only performed the construction of the widget.
--- That is, on subsequent rerendesrs, @onConstruction = const $ pure ()@
+-- That is, on subsequent rerendesrs, @initConstructor = const $ pure ()@
 -- Do not expect this function to do anything on subsequent rerenders
 -- so don't use the function conditionally or inside event handling code.
-onConstruction :: (AskConstructor c m, MonadCodify c m) => m () -> m ()
-onConstruction m = do
+initConstructor :: forall c m. (AskConstructor c m, MonadCodify c m) => m () -> m ()
+initConstructor m = do
     f <- askConstructor
     c <- codify' m
     f c
 
-type AskDestructor c m = MonadObserver (Tagged "Destructor" c) m
-askDestructor :: AskDestructor c m => m (c -> m ())
-askDestructor = (. Tagged @"Destructor") <$> askObserver
-
 -- | Register the given monad to be evaluated at destruction time.
--- The same "construction time only registration caveats" apply as in 'onConstruction'.
-onDestruction :: (AskDestructor c m, MonadCodify c m) => m () -> m ()
-onDestruction m = do
+-- The same "construction time only registration caveats" apply as in 'initConstructor'.
+initDestructor :: forall c m. (AskDestructor c m, MonadCodify c m) => m () -> m ()
+initDestructor m = do
     f <- askDestructor
     c <- codify' m
     f c
 
-type AskRendered c m = MonadObserver (Tagged "Rendered" c) m
-askRendered :: AskRendered c m => m (c -> m ())
-askRendered = (. Tagged @"Rendered") <$> askObserver
-
 -- | Register the given monad to be evaluated after every rerender, including the first rerender.
--- The same "construction time only registration caveats" apply as in 'onConstruction'.
-onRendered :: (AskRendered c m, MonadCodify c m) => m () -> m ()
-onRendered m = do
+-- The same "construction time only registration caveats" apply as in 'initConstructor'.
+initRendered :: forall c m. (AskRendered c m, MonadCodify c m) => m () -> m ()
+initRendered m = do
     f <- askRendered
     c <- codify' m
     f c
