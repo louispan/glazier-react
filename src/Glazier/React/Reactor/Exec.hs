@@ -433,20 +433,16 @@ execMutate executor plnWk mdlWk req tick = do
     liftIO $ putMVar mdlVar s'
     executor c
     -- now rerender
+    plnRef <- maybeIO $ deRefWeak plnWk
+    ws <- liftIO $ watchers <$> readIORef plnRef
     case req of
         RerenderNotRequired -> pure ()
-        RerenderRequired -> do
-            plnRef <- maybeIO $ deRefWeak plnWk
-            ls <- liftIO $ watchers <$> readIORef plnRef
-            foldr (\wk b -> markPlanDirty wk *> b) (pure ()) ls
-            markPlanDirty plnWk
+        RerenderRequired -> markPlanDirty plnWk
+    -- also mark watchers are dirty
+    foldr (\wk b -> markPlanDirty wk *> b) (pure ()) ws
 
-execReadObj ::
-    ( AlternativeIO m
-    )
-    => Weak (IORef Plan) -> Obj s -> m s
+execReadObj :: AlternativeIO m => Weak (IORef Plan) -> Obj s -> m s
 execReadObj thisPlnWk (Obj (Ref otherPlnRef otherPlnWk) (Ref otherMdlVar _)) = do
-    s <- liftIO $ readMVar otherMdlVar
     thisPlnRef <- maybeIO $ deRefWeak thisPlnWk
     thisPln <- liftIO $ readIORef thisPlnRef
     otherPln <- liftIO $ readIORef otherPlnRef
@@ -454,7 +450,18 @@ execReadObj thisPlnWk (Obj (Ref otherPlnRef otherPlnWk) (Ref otherMdlVar _)) = d
         otherId = reactId otherPln
     liftIO $ atomicModifyIORef_' otherPlnRef (_watchers.at thisId .~ Just thisPlnWk)
     liftIO $ atomicModifyIORef_' thisPlnRef (_notifiers.at otherId .~ Just otherPlnWk)
-    pure s
+    -- finally we can read the model
+    liftIO $ readMVar otherMdlVar
+
+execUnreadObj :: AlternativeIO m => Weak (IORef Plan) -> Obj s -> m ()
+execUnreadObj thisPlnWk (Obj (Ref otherPlnRef otherPlnWk) _) = do
+    thisPlnRef <- maybeIO $ deRefWeak thisPlnWk
+    thisPln <- liftIO $ readIORef thisPlnRef
+    otherPln <- liftIO $ readIORef otherPlnRef
+    let thisId = reactId thisPln
+        otherId = reactId otherPln
+    liftIO $ atomicModifyIORef_' otherPlnRef (_watchers.at thisId .~ Nothing)
+    liftIO $ atomicModifyIORef_' thisPlnRef (_notifiers.at otherId .~ Nothing)
 
 execMkHandler :: (NFData a, AlternativeIO m, MonadUnliftIO m)
         => (c -> m ())

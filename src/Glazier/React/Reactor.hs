@@ -119,12 +119,16 @@ data Reactor c where
     MkObj :: Widget s c() -> LogName -> ModelVar s -> (Obj s -> c) -> Reactor c
 
     -- | Reads from an 'Obj', also registering this as a listener
-    -- so this will get rerendered whenever the 'Obj' is 'mutate'd.
+    -- so this widget will get rerendered whenever the 'Obj' is 'mutate'd.
     ReadObj :: Weak (IORef Plan) -> Obj s -> (s -> c) -> Reactor c
 
-    -- Modifies the model and flags 'RerenderRequired'
-    -- Also notifier any watchers that the model has changes
-    -- so that the watchers can rerender
+    -- | Deregister from reading an 'Obj' so that this widget will *not* get
+    -- rerendered if th 'Obj' is mutated
+    UnreadObj :: Weak (IORef Plan) -> Obj s -> Reactor c
+
+    -- Modifies the model and flags 'RerenderRequired' for this widget.
+    -- Irregardless of 'RerenderRequired', it will notifier any watchers (from 'ReadObj')
+    -- that the model has changed so that the watchers can rerender.
     Mutate :: Weak (IORef Plan) -> Weak (MVar s) -> RerenderRequired -> StateT s IO c -> Reactor c
 
 
@@ -169,11 +173,11 @@ mkModelVar s = liftIO $ do
 -- | Make an initialized 'Obj' for a given meta using the given 'Widget' and 'ModelVar'
 -- Unlike 'unliftMkObj', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
 -- The same 'ModelVar' can be used for different 'mkObj'
-mkObj :: MonadGadget s m => Widget s (Command m) () -> LogName -> ModelVar s -> m (Obj s)
+mkObj :: MonadGadget s m => Widget t (Command m) () -> LogName -> ModelVar t -> m (Obj t)
 mkObj wid logname s = delegatify $ exec' . MkObj wid logname s
 
 -- | This does 'mkModelVar' and 'mkObj' in one step.
-mkObj' :: MonadGadget s m  => Widget s (Command m) () -> LogName -> s -> m (Obj s)
+mkObj' :: MonadGadget s m  => Widget t (Command m) () -> LogName -> t -> m (Obj t)
 mkObj' wid logname s = mkModelVar s >>= mkObj wid logname
 
 -- | Convenient variation of 'mkObj' where the widget is unlifted from the given monad.
@@ -192,7 +196,7 @@ unliftMkObj' m logname s = mkModelVar s >>= unliftMkObj m logname
 
 -- | Reads from an 'Obj', also registering this as a listener
 -- so this will get rerendered whenever the 'Obj' is 'mutate'd.
-readObj :: MonadGadget s m => Obj s -> m s
+readObj :: MonadGadget s m => Obj t -> m t
 readObj obj = do
     this <- askPlanWeakRef
     delegatify $ exec' . ReadObj this obj
@@ -267,8 +271,15 @@ txt f = do
     s <- askModel
     textMarkup $ f s
 
+-- | This orphan instance allows using "blah" is a prop in 'txt'
+-- when using @OverloadedString@ with @ExtendedDefaultRules@
+instance IsString (s -> J.JSString) where
+    fromString = const . J.pack
+
 type Prop s = s -> Maybe J.JSVal
 
+-- | This orphan instance allows using "blah" is a prop in 'lf' and 'bh'
+-- when using @OverloadedString@ with @ExtendedDefaultRules@
 instance IsString (Prop s) where
     fromString = const . Just . JE.toJS
 
