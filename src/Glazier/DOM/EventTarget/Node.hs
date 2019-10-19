@@ -1,7 +1,8 @@
 {-# LANGUAGE CPP #-}
 
 module Glazier.DOM.EventTarget.Node
-    ( Node -- ^ constructor not exported
+    ( -- | constructor not exported
+      Node
     , INode(..)
     ) where
 

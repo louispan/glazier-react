@@ -1,7 +1,8 @@
 {-# LANGUAGE CPP #-}
 
 module Glazier.DOM.EventTarget.Node.Element
-    ( Element -- ^ constructor not exported
+    ( -- | constructor not exported
+      Element
     , IElement(..)
     ) where
 

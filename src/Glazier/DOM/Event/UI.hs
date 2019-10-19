@@ -3,8 +3,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Glazier.DOM.Event.UI
-  ( NativeUIEvent -- ^ constructor not exported
-  , SyntheticUIEvent -- ^ constructor not exported
+  ( -- | constructor not exported
+    NativeUIEvent
+    -- | constructor not exported
+  , SyntheticUIEvent
   , IUIEvent(..)
   )
 where

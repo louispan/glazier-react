@@ -143,11 +143,11 @@ rerenderDirtyPlans :: (AskReactBatch m, AskDirtyPlan m, AlternativeIO m) => m ()
 rerenderDirtyPlans = do
     ref <- untag' @"DirtyPlan" <$> askDirtyPlan
     ds <- liftIO $ atomicModifyIORef' ref $ \ds -> (mempty, ds)
-    liftIO $ foldMap prerndr ds >>= liftIO -- ^ possibly async GHCJS
+    liftIO $ foldMap prerndr ds >>= liftIO -- possibly async GHCJS
     -- by this time, there is a possibilty that shms were removed,
     -- only only batch shms that are still valid
     btch <- askReactBatch
-    liftIO $ foldMap (batchWid btch) ds >>= liftIO -- ^ possibly async GHCJS
+    liftIO $ foldMap (batchWid btch) ds >>= liftIO -- possibly async GHCJS
     -- now run the batch tell react to use the prerendered frames
     liftIO $ runReactBatch btch
   where
@@ -284,16 +284,16 @@ execMkObj executor wid logName' (mdlVar, mdlWkVar) = do
                 logName'
                 logLevel'
                 logDepth'
-                Nothing -- ^ himRef
-                J.nullRef -- ^ prerendered, null for now
-                mempty -- ^ prerender
-                RerenderRequired -- ^ prerendered is null
-                mempty -- ^ listeners
-                mempty -- ^ notifiers
-                mempty -- ^ rendered
-                mempty -- ^ destructor
-                mempty -- ^ createdHandlers
-                mempty -- ^ createdCallbacks
+                Nothing -- widgetRef
+                J.nullRef -- prerendered, null for now
+                mempty -- prerender
+                RerenderRequired -- prerendered is null
+                mempty -- listeners
+                mempty -- notifiers
+                mempty -- rendered
+                mempty -- destructor
+                mempty -- createdHandlers
+                mempty -- createdCallbacks
                 (WidgetCallbacks
                     (J.Callback J.nullRef)
                     (J.Callback J.nullRef)
@@ -379,7 +379,7 @@ execMkObj executor wid logName' (mdlVar, mdlWkVar) = do
     liftIO $ atomicModifyIORef_' planRef $ \pln ->
         (pln
             { widgetCallbacks = WidgetCallbacks renderCb refCb renderedCb
-            -- ^ when rerendering, don't do anything during onConstruction calls
+            -- when rerendering, don't do anything during onConstruction calls
             , prerender = prerndr (const $ pure ()) (const $ pure ()) (const $ pure ())
             })
 

@@ -1,7 +1,8 @@
 {-# LANGUAGE CPP #-}
 
 module Glazier.DOM.EventTarget.Node.Document
-    ( Document -- ^ constructor not exported
+    ( -- | constructor not exported
+      Document
     , IDocument(..)
     , globalDocument
     ) where

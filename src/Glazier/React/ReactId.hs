@@ -1,5 +1,6 @@
 module Glazier.React.ReactId
-( ReactId -- ^ constructor not exported
+( -- | constructor not exported
+  ReactId
 ) where
 
 import Glazier.React.ReactId.Internal

@@ -3,8 +3,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Glazier.DOM.Event.UI.Keyboard
-  ( NativeKeyboardEvent -- ^ constructor not exported
-  , SyntheticKeyboardEvent -- ^ constructor not exported
+  ( -- | constructor not exported
+    NativeKeyboardEvent
+    -- | constructor not exported
+  , SyntheticKeyboardEvent
   , IKeyboardEvent(..)
   , ICommonKeyboardEvent(..)
   )

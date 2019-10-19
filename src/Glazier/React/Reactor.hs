@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE ConstraintKinds #-}
@@ -53,8 +54,8 @@ type ModelVar s = (MVar s, Weak (MVar s))
 type Obj s = (PlanRef, ModelVar s)
 
 type CmdReactor c =
-    ( Cmd' [] c -- ^ required by 'command_'
-    , Cmd' IO c -- ^ required by 'MonadCodify' for @ProgramT IO@
+    ( Cmd' [] c -- required by 'command_'
+    , Cmd' IO c -- required by 'MonadCodify' for @ProgramT IO@
     , Cmd' Reactor c
     , Cmd (LogLine J.JSString) c
     )
@@ -266,15 +267,15 @@ mkListener f = do
 ----------------------------------------------------------------------------------
 
 -- | write some text from the model.
-strTxt :: MonadWidget s m => (s -> J.JSString) -> m ()
-strTxt f = do
+txt :: MonadWidget s m => (s -> J.JSString) -> m ()
+txt f = do
     s <- askModel
     textMarkup $ f s
 
 type Prop s = s -> Maybe J.JSVal
 
-strProp :: J.JSString -> Prop s
-strProp = const . Just . JE.toJS
+instance IsString (Prop s) where
+    fromString = const . Just . JE.toJS
 
 -- | Creates a JE.JSRep single string for "className" property from a list of (JSString, Bool)
 -- Idea from https://github.com/JedWatson/classnames

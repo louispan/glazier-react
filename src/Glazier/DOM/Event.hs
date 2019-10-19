@@ -1,8 +1,10 @@
 {-# LANGUAGE CPP #-}
 
 module Glazier.DOM.Event
-    ( NativeEvent  -- ^ constructor is not exported
-    , SyntheticEvent -- ^ constructor is not exported
+    ( -- | constructor is not exported
+      NativeEvent
+    -- | constructor is not exported
+    , SyntheticEvent
     , IEvent(..)
     , ISyntheticEvent(..)
     )

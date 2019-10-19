@@ -1,7 +1,8 @@
 {-# LANGUAGE CPP #-}
 
 module Glazier.DOM.EventTarget.Node.Element.HTML
-    ( HTMLElement -- ^ constructor not exported
+    ( -- | constructor not exported
+      HTMLElement
     , IHTMLElement(..)
     ) where
 

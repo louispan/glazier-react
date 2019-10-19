@@ -1,7 +1,8 @@
 {-# LANGUAGE CPP #-}
 
 module Glazier.DOM.EventTarget.Window
-    ( Window -- ^ constructor not exported
+    ( -- | constructor not exported
+      Window
     , IWindow(..)
     , globalWindow
     ) where

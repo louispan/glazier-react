@@ -3,9 +3,9 @@
 
 -- | https://developer.mozilla.org/en-US/docs/Web/API/EventTarget
 module Glazier.DOM.EventTarget
-    ( EventTarget -- ^ constructor is not exported
+    ( -- | constructor is not exported
+      EventTarget
     , IEventTarget(..)
-    -- , listenEventTarget
     )
     where
 

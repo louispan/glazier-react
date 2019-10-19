@@ -3,8 +3,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Glazier.DOM.Event.UI.Mouse
-  ( NativeMouseEvent -- ^ constructor not exported
-  , SyntheticMouseEvent -- ^ constructor not exported
+  ( -- | constructor not exported
+    NativeMouseEvent
+    -- | constructor not exported
+  , SyntheticMouseEvent
   , IMouseEvent(..)
   )
 where

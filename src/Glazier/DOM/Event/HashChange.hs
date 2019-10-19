@@ -3,7 +3,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Glazier.DOM.Event.HashChange
-  ( HashChangeEvent -- ^ constructor not exported
+  ( -- | constructor not exported
+    HashChangeEvent
   , IHashChangeEvent(..)
   )
 where
