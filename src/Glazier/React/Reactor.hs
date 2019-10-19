@@ -62,23 +62,23 @@ type CmdReactor c =
 -- and can that can be safely turned into a 'Handler'
 -- and used in event handling code.
 -- It is an instance of 'Alternative' and 'Also' so it can be combined.
-type MonadGadget' c m = (HasCallStack, Cmd' [] c, CmdReactor c
-        , MonadLogger J.JSString c m, AskLogName m, AskReactPath m
+type MonadGadget' m = (HasCallStack, Cmd' [] (Command m), CmdReactor (Command m)
+        , MonadLogger J.JSString m, AskLogName m, AskReactPath m
         , AskPlanWeakRef m
         , AlternativeIO m, Also () m
         )
 
 -- | A 'MonadGadget' with an addition type @s@ parameter for modifying the model
-type MonadGadget s c m = (MonadGadget' c m, AskModelWeakVar s m)
+type MonadGadget s m = (MonadGadget' m, AskModelWeakVar s m)
 
 -- A 'MonadGadget' that additionally have access to 'onConstruction', 'onDestruction', 'onRendered',
 -- can generate 'Markup' and so should not be be for event handling, sice those
 -- additional effects are ignored inside event handling.
-type MonadWidget' c m = (MonadGadget' c m, PutMarkup m, PutReactPath m
-        , AskConstructor c m, AskDestructor c m, AskRendered c m)
+type MonadWidget' m = (MonadGadget' m, PutMarkup m, PutReactPath m
+        , AskConstructor m, AskDestructor m, AskRendered m)
 
 -- A 'MonadWidget'' with an addition type @s@ parameter for displaying the model
-type MonadWidget s c m = (MonadWidget' c m, AskModelWeakVar s m, AskModel s m)
+type MonadWidget s m = (MonadWidget' m, AskModelWeakVar s m, AskModel s m)
 
 -- | Describes the effects required by 'Widget' to manipulate 'Obj'.
 -- 'Reactor' is not a functor because of the @Widget c@ in 'MkObj' which
@@ -138,7 +138,7 @@ logPrefix = do
 --     logLnJS lvl (showIO a)
 --     go a
 
-logJS :: (HasCallStack, MonadGadget' c m)
+logJS :: (HasCallStack, MonadGadget' m)
     => LogLevel -> IO J.JSString
     -> m ()
 logJS lvl msg = withFrozenCallStack $ do
@@ -161,43 +161,43 @@ mkModelVar s = liftIO $ do
 -- | Make an initialized 'Obj' for a given meta using the given 'Widget' and 'ModelVar'
 -- Unlike 'unliftMkObj', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
 -- The same 'ModelVar' can be used for different 'mkObj'
-mkObj :: MonadGadget' c m  => Widget s c () -> LogName -> ModelVar s -> m (Obj s)
+mkObj :: MonadGadget' m  => Widget s (Command m) () -> LogName -> ModelVar s -> m (Obj s)
 mkObj wid logname s = delegatify $ exec' . MkObj wid logname s
 
 -- | This does 'mkModelVar' and 'mkObj' in one step.
-mkObj' :: MonadGadget' c m  => Widget s c () -> LogName -> s -> m (Obj s)
+mkObj' :: MonadGadget' m  => Widget s (Command m) () -> LogName -> s -> m (Obj s)
 mkObj' wid logname s = mkModelVar s >>= mkObj wid logname
 
 -- | Convenient variation of 'mkObj' where the widget is unlifted from the given monad.
 -- This is useful for transformer stacks that require addition MonadReader-like effects.
 -- The same 'ModelVar' can be used for different 'unliftMkObj'
-unliftMkObj :: (MonadUnliftWidget s c m, MonadGadget' c m)
+unliftMkObj :: (MonadUnliftWidget s m, MonadGadget' m)
     => m () -> LogName -> ModelVar s -> m (Obj s)
 unliftMkObj m logname s = do
     u <- askUnliftWidget
     mkObj (unliftWidget u m) logname s
 
 -- | 'mkModelVar' and 'unliftMkObj' in one step
-unliftMkObj' :: (MonadUnliftWidget s c m, MonadGadget' c m)
+unliftMkObj' :: (MonadUnliftWidget s m, MonadGadget' m)
     => m () -> LogName -> s -> m (Obj s)
 unliftMkObj' m logname s = mkModelVar s >>= unliftMkObj m logname
 
 -- | Reads from an 'Obj', also registering this as a listener
 -- so this will get rerendered whenever the 'Obj' is 'mutate'd.
-readObj :: MonadGadget' c m => Obj s -> m s
+readObj :: MonadGadget' m => Obj s -> m s
 readObj obj = do
     this <- askPlanWeakRef
     delegatify $ exec' . ReadObj this obj
 
 -- | 'mutate' with 'RerenderRequired'
-mutate' :: (MonadGadget s c m) => StateT s IO a -> m a
+mutate' :: (MonadGadget s m) => StateT s IO a -> m a
 mutate' = mutate RerenderRequired
 
 -- | Mutates the Model for the current widget.
 -- Expose 'Rerender' for "uncontrolled (by react)" components like <input>
 -- which doesn't necessarily require a rerender if the model changes.
 -- Mutation notifications are always sent.
-mutate :: MonadGadget s c m => RerenderRequired -> StateT s IO a -> m a
+mutate :: MonadGadget s m => RerenderRequired -> StateT s IO a -> m a
 mutate r m = do
     mdl <- askModelWeakVar
     this <- askPlanWeakRef
@@ -207,7 +207,7 @@ mutate r m = do
 -- Multiple preprocess must be run for the same event before any of the postprocess,
 -- due to the way ghcjs sync and async threads interact with React js.
 mkHandler ::
-    (NFData a, MonadGadget' c m)
+    (NFData a, MonadGadget' m)
     => (J.JSVal -> MaybeT IO a)
     -> (a -> m ())
     -> m Handler -- (preprocess, postprocess)
@@ -220,7 +220,7 @@ handleSyntheticEvent :: Monad m => (SyntheticEvent -> MaybeT m a) -> (J.JSVal ->
 handleSyntheticEvent g j = MaybeT (pure $ JE.fromJS j) >>= g
 
 mkSyntheticHandler ::
-    (NFData a, MonadGadget' c m)
+    (NFData a, MonadGadget' m)
     => (SyntheticEvent -> MaybeT IO a)
     -> (a -> m ())
     -> m Handler
@@ -228,7 +228,7 @@ mkSyntheticHandler goStrict goLazy = mkHandler (handleSyntheticEvent goStrict) g
 
 -- | This convert 'Handler' into a ghcjs 'Callback'
 mkListener ::
-    (MonadGadget' c m)
+    (MonadGadget' m)
     => Handler
     -> m Listener
 mkListener f = do
@@ -254,7 +254,7 @@ mkListener f = do
 ----------------------------------------------------------------------------------
 
 -- | write some text from the model.
-strTxt :: MonadWidget s c m => (s -> J.JSString) -> m ()
+strTxt :: MonadWidget s m => (s -> J.JSString) -> m ()
 strTxt f = do
     s <- askModel
     textMarkup $ f s
@@ -278,7 +278,7 @@ classNames xs s =
     . filter (fromMaybe False . snd)
     $ (fmap ($ s)) <$> xs
 
-lf :: (Component j, MonadWidget s c m)
+lf :: (Component j, MonadWidget s m)
     => j -- ^ "input" or a @ReactComponent@
     -> DL.DList (J.JSString, m Handler)
     -> DL.DList (J.JSString, Prop s)
@@ -287,7 +287,7 @@ lf j gads props = do
     s <- askModel
     lf' j gads ((fmap (fromMaybe J.nullRef . ($ s))) <$> props)
 
-lf' :: (Component j, MonadWidget' c m)
+lf' :: (Component j, MonadWidget' m)
     => j -- ^ "input" or a @ReactComponent@
     -> DL.DList (J.JSString, m Handler)
     -> DL.DList (J.JSString, J.JSVal)
@@ -300,7 +300,7 @@ lf' j gads props = do
     leafMarkup (JE.toJS j)
         (props <> (DL.fromList . M.toList $ JE.toJS <$> gads'''))
 
-bh :: (Component j, MonadWidget s c m)
+bh :: (Component j, MonadWidget s m)
     => j-- ^ eg "div" or a @ReactComponent@
     -> DL.DList (J.JSString, m Handler)
     -> DL.DList (J.JSString, Prop s)
@@ -310,7 +310,7 @@ bh j gads props child = do
     s <- askModel
     bh' j gads ((fmap (fromMaybe J.nullRef . ($ s))) <$> props) child
 
-bh' :: (Component j, MonadWidget' c m)
+bh' :: (Component j, MonadWidget' m)
     => j-- ^ eg "div" or a @ReactComponent@
     -> DL.DList (J.JSString, m Handler)
     -> DL.DList (J.JSString, J.JSVal)

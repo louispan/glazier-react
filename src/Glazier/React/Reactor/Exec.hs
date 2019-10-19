@@ -300,7 +300,7 @@ execMkObj executor wid logName' (mdlVar, mdlWkVar) = do
                     (J.Callback J.nullRef))
 
         -- scoped block to return just obj to avoid accidently using the strong refs
-        obj <- liftIO $ do
+        (plnRef, plnWkRef) <- liftIO $ do
             plnRef <- newIORef newPlan
             -- mdlVar <- newMVar s
             -- Create automatic garbage collection of the callbacks
@@ -312,16 +312,13 @@ execMkObj executor wid logName' (mdlVar, mdlWkVar) = do
                 destructor pln
                 releasePlanCallbacks pln
             -- mdlWkVar <- mkWeakMVar mdlVar (pure ())
-
-
-            pure ((plnRef, plnWkRef), (mdlVar, mdlWkVar))
+            pure (plnRef, plnWkRef)
 
         -- Now we have enough to run the widget
-        let ((_, plnWkRef), (_, mdlWkVar)) = obj
-            wid' = do
+        let wid' = do
                 -- only run if 'RerenderRequired'
-                plnRef <- maybeIO $ deRefWeak plnWkRef
-                req <- liftIO $ atomicModifyIORef' plnRef $ \pln ->
+                plnRef' <- maybeIO $ deRefWeak plnWkRef
+                req <- liftIO $ atomicModifyIORef' plnRef' $ \pln ->
                     swap (pln & _rerenderRequired <<.~ RerenderNotRequired)
 
                 case req of
@@ -359,7 +356,7 @@ execMkObj executor wid logName' (mdlVar, mdlWkVar) = do
             prerndr onRendrd onDestruct onConstruct = do
                 c <- (commands . DL.toList) <$> (mkRerenderCmds onRendrd onDestruct onConstruct)
                 u $ executor c
-        pure (obj, prerndr)
+        pure (((plnRef, plnWkRef), (mdlVar, mdlWkVar)), prerndr)
 
     -- Create callbacks
     let ((planRef, plnWkRef), _) = obj

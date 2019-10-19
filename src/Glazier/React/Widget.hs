@@ -38,24 +38,24 @@ import Glazier.React.ReactPath
 import qualified JavaScript.Extras as JE
 import System.Mem.Weak
 
-type AskConstructor c m = MonadObserver (Tagged "Constructor" c) m
-askConstructor :: forall c m. AskConstructor c m => m (c -> m ())
-askConstructor = (. Tagged @"Constructor") <$> askObserver
+type AskConstructor m = MonadObserver' (Tagged "Constructor" (Command m)) m
+askConstructor :: forall m. AskConstructor m => m (Command m -> m ())
+askConstructor = (. Tagged @"Constructor") <$> askObserver @(Tagged "Constructor" (Command m)) Proxy
 
-type AskDestructor c m = MonadObserver (Tagged "Destructor" c) m
-askDestructor :: forall c m. AskDestructor c m => m (c -> m ())
-askDestructor = (. Tagged @"Destructor") <$> askObserver
+type AskDestructor m = MonadObserver' (Tagged "Destructor" (Command m)) m
+askDestructor :: forall m. AskDestructor m => m (Command m -> m ())
+askDestructor = (. Tagged @"Destructor") <$> askObserver @(Tagged "Destructor" (Command m)) Proxy
 
-type AskRendered c m = MonadObserver (Tagged "Rendered" c) m
-askRendered :: forall c m. AskRendered c m => m (c -> m ())
-askRendered = (. Tagged @"Rendered") <$> askObserver
+type AskRendered m = MonadObserver' (Tagged "Rendered" (Command m)) m
+askRendered :: forall m. AskRendered m => m (Command m -> m ())
+askRendered = (. Tagged @"Rendered") <$> askObserver @(Tagged "Rendered" (Command m)) Proxy
 
 -- | Register and execute the given monad at construction time.
 -- The registration of the callback is only performed the construction of the widget.
 -- That is, on subsequent rerendesrs, @initConstructor = const $ pure ()@
 -- Do not expect this function to do anything on subsequent rerenders
 -- so don't use the function conditionally or inside event handling code.
-initConstructor :: forall c m. (AskConstructor c m, MonadCodify c m) => m () -> m ()
+initConstructor :: forall m. (AskConstructor m, MonadCodify m) => m () -> m ()
 initConstructor m = do
     f <- askConstructor
     c <- codify' m
@@ -63,7 +63,7 @@ initConstructor m = do
 
 -- | Register the given monad to be evaluated at destruction time.
 -- The same "construction time only registration caveats" apply as in 'initConstructor'.
-initDestructor :: forall c m. (AskDestructor c m, MonadCodify c m) => m () -> m ()
+initDestructor :: forall m. (AskDestructor m, MonadCodify m) => m () -> m ()
 initDestructor m = do
     f <- askDestructor
     c <- codify' m
@@ -71,7 +71,7 @@ initDestructor m = do
 
 -- | Register the given monad to be evaluated after every rerender, including the first rerender.
 -- The same "construction time only registration caveats" apply as in 'initConstructor'.
-initRendered :: forall c m. (AskRendered c m, MonadCodify c m) => m () -> m ()
+initRendered :: forall m. (AskRendered m, MonadCodify m) => m () -> m ()
 initRendered m = do
     f <- askRendered
     c <- codify' m
@@ -100,21 +100,21 @@ type Widget s c =
 
 -- | ALlow additional user ReaderT and IdentityT stack on top of Widget c s
 -- Like 'Control.Monad.IO.Unlift.UnliftIO', this newtype wrapper prevents impredicative types.
-newtype UniftWidget s c m = UniftWidget { unliftWidget :: forall a. m a -> Widget s c a }
+newtype UniftWidget s m = UniftWidget { unliftWidget :: forall a. m a -> Widget s (Command m) a }
 
 -- | Similar to 'Control.Monad.IO.Unlift.MonadUnliftIO', except we want to unlift a @Widget (Gizmo c s) a@.
 -- This limits transformers stack to 'ReaderT' and 'IdentityT' on top of @Gizmo c s m@
-class MonadUnliftWidget s c m | m -> s c where
-    askUnliftWidget :: m (UniftWidget s c m)
+class MonadUnliftWidget s m | m -> s where
+    askUnliftWidget :: m (UniftWidget s m)
 
-instance MonadUnliftWidget s c (Widget s c) where
+instance MonadUnliftWidget s (Widget s c) where
     askUnliftWidget = pure (UniftWidget id)
 
-instance (Functor m, MonadUnliftWidget s c m) => MonadUnliftWidget s c (ReaderT r m) where
+instance (Functor m, MonadUnliftWidget s m) => MonadUnliftWidget s (ReaderT r m) where
     askUnliftWidget = ReaderT $ \r ->
         (\u -> UniftWidget (unliftWidget u . flip runReaderT r)) <$> askUnliftWidget
 
-instance (Functor m, MonadUnliftWidget s c m) => MonadUnliftWidget s c (IdentityT m) where
+instance (Functor m, MonadUnliftWidget s m) => MonadUnliftWidget s (IdentityT m) where
     askUnliftWidget = IdentityT $
         (\u -> UniftWidget (unliftWidget u . runIdentityT)) <$> askUnliftWidget
 
