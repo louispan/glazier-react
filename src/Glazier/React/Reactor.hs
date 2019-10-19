@@ -53,7 +53,8 @@ type ModelVar s = (MVar s, Weak (MVar s))
 type Obj s = (PlanRef, ModelVar s)
 
 type CmdReactor c =
-    ( Cmd' [] c -- required by 'command_'
+    ( Cmd' [] c -- ^ required by 'command_'
+    , Cmd' IO c -- ^ required by 'MonadCodify' for @ProgramT IO@
     , Cmd' Reactor c
     , Cmd (LogLine J.JSString) c
     )
@@ -62,23 +63,34 @@ type CmdReactor c =
 -- and can that can be safely turned into a 'Handler'
 -- and used in event handling code.
 -- It is an instance of 'Alternative' and 'Also' so it can be combined.
-type MonadGadget' m = (HasCallStack, Cmd' [] (Command m), CmdReactor (Command m)
-        , MonadLogger J.JSString m, AskLogName m, AskReactPath m
-        , AskPlanWeakRef m
-        , AlternativeIO m, Also () m
-        )
+class (CmdReactor (Command m)
+    , AlternativeIO m, Also () m
+    , MonadLogger J.JSString m, AskLogName m, AskReactPath m
+    , AskPlanWeakRef m, AskModel s m, AskModelWeakVar s m) => MonadGadget s m
 
--- | A 'MonadGadget' with an addition type @s@ parameter for modifying the model
-type MonadGadget s m = (MonadGadget' m, AskModelWeakVar s m)
+instance {-# OVERLAPPABLE #-} (Monad (t m), MonadTrans t, MonadGadget s m
+    , Command (t m) ~ Command m
+    , AlternativeIO (t m), Also () (t m)
+    , MonadCommand (t m)
+    ) => MonadGadget s (t m)
 
--- A 'MonadGadget' that additionally have access to 'onConstruction', 'onDestruction', 'onRendered',
+instance {-# OVERLAPPABLE #-} (CmdReactor c, c ~ Command (Widget s c)) => MonadGadget s (Widget s c)
+
+-- A 'MonadWidget' is a 'MonadGadget' that additionally have access to
+-- 'initConstructor', 'initDestructor', 'initRendered',
 -- can generate 'Markup' and so should not be be for event handling, sice those
 -- additional effects are ignored inside event handling.
-type MonadWidget' m = (MonadGadget' m, PutMarkup m, PutReactPath m
-        , AskConstructor m, AskDestructor m, AskRendered m)
+class (CmdReactor (Command m)
+    , MonadGadget s m, PutMarkup m, PutReactPath m
+    , AskConstructor m, AskDestructor m, AskRendered m) => MonadWidget s m
 
--- A 'MonadWidget'' with an addition type @s@ parameter for displaying the model
-type MonadWidget s m = (MonadWidget' m, AskModelWeakVar s m, AskModel s m)
+instance {-# OVERLAPPABLE #-} (Monad (t m), MonadTrans t, MonadWidget s m
+    , Command (t m) ~ Command m
+    , AlternativeIO (t m), Also () (t m)
+    , MonadCommand (t m)
+    ) => MonadWidget s (t m)
+
+instance {-# OVERLAPPABLE #-} (CmdReactor c, c ~ Command (Widget s c)) => MonadWidget s (Widget s c)
 
 -- | Describes the effects required by 'Widget' to manipulate 'Obj'.
 -- 'Reactor' is not a functor because of the @Widget c@ in 'MkObj' which
@@ -127,7 +139,7 @@ data Reactor c where
 --     showsPrecIO p (ReadObj this _ _) = showParenIO (p >= 11) $ (showStr "ReadObj " .) <$> (showsIO this)
 --     showsPrecIO p (Mutate this _ req _) = showParenIO (p >= 11) $ (\x -> (showStr "Mutate ") . x . (showFromStr " ") . (showsStr req)) <$> (showsIO this)
 
-logPrefix :: AskReactPath m => m J.JSString
+logPrefix :: MonadGadget s m => m J.JSString
 logPrefix = do
     ps <- getReactPath <$> askReactPath
     let xs = DL.intersperse "." $ (\(n, i) -> n <> (fromString $ show i)) <$> ps
@@ -138,7 +150,7 @@ logPrefix = do
 --     logLnJS lvl (showIO a)
 --     go a
 
-logJS :: (HasCallStack, MonadGadget' m)
+logJS :: (HasCallStack, MonadGadget s m)
     => LogLevel -> IO J.JSString
     -> m ()
 logJS lvl msg = withFrozenCallStack $ do
@@ -161,30 +173,30 @@ mkModelVar s = liftIO $ do
 -- | Make an initialized 'Obj' for a given meta using the given 'Widget' and 'ModelVar'
 -- Unlike 'unliftMkObj', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
 -- The same 'ModelVar' can be used for different 'mkObj'
-mkObj :: MonadGadget' m  => Widget s (Command m) () -> LogName -> ModelVar s -> m (Obj s)
+mkObj :: MonadGadget s m => Widget s (Command m) () -> LogName -> ModelVar s -> m (Obj s)
 mkObj wid logname s = delegatify $ exec' . MkObj wid logname s
 
 -- | This does 'mkModelVar' and 'mkObj' in one step.
-mkObj' :: MonadGadget' m  => Widget s (Command m) () -> LogName -> s -> m (Obj s)
+mkObj' :: MonadGadget s m  => Widget s (Command m) () -> LogName -> s -> m (Obj s)
 mkObj' wid logname s = mkModelVar s >>= mkObj wid logname
 
 -- | Convenient variation of 'mkObj' where the widget is unlifted from the given monad.
 -- This is useful for transformer stacks that require addition MonadReader-like effects.
 -- The same 'ModelVar' can be used for different 'unliftMkObj'
-unliftMkObj :: (MonadUnliftWidget s m, MonadGadget' m)
+unliftMkObj :: (MonadUnliftWidget s m, MonadGadget s m)
     => m () -> LogName -> ModelVar s -> m (Obj s)
 unliftMkObj m logname s = do
     u <- askUnliftWidget
     mkObj (unliftWidget u m) logname s
 
 -- | 'mkModelVar' and 'unliftMkObj' in one step
-unliftMkObj' :: (MonadUnliftWidget s m, MonadGadget' m)
+unliftMkObj' :: (MonadUnliftWidget s m, MonadGadget s m)
     => m () -> LogName -> s -> m (Obj s)
 unliftMkObj' m logname s = mkModelVar s >>= unliftMkObj m logname
 
 -- | Reads from an 'Obj', also registering this as a listener
 -- so this will get rerendered whenever the 'Obj' is 'mutate'd.
-readObj :: MonadGadget' m => Obj s -> m s
+readObj :: MonadGadget s m => Obj s -> m s
 readObj obj = do
     this <- askPlanWeakRef
     delegatify $ exec' . ReadObj this obj
@@ -207,7 +219,7 @@ mutate r m = do
 -- Multiple preprocess must be run for the same event before any of the postprocess,
 -- due to the way ghcjs sync and async threads interact with React js.
 mkHandler ::
-    (NFData a, MonadGadget' m)
+    (NFData a, MonadGadget s m)
     => (J.JSVal -> MaybeT IO a)
     -> (a -> m ())
     -> m Handler -- (preprocess, postprocess)
@@ -220,7 +232,7 @@ handleSyntheticEvent :: Monad m => (SyntheticEvent -> MaybeT m a) -> (J.JSVal ->
 handleSyntheticEvent g j = MaybeT (pure $ JE.fromJS j) >>= g
 
 mkSyntheticHandler ::
-    (NFData a, MonadGadget' m)
+    (NFData a, MonadGadget s m)
     => (SyntheticEvent -> MaybeT IO a)
     -> (a -> m ())
     -> m Handler
@@ -228,7 +240,7 @@ mkSyntheticHandler goStrict goLazy = mkHandler (handleSyntheticEvent goStrict) g
 
 -- | This convert 'Handler' into a ghcjs 'Callback'
 mkListener ::
-    (MonadGadget' m)
+    (MonadGadget s m)
     => Handler
     -> m Listener
 mkListener f = do
@@ -264,9 +276,6 @@ type Prop s = s -> Maybe J.JSVal
 strProp :: J.JSString -> Prop s
 strProp = const . Just . JE.toJS
 
-strProp' :: J.JSString -> J.JSVal
-strProp' = JE.toJS
-
 -- | Creates a JE.JSRep single string for "className" property from a list of (JSString, Bool)
 -- Idea from https://github.com/JedWatson/classnames
 classNames :: [(J.JSString, s -> Maybe Bool)] -> Prop s
@@ -285,20 +294,13 @@ lf :: (Component j, MonadWidget s m)
     -> m ()
 lf j gads props = do
     s <- askModel
-    lf' j gads ((fmap (fromMaybe J.nullRef . ($ s))) <$> props)
-
-lf' :: (Component j, MonadWidget' m)
-    => j -- ^ "input" or a @ReactComponent@
-    -> DL.DList (J.JSString, m Handler)
-    -> DL.DList (J.JSString, J.JSVal)
-    -> m ()
-lf' j gads props = do
+    let props' = (fmap (fromMaybe J.nullRef . ($ s))) <$> props
     putNextReactPath (componentName j)
     gads' <- traverse sequenceA (DL.toList gads) -- :: m [(JString, Handler)]
     let gads'' = M.fromListWith (<>) gads' -- combine same keys together
     gads''' <- traverse mkListener gads'' -- convert to JS callback
     leafMarkup (JE.toJS j)
-        (props <> (DL.fromList . M.toList $ JE.toJS <$> gads'''))
+        (props' <> (DL.fromList . M.toList $ JE.toJS <$> gads'''))
 
 bh :: (Component j, MonadWidget s m)
     => j-- ^ eg "div" or a @ReactComponent@
@@ -308,22 +310,14 @@ bh :: (Component j, MonadWidget s m)
     -> m a
 bh j gads props child = do
     s <- askModel
-    bh' j gads ((fmap (fromMaybe J.nullRef . ($ s))) <$> props) child
-
-bh' :: (Component j, MonadWidget' m)
-    => j-- ^ eg "div" or a @ReactComponent@
-    -> DL.DList (J.JSString, m Handler)
-    -> DL.DList (J.JSString, J.JSVal)
-    -> m a
-    -> m a
-bh' j gads props child = do
+    let props' = (fmap (fromMaybe J.nullRef . ($ s))) <$> props
     putNextReactPath (componentName j)
     gads' <- traverse sequenceA (DL.toList gads) -- :: m [(JString, Handler)]
     let gads'' = M.fromListWith (<>) gads' -- combine same keys together
     gads''' <- traverse mkListener gads'' -- convert to JS callback
     putPushReactPath
     a <- branchMarkup (JE.toJS j)
-        (props <> (DL.fromList . M.toList $ JE.toJS <$> gads'''))
+        (props' <> (DL.fromList . M.toList $ JE.toJS <$> gads'''))
         child
     putPopReactPath
     pure a

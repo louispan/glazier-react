@@ -98,6 +98,10 @@ type Widget s c =
     (ProgramT c IO -- 'MonadComand', 'MonadIO'
     ))))))))))
 
+
+askMarkup2 :: Widget s c (DL.DList ReactMarkup)
+askMarkup2 = askMarkup
+
 -- | ALlow additional user ReaderT and IdentityT stack on top of Widget c s
 -- Like 'Control.Monad.IO.Unlift.UnliftIO', this newtype wrapper prevents impredicative types.
 newtype UniftWidget s m = UniftWidget { unliftWidget :: forall a. m a -> Widget s (Command m) a }
@@ -146,17 +150,17 @@ instance (Functor m, MonadUnliftWidget s m) => MonadUnliftWidget s (IdentityT m)
 --     lift $ fmap go $ (`runReaderT` mdl) $ traverse sequenceA ls
 --   where go = JE.toJSRep . J.unwords . fmap fst . filter snd -- . catMaybes
 
-displayPlanWeakRef :: (MonadIO m, PutMarkup m) => Weak (IORef Plan) -> m ()
+displayPlanWeakRef :: (MonadIO m, AskMarkup m, PutMarkup m) => Weak (IORef Plan) -> m ()
 displayPlanWeakRef that = (`evalMaybeT` ()) $ do
     mdlRef <- MaybeT $ liftIO $ deRefWeak that
     displayPlanRef mdlRef
 
-displayPlanRef :: (MonadIO m, PutMarkup m) => IORef Plan -> m ()
+displayPlanRef :: (MonadIO m, AskMarkup m, PutMarkup m) => IORef Plan -> m ()
 displayPlanRef mdlRef = do
     mdl <- liftIO $ readIORef mdlRef
     displayPlan mdl
 
-displayPlan :: PutMarkup m => Plan -> m ()
+displayPlan :: (AskMarkup m, PutMarkup m) => Plan -> m ()
 displayPlan pln = do
     let cbs = widgetCallbacks pln
         renderCb = widgetOnRender cbs
