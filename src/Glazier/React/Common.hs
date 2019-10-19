@@ -6,7 +6,7 @@
 module Glazier.React.Common where
 
 import Control.Concurrent.MVar
-import Control.Monad.Context
+import Control.Monad.Environ
 import Data.Tagged.Extras
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
@@ -33,8 +33,8 @@ data RerenderRequired
 
 type AskModelWeakVar s = MonadAsk (Tagged "Model" (Weak (MVar s)))
 askModelWeakVar :: AskModelWeakVar s m => m (Weak (MVar s))
-askModelWeakVar = (untag' @"Model") <$> askContext
+askModelWeakVar = (untag' @"Model") <$> askEnviron
 
 type AskModel s = MonadAsk (Tagged "Model" s)
 askModel :: AskModel s m => m s
-askModel = (untag' @"Model") <$> askContext
+askModel = (untag' @"Model") <$> askEnviron

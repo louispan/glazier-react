@@ -22,7 +22,7 @@ import Control.Concurrent.STM
 import Control.DeepSeq
 import Control.Lens
 import Control.Lens.Misc
-import Control.Monad.Context
+import Control.Monad.Environ
 import Control.Monad.IO.Unlift
 import Control.Monad.Observer
 import Control.Monad.Reader
@@ -90,7 +90,7 @@ makeLenses_ ''LogConfig
 
 type AskLogConfigRef = MonadAsk (IORef LogConfig)
 askLogConfigRef :: AskLogConfigRef m => m (IORef LogConfig)
-askLogConfigRef = askContext
+askLogConfigRef = askEnviron
 
 -- | returns io actions that will always have latest log state for the logname
 getLogConfig :: (MonadIO m, AskLogConfigRef m)=> LogName -> m (IO (Maybe LogLevel), IO (Maybe (Maybe LogCallStackDepth)))
@@ -120,7 +120,7 @@ getLogConfig logname = do
 
 type AskNextReactIdRef = MonadAsk (IORef (Tagged "NextReactId" ReactId))
 askNextReactIdRef :: AskNextReactIdRef m => m (IORef (Tagged "NextReactId" ReactId))
-askNextReactIdRef = askContext
+askNextReactIdRef = askEnviron
 
 mkReactId :: (MonadIO m, AskNextReactIdRef m) => m ReactId
 mkReactId = do
@@ -133,11 +133,11 @@ mkReactId = do
 
 type AskDirtyPlan = MonadAsk (Tagged "DirtyPlan" (IORef (M.Map ReactId (Weak (IORef Plan)))))
 askDirtyPlan :: AskDirtyPlan m => m (Tagged "DirtyPlan" (IORef (M.Map ReactId (Weak (IORef Plan)))))
-askDirtyPlan = askContext
+askDirtyPlan = askEnviron
 
 type AskReactBatch = MonadAsk ReactBatch
 askReactBatch :: AskReactBatch m => m ReactBatch
-askReactBatch = askContext
+askReactBatch = askEnviron
 
 rerenderDirtyPlans :: (AskReactBatch m, AskDirtyPlan m, AlternativeIO m) => m ()
 rerenderDirtyPlans = do

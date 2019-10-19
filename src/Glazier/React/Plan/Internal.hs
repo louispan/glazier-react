@@ -9,7 +9,7 @@
 module Glazier.React.Plan.Internal where
 
 import Control.Lens.Misc
-import Control.Monad.Context
+import Control.Monad.Environ
 import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
 import Data.Foldable
@@ -105,11 +105,11 @@ instance Show Plan where
 
 type AskPlanWeakRef = MonadAsk (Weak (IORef Plan))
 askPlanWeakRef :: AskPlanWeakRef m => m (Weak (IORef Plan))
-askPlanWeakRef = askContext
+askPlanWeakRef = askEnviron
 
 -- | Get the 'LogLevel' from a 'WeakRef' 'Plan'
 instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Maybe LogLevel) (ReaderT (Weak (IORef Plan)) m) where
-    askContext = do
+    askEnviron = do
         ref <- askPlanWeakRef
         liftIO $ go ref
       where
@@ -121,9 +121,9 @@ instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Maybe LogLevel) (ReaderT (We
 -- | Get the 'LogName' from a 'WeakRef' 'Plan'
 type AskLogName = MonadAsk LogName
 askLogName :: AskLogName m => m LogName
-askLogName = askContext
+askLogName = askEnviron
 instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Tagged "LogName" J.JSString) (ReaderT (Weak (IORef Plan)) m) where
-    askContext = do
+    askEnviron = do
         ref <- askPlanWeakRef
         n <- liftIO $ go ref
         pure $ fromMaybe mempty n
@@ -135,7 +135,7 @@ instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Tagged "LogName" J.JSString)
 
 -- | Get the 'LogCallStackDepth' from a 'WeakRef' 'Plan'
 instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Maybe (Maybe LogCallStackDepth)) (ReaderT (Weak (IORef Plan)) m) where
-    askContext = do
+    askEnviron = do
         ref <- askPlanWeakRef
         liftIO $ go ref
       where

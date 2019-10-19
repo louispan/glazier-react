@@ -8,7 +8,7 @@
 
 module Glazier.React.ReactPath where
 
-import Control.Monad.Context
+import Control.Monad.Environ
 import qualified Data.JSString as J
 import qualified GHC.Generics as G
 import JavaScript.Extras.Aeson.Instances ()
@@ -35,14 +35,14 @@ getReactPath (ReactPath (Just x, xs)) = x : xs
 
 type AskReactPath = MonadAsk ReactPath
 askReactPath :: AskReactPath m => m ReactPath
-askReactPath = askContext
+askReactPath = askEnviron
 
 type PutReactPath = MonadPut ReactPath
 putReactPath :: PutReactPath m => ReactPath -> m ()
-putReactPath = putContext
+putReactPath = putEnviron
 
 modifyReactPath :: PutReactPath m => (ReactPath -> ReactPath) -> m ()
-modifyReactPath = modifyContext
+modifyReactPath = modifyEnviron
 
 -- | create a sibling 'ReactPath'
 nextReactPath :: J.JSString -> ReactPath -> ReactPath

@@ -27,21 +27,21 @@ module Glazier.React.Markup
     , branchMarkup
     ) where
 
-import Control.Monad.Context
+import Control.Monad.Environ
 import qualified Data.DList as DL
 import qualified GHCJS.Types as J
 import qualified Glazier.React.ReactElement as Z
 
 type AskMarkup m = MonadAsk (DL.DList ReactMarkup) m
 askMarkup :: AskMarkup m => m (DL.DList ReactMarkup)
-askMarkup = askContext @(DL.DList ReactMarkup)
+askMarkup = askEnviron @(DL.DList ReactMarkup)
 
 type PutMarkup m = MonadPut (DL.DList ReactMarkup) m
 putMarkup :: PutMarkup m => DL.DList ReactMarkup -> m ()
-putMarkup = putContext
+putMarkup = putEnviron
 
 modifyMarkup :: PutMarkup m => (DL.DList ReactMarkup -> DL.DList ReactMarkup) -> m ()
-modifyMarkup = modifyContext
+modifyMarkup = modifyEnviron
 
 appendMarkup :: PutMarkup m => DL.DList ReactMarkup -> m ()
 appendMarkup a = modifyMarkup (*> a)

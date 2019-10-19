@@ -13,7 +13,7 @@ module Glazier.React
     , module Control.DeepSeq
     , module Control.Monad
     , module Control.Monad.Delegate
-    , module Control.Monad.Context
+    , module Control.Monad.Environ
     , module Control.Monad.Observer
     , module Control.Monad.Reader
     , module Control.Monad.Except
@@ -37,8 +37,8 @@ import Control.Applicative
 import Control.DeepSeq
 import Control.Lens.Misc
 import Control.Monad
-import Control.Monad.Context
 import Control.Monad.Delegate
+import Control.Monad.Environ
 import Control.Monad.Except
 import Control.Monad.Observer
 import Control.Monad.Reader
