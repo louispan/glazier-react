@@ -441,25 +441,24 @@ execMutate executor plnWk mdlWk req tick = do
     -- also mark watchers are dirty
     foldr (\wk b -> markPlanDirty wk *> b) (pure ()) ws
 
-execReadObj :: AlternativeIO m => Weak (IORef Plan) -> Obj s -> m s
-execReadObj thisPlnWk (Obj (Ref otherPlnRef otherPlnWk) (Ref otherMdlVar _)) = do
+execReadObj :: AlternativeIO m => Weak (IORef Plan) -> WeakObj s -> m s
+execReadObj thisPlnWk (WeakObj otherPlnWk otherMdlWk) = do
     thisPlnRef <- maybeIO $ deRefWeak thisPlnWk
-    thisPln <- liftIO $ readIORef thisPlnRef
-    otherPln <- liftIO $ readIORef otherPlnRef
-    let thisId = reactId thisPln
-        otherId = reactId otherPln
+    otherPlnRef <- maybeIO $ deRefWeak otherPlnWk
+    thisId <- liftIO $ reactId <$> readIORef thisPlnRef
+    otherId <- liftIO $ reactId <$> readIORef otherPlnRef
     liftIO $ atomicModifyIORef_' otherPlnRef (_watchers.at thisId .~ Just thisPlnWk)
     liftIO $ atomicModifyIORef_' thisPlnRef (_notifiers.at otherId .~ Just otherPlnWk)
     -- finally we can read the model
+    otherMdlVar <- maybeIO $ deRefWeak otherMdlWk
     liftIO $ readMVar otherMdlVar
 
-execUnreadObj :: AlternativeIO m => Weak (IORef Plan) -> Obj s -> m ()
-execUnreadObj thisPlnWk (Obj (Ref otherPlnRef otherPlnWk) _) = do
+execUnreadObj :: AlternativeIO m => Weak (IORef Plan) -> WeakObj s -> m ()
+execUnreadObj thisPlnWk (WeakObj otherPlnWk _) = do
     thisPlnRef <- maybeIO $ deRefWeak thisPlnWk
-    thisPln <- liftIO $ readIORef thisPlnRef
-    otherPln <- liftIO $ readIORef otherPlnRef
-    let thisId = reactId thisPln
-        otherId = reactId otherPln
+    otherPlnRef <- maybeIO $ deRefWeak otherPlnWk
+    thisId <- liftIO $ reactId <$> readIORef thisPlnRef
+    otherId <- liftIO $ reactId <$> readIORef otherPlnRef
     liftIO $ atomicModifyIORef_' otherPlnRef (_watchers.at thisId .~ Nothing)
     liftIO $ atomicModifyIORef_' thisPlnRef (_notifiers.at otherId .~ Nothing)
 

@@ -51,7 +51,8 @@ askRendered :: forall m. AskRendered m => m (Command m -> m ())
 askRendered = (. Tagged @"Rendered") <$> askObserver @(Tagged "Rendered" (Command m)) Proxy
 
 -- | Register and execute the given monad at construction time.
--- The registration of the callback is only performed the construction of the widget.
+-- At construction, 'initDestructor' and 'initRendered' may be used.
+-- The given monad is only performed at construction of the widget.
 -- That is, on subsequent rerendesrs, @initConstructor = const $ pure ()@
 -- Do not expect this function to do anything on subsequent rerenders
 -- so don't use the function conditionally or inside event handling code.

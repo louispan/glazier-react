@@ -12,7 +12,8 @@ import System.Mem.Weak
 
 ----------------------------------------------------------------------------------
 
-data Ref v a = Ref (v a) (Weak (v a)) deriving (G.Generic)
+data Ref v a = Ref (v a) (Weak (v a))
+    deriving (G.Generic)
 
 strongRef :: Ref v a -> v a
 strongRef (Ref s _) = s
@@ -43,3 +44,13 @@ planRef (Obj p _) = p
 
 _planRef :: (Profunctor p, Contravariant f) => Optic' p f (Obj s) PlanRef
 _planRef = to planRef
+
+data WeakObj s = WeakObj (Weak (IORef Plan)) (Weak (MVar s))
+    deriving (G.Generic)
+
+weakObj :: Obj s -> WeakObj s
+weakObj (Obj (Ref _ plnWk) (Ref _ mdlWk)) = WeakObj plnWk mdlWk
+
+_weakObj :: (Profunctor p, Contravariant f) => Optic' p f (Obj s) (WeakObj s)
+_weakObj = to weakObj
+

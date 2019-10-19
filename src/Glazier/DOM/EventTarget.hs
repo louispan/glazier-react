@@ -15,23 +15,6 @@ import Glazier.DOM.Event
 import Glazier.DOM.EventTarget.Internal
 import Glazier.React.Common
 import qualified JavaScript.Extras as JE
--- import Glazier.React.Reactor
--- import Glazier.React.Widget
-
-
--- -- | Add a listener with an event target, and automatically removes it on widget destruction
--- -- This only does something during initialization
--- listenEventTarget ::
---     (NFData a, HasCallStack, MonadWidget' c m, IEventTarget j)
---     => j -> J.JSString -> (J.JSVal -> MaybeT IO a) -> (a -> m ()) -> m ()
--- listenEventTarget j n goStrict goLazy =
---     onConstruction $ do
---         hdl <- mkHandler goStrict goLazy
---         cb <- mkListener hdl
---         liftIO $ addEventListener j' n cb
---         onDestruction $ liftIO $ removeEventListener j' n cb
---   where
---     j' = toJS j
 
 -- | The object that dispatched the event.
 -- https://developer.mozilla.org/en-US/docs/Web/API/EventTarget

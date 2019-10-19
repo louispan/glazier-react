@@ -35,6 +35,7 @@ import GHC.Stack
 import qualified GHCJS.Types as J
 import Glazier.Command
 import Glazier.DOM.Event
+import Glazier.DOM.EventTarget
 import Glazier.Logger
 import Glazier.React.Common
 import Glazier.React.Component
@@ -120,11 +121,11 @@ data Reactor c where
 
     -- | Reads from an 'Obj', also registering this as a listener
     -- so this widget will get rerendered whenever the 'Obj' is 'mutate'd.
-    ReadObj :: Weak (IORef Plan) -> Obj s -> (s -> c) -> Reactor c
+    ReadWeakObj :: Weak (IORef Plan) -> WeakObj s -> (s -> c) -> Reactor c
 
     -- | Deregister from reading an 'Obj' so that this widget will *not* get
     -- rerendered if th 'Obj' is mutated
-    UnreadObj :: Weak (IORef Plan) -> Obj s -> Reactor c
+    UnreadWeakObj :: Weak (IORef Plan) -> WeakObj s -> Reactor c
 
     -- Modifies the model and flags 'RerenderRequired' for this widget.
     -- Irregardless of 'RerenderRequired', it will notifier any watchers (from 'ReadObj')
@@ -196,10 +197,17 @@ unliftMkObj' m logname s = mkModelVar s >>= unliftMkObj m logname
 
 -- | Reads from an 'Obj', also registering this as a listener
 -- so this will get rerendered whenever the 'Obj' is 'mutate'd.
-readObj :: MonadGadget s m => Obj t -> m t
-readObj obj = do
+readWeakObj :: MonadGadget s m => WeakObj t -> m t
+readWeakObj obj = do
     this <- askPlanWeakRef
-    delegatify $ exec' . ReadObj this obj
+    delegatify $ exec' . ReadWeakObj this obj
+
+-- | Reads from an 'Obj', also registering this as a listener
+-- so this will get rerendered whenever the 'Obj' is 'mutate'd.
+unreadWeakObj :: MonadGadget s m => WeakObj t -> m ()
+unreadWeakObj obj = do
+    this <- askPlanWeakRef
+    exec' $ UnreadWeakObj this obj
 
 -- | 'mutate' with 'RerenderRequired'
 mutate' :: (MonadGadget s m) => StateT s IO a -> m a
@@ -246,6 +254,17 @@ mkListener ::
 mkListener f = do
     plnRef <- askPlanWeakRef
     delegatify $ exec' . MkListener plnRef f
+
+-- | Add a listener with an event target, and automatically removes it on widget destruction
+-- This only does something during initialization
+listenEventTarget :: (NFData a, MonadWidget s m, IEventTarget j)
+    => j -> J.JSString -> (J.JSVal -> MaybeT IO a) -> (a -> m ()) -> m ()
+listenEventTarget j n goStrict goLazy =
+    initConstructor $ do
+        hdl <- mkHandler goStrict goLazy
+        cb <- mkListener hdl
+        liftIO $ addEventListener j n cb
+        initDestructor $ liftIO $ removeEventListener j n cb
 
 -- | Orphan instance because it requires AsReactor
 -- LOUISFIXME: Think about this, use ReaderT (s -> Either e Obj s)?
@@ -328,3 +347,4 @@ bh j gads props child = do
         child
     putPopReactPath
     pure a
+
