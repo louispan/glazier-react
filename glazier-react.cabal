@@ -46,6 +46,8 @@ library
                       Glazier.React.Markup
                       Glazier.React.Plan
                       Glazier.React.Plan.Internal
+                      Glazier.React.Obj
+                      Glazier.React.Obj.Internal
                       Glazier.React.ReactBatch
                       Glazier.React.ReactBatch.Internal
                       Glazier.React.ReactDOM

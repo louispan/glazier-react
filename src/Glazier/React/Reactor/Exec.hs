@@ -49,6 +49,7 @@ import Glazier.Logger
 import Glazier.React.Common
 import Glazier.React.Component
 import Glazier.React.Markup
+import Glazier.React.Obj.Internal
 import Glazier.React.Plan.Internal
 import Glazier.React.ReactBatch
 import Glazier.React.ReactId.Internal
@@ -272,103 +273,93 @@ execMkObj ::
     -> LogName
     -> ModelVar s
     -> m (Obj s)
-execMkObj executor wid logName' (mdlVar, mdlWkVar) = do
+execMkObj executor wid logName' mdlRef@(Ref _ mdlWkVar) = do
     UnliftIO u <- askUnliftIO
     fixme $ liftIO $ putStrLn "LOUISDEBUG: execMkObj"
     (logLevel', logDepth') <- getLogConfig logName'
     i <- mkReactId
-    (obj, prerndr) <- liftIO $ do
-        -- create with fake callbacks for now
-        let newPlan = Plan
-                i
-                logName'
-                logLevel'
-                logDepth'
-                Nothing -- widgetRef
-                J.nullRef -- prerendered, null for now
-                mempty -- prerender
-                RerenderRequired -- prerendered is null
-                mempty -- listeners
-                mempty -- notifiers
-                mempty -- rendered
-                mempty -- destructor
-                mempty -- createdHandlers
-                mempty -- createdCallbacks
-                (WidgetCallbacks
-                    (J.Callback J.nullRef)
-                    (J.Callback J.nullRef)
-                    (J.Callback J.nullRef))
+    planRef_ <- liftIO $ newIORef $ Plan
+        i
+        logName'
+        logLevel'
+        logDepth'
+        Nothing -- widgetRef
+        J.nullRef -- prerendered, null for now
+        mempty -- prerender
+        RerenderRequired -- prerendered is null
+        mempty -- listeners
+        mempty -- notifiers
+        mempty -- rendered
+        mempty -- destructor
+        mempty -- createdHandlers
+        mempty -- createdCallbacks
+        (WidgetCallbacks
+            (J.Callback J.nullRef)
+            (J.Callback J.nullRef)
+            (J.Callback J.nullRef))
 
-        -- scoped block to return just obj to avoid accidently using the strong refs
-        (plnRef, plnWkRef) <- liftIO $ do
-            plnRef <- newIORef newPlan
-            -- mdlVar <- newMVar s
-            -- Create automatic garbage collection of the callbacks
-            -- that will run when the Obj is garbage collected.
-            plnWkRef <- mkWeakIORef plnRef $ do
-                fixme $ putStrLn "LOUISDEBUG: release plnRef"
-                pln <- readIORef plnRef
-                foldMap (unregisterFromNotifier i) (notifiers pln)
-                destructor pln
-                releasePlanCallbacks pln
-            -- mdlWkVar <- mkWeakMVar mdlVar (pure ())
-            pure (plnRef, plnWkRef)
+    -- Create automatic garbage collection of the callbacks
+    -- that will run when the Obj is garbage collected.
+    plnWkRef <- liftIO $ mkWeakIORef planRef_ $ do
+        fixme $ putStrLn "LOUISDEBUG: release plnRef"
+        -- references for finalizers do not keep reference alive
+        pln <- readIORef planRef_
+        foldMap (unregisterFromNotifier i) (notifiers pln)
+        destructor pln
+        releasePlanCallbacks pln
 
-        -- Now we have enough to run the widget
-        let wid' = do
-                -- only run if 'RerenderRequired'
-                plnRef' <- maybeIO $ deRefWeak plnWkRef
-                req <- liftIO $ atomicModifyIORef' plnRef' $ \pln ->
-                    swap (pln & _rerenderRequired <<.~ RerenderNotRequired)
+    -- Now we have enough to run the widget
+    let wid' = do
+            -- only run if 'RerenderRequired'
+            plnRef <- maybeIO $ deRefWeak plnWkRef
+            req <- liftIO $ atomicModifyIORef' plnRef $ \pln ->
+                swap (pln & _rerenderRequired <<.~ RerenderNotRequired)
 
-                case req of
-                    RerenderNotRequired -> pure ()
-                    RerenderRequired -> do
-                         -- protect against a 'finish'ed widget,
-                         -- so we can get the partial markup.
-                        wid `also` pure ()
-                        -- get the window out of wid and set the rendering function
-                        -- the window cannot be obtained from execStateT because it
-                        -- will return in the partial result due to StateT instance of 'codify'
-                        -- So use 'SetPrerendered' to store the final window.
-                        ml <- askMarkup
-                        setPrerendered plnWkRef ml
+            case req of
+                RerenderNotRequired -> pure ()
+                RerenderRequired -> do
+                     -- protect against a 'finish'ed widget,
+                     -- so we can get the partial markup.
+                    wid `also` pure ()
+                    -- get the window out of wid and set the rendering function
+                    -- the window cannot be obtained from execStateT because it
+                    -- will return in the partial result due to StateT instance of 'codify'
+                    -- So use 'SetPrerendered' to store the final window.
+                    ml <- askMarkup
+                    setPrerendered plnWkRef ml
 
-            -- mkRerenderCmds :: (c -> m ()) -> IO (DL.DList c)
-            mkRerenderCmds onRendrd onDestruct onConstruct = (`evalMaybeT` mempty) $ do
-                -- get the latest state from the weak ref
-                mdlVar' <- maybeIO $ deRefWeak mdlWkVar
-                mdl <- liftIO $ readMVar mdlVar'
-                -- then get the latest markup using the state
-                liftIO $ execProgramT'
-                    $ (`evalStateT` mempty) -- markup
-                    $ (`evalStateT` (ReactPath (Nothing, [])))
-                    $ evalContT
-                    $ (`evalMaybeT` ())
-                    $ (`runReaderT` Tagged @"Model" mdl)
-                    $ (`runReaderT` Tagged @"ModelWeakVar" mdlWkVar)
-                    $ (`runReaderT` plnWkRef)
-                    $ (`runObserverT` onConstruct)
-                    $ (`runObserverT` onDestruct)
-                    $ (`runObserverT` onRendrd)
-                    $ wid'
-            -- prerndr :: (c -> m ()) -> IO ()
-            prerndr onRendrd onDestruct onConstruct = do
-                c <- (commands . DL.toList) <$> (mkRerenderCmds onRendrd onDestruct onConstruct)
-                u $ executor c
-        pure (((plnRef, plnWkRef), (mdlVar, mdlWkVar)), prerndr)
+        -- mkRerenderCmds :: (c -> m ()) -> IO (DL.DList c)
+        mkRerenderCmds onRendrd' onDestruct' onConstruct' = (`evalMaybeT` mempty) $ do
+            -- get the latest state from the weak ref
+            mdlVar' <- maybeIO $ deRefWeak mdlWkVar
+            mdl <- liftIO $ readMVar mdlVar'
+            -- then get the latest markup using the state
+            liftIO $ execProgramT'
+                $ (`evalStateT` mempty) -- markup
+                $ (`evalStateT` (ReactPath (Nothing, [])))
+                $ evalContT
+                $ (`evalMaybeT` ())
+                $ (`runReaderT` Tagged @"Model" mdl)
+                $ (`runReaderT` Tagged @"ModelWeakVar" mdlWkVar)
+                $ (`runReaderT` plnWkRef)
+                $ (`runObserverT` onConstruct')
+                $ (`runObserverT` onDestruct')
+                $ (`runObserverT` onRendrd')
+                $ wid'
+        -- prerndr :: (c -> m ()) -> IO ()
+        prerndr onRendrd' onDestruct' onConstruct' = do
+            c <- (commands . DL.toList) <$> (mkRerenderCmds onRendrd' onDestruct' onConstruct')
+            u $ executor c
 
-    -- Create callbacks
-    let ((planRef, plnWkRef), _) = obj
         -- onXXXX :: MonadIO m => c -> m ()
         onConstruct = instruct . untag' @"Constructor"
         onDestruct c = do
-            plnRef' <- maybeIO $ deRefWeak plnWkRef
-            liftIO $ atomicModifyIORef_' plnRef'
+            plnRef <- maybeIO $ deRefWeak plnWkRef
+            liftIO $ atomicModifyIORef_' plnRef
                 $ _destructor %~ (<> (u $ executor $ untag' @"Destructor" c))
         onRendrd c = do
-            plnRef' <- maybeIO $ deRefWeak plnWkRef
-            liftIO $ atomicModifyIORef_' plnRef'
+            plnRef <- maybeIO $ deRefWeak plnWkRef
+            liftIO $ atomicModifyIORef_' plnRef
                 $ _rendered %~ (<> (u $ executor $ untag' @"Rendered" c))
 
     renderCb <- liftIO . J.syncCallback' $ onRenderCb plnWkRef
@@ -376,7 +367,7 @@ execMkObj executor wid logName' (mdlVar, mdlWkVar) = do
     renderedCb <- liftIO . J.syncCallback J.ContinueAsync $ onRenderedCb plnWkRef
 
     -- update the plan to include the real WidgetCallbacks and prerender functon
-    liftIO $ atomicModifyIORef_' planRef $ \pln ->
+    liftIO $ atomicModifyIORef_' planRef_ $ \pln ->
         (pln
             { widgetCallbacks = WidgetCallbacks renderCb refCb renderedCb
             -- when rerendering, don't do anything during onConstruction calls
@@ -391,7 +382,7 @@ execMkObj executor wid logName' (mdlVar, mdlWkVar) = do
     -- This is the responsiblity of the caller of MkObj
 
     -- return the obj created
-    pure obj
+    pure $ Obj (Ref planRef_ plnWkRef) mdlRef
 
   where
     setPrerendered :: AlternativeIO m => Weak (IORef Plan) -> DL.DList ReactMarkup -> m ()
@@ -454,7 +445,7 @@ execReadObj ::
     ( AlternativeIO m
     )
     => Weak (IORef Plan) -> Obj s -> m s
-execReadObj thisPlnWk ((otherPlnRef, otherPlnWk), (otherMdlVar, _)) = do
+execReadObj thisPlnWk (Obj (Ref otherPlnRef otherPlnWk) (Ref otherMdlVar _)) = do
     s <- liftIO $ readMVar otherMdlVar
     thisPlnRef <- maybeIO $ deRefWeak thisPlnWk
     thisPln <- liftIO $ readIORef thisPlnRef

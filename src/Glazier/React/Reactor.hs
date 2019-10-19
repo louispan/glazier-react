@@ -39,6 +39,7 @@ import Glazier.Logger
 import Glazier.React.Common
 import Glazier.React.Component
 import Glazier.React.Markup
+import Glazier.React.Obj.Internal
 import Glazier.React.Plan
 import Glazier.React.ReactPath
 import Glazier.React.Widget
@@ -46,12 +47,6 @@ import qualified JavaScript.Extras as JE
 import System.Mem.Weak
 
 -----------------------------------------------------------------
-
-type PlanRef = (IORef Plan, Weak (IORef Plan))
-
-type ModelVar s = (MVar s, Weak (MVar s))
-
-type Obj s = (PlanRef, ModelVar s)
 
 type CmdReactor c =
     ( Cmd' [] c -- required by 'command_'
@@ -169,7 +164,7 @@ mkModelVar :: MonadIO m => s -> m (ModelVar s)
 mkModelVar s = liftIO $ do
     mdlVar <- newMVar s
     mdlWkVar <- mkWeakMVar mdlVar (pure ())
-    pure (mdlVar, mdlWkVar)
+    pure $ Ref mdlVar mdlWkVar
 
 -- | Make an initialized 'Obj' for a given meta using the given 'Widget' and 'ModelVar'
 -- Unlike 'unliftMkObj', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
