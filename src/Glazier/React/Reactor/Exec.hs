@@ -88,9 +88,9 @@ data LogConfig = LogConfig
 
 makeLenses_ ''LogConfig
 
-type AskLogConfigRef = MonadAsk (IORef LogConfig)
+type AskLogConfigRef = MonadAsk' (IORef LogConfig)
 askLogConfigRef :: AskLogConfigRef m => m (IORef LogConfig)
-askLogConfigRef = askEnviron
+askLogConfigRef = askEnviron @(IORef LogConfig) Proxy
 
 -- | returns io actions that will always have latest log state for the logname
 getLogConfig :: (MonadIO m, AskLogConfigRef m)=> LogName -> m (IO (Maybe LogLevel), IO (Maybe (Maybe LogCallStackDepth)))
@@ -118,9 +118,9 @@ getLogConfig logname = do
 
 -----------------------------------------------
 
-type AskNextReactIdRef = MonadAsk (IORef (Tagged "NextReactId" ReactId))
+type AskNextReactIdRef = MonadAsk' (IORef (Tagged "NextReactId" ReactId))
 askNextReactIdRef :: AskNextReactIdRef m => m (IORef (Tagged "NextReactId" ReactId))
-askNextReactIdRef = askEnviron
+askNextReactIdRef = askEnviron @(IORef (Tagged "NextReactId" ReactId)) Proxy
 
 mkReactId :: (MonadIO m, AskNextReactIdRef m) => m ReactId
 mkReactId = do
@@ -131,13 +131,13 @@ mkReactId = do
 
 -----------------------------------------------
 
-type AskDirtyPlan = MonadAsk (Tagged "DirtyPlan" (IORef (M.Map ReactId (Weak (IORef Plan)))))
+type AskDirtyPlan = MonadAsk' (Tagged "DirtyPlan" (IORef (M.Map ReactId (Weak (IORef Plan)))))
 askDirtyPlan :: AskDirtyPlan m => m (Tagged "DirtyPlan" (IORef (M.Map ReactId (Weak (IORef Plan)))))
-askDirtyPlan = askEnviron
+askDirtyPlan = askEnviron @(Tagged "DirtyPlan" (IORef (M.Map ReactId (Weak (IORef Plan))))) Proxy
 
-type AskReactBatch = MonadAsk ReactBatch
+type AskReactBatch = MonadAsk' ReactBatch
 askReactBatch :: AskReactBatch m => m ReactBatch
-askReactBatch = askEnviron
+askReactBatch = askEnviron @ReactBatch Proxy
 
 rerenderDirtyPlans :: (AskReactBatch m, AskDirtyPlan m, AlternativeIO m) => m ()
 rerenderDirtyPlans = do
@@ -349,7 +349,7 @@ execMkObj executor wid logName' (mdlVar, mdlWkVar) = do
                     $ evalContT
                     $ (`evalMaybeT` ())
                     $ (`runReaderT` Tagged @"Model" mdl)
-                    $ (`runReaderT` Tagged @"Model" mdlWkVar)
+                    $ (`runReaderT` Tagged @"ModelWeakVar" mdlWkVar)
                     $ (`runReaderT` plnWkRef)
                     $ (`runObserverT` onConstruct)
                     $ (`runObserverT` onDestruct)

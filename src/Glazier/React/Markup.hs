@@ -32,16 +32,16 @@ import qualified Data.DList as DL
 import qualified GHCJS.Types as J
 import qualified Glazier.React.ReactElement as Z
 
-type AskMarkup m = MonadAsk (DL.DList ReactMarkup) m
+type AskMarkup m = MonadAsk' (DL.DList ReactMarkup) m
 askMarkup :: AskMarkup m => m (DL.DList ReactMarkup)
-askMarkup = askEnviron @(DL.DList ReactMarkup)
+askMarkup = askEnviron @(DL.DList ReactMarkup) Proxy
 
-type PutMarkup m = MonadPut (DL.DList ReactMarkup) m
+type PutMarkup m = MonadPut' (DL.DList ReactMarkup) m
 putMarkup :: PutMarkup m => DL.DList ReactMarkup -> m ()
-putMarkup = putEnviron
+putMarkup = putEnviron @(DL.DList ReactMarkup) Proxy
 
 modifyMarkup :: PutMarkup m => (DL.DList ReactMarkup -> DL.DList ReactMarkup) -> m ()
-modifyMarkup = modifyEnviron
+modifyMarkup = modifyEnviron @(DL.DList ReactMarkup) Proxy
 
 appendMarkup :: PutMarkup m => DL.DList ReactMarkup -> m ()
 appendMarkup a = modifyMarkup (*> a)

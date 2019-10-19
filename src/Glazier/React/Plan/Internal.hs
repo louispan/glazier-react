@@ -5,6 +5,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Glazier.React.Plan.Internal where
 
@@ -16,7 +17,6 @@ import Data.Foldable
 import Data.IORef
 import qualified Data.Map.Strict as M
 import Data.Maybe
-import Data.Tagged.Extras
 import qualified GHC.Generics as G
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
@@ -103,13 +103,13 @@ instance Show Plan where
         -- , showString ", " . showString "componentRef ? " . shows (isJust $ shimRef pln)
         )
 
-type AskPlanWeakRef = MonadAsk (Weak (IORef Plan))
+type AskPlanWeakRef = MonadAsk' (Weak (IORef Plan))
 askPlanWeakRef :: AskPlanWeakRef m => m (Weak (IORef Plan))
-askPlanWeakRef = askEnviron
+askPlanWeakRef = askEnviron @(Weak (IORef Plan)) Proxy
 
 -- | Get the 'LogLevel' from a 'WeakRef' 'Plan'
-instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Maybe LogLevel) (ReaderT (Weak (IORef Plan)) m) where
-    askEnviron = do
+instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Maybe LogLevel) (Maybe LogLevel) (ReaderT (Weak (IORef Plan)) m) where
+    askEnviron _ = do
         ref <- askPlanWeakRef
         liftIO $ go ref
       where
@@ -119,11 +119,11 @@ instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Maybe LogLevel) (ReaderT (We
             MaybeT . logLevel $ pln
 
 -- | Get the 'LogName' from a 'WeakRef' 'Plan'
-type AskLogName = MonadAsk LogName
+type AskLogName = MonadAsk' LogName
 askLogName :: AskLogName m => m LogName
-askLogName = askEnviron
-instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Tagged "LogName" J.JSString) (ReaderT (Weak (IORef Plan)) m) where
-    askEnviron = do
+askLogName = askEnviron @LogName Proxy
+instance {-# OVERLAPPING #-} MonadIO m => MonadAsk LogName LogName (ReaderT (Weak (IORef Plan)) m) where
+    askEnviron _ = do
         ref <- askPlanWeakRef
         n <- liftIO $ go ref
         pure $ fromMaybe mempty n
@@ -134,8 +134,8 @@ instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Tagged "LogName" J.JSString)
             pure $ logName pln
 
 -- | Get the 'LogCallStackDepth' from a 'WeakRef' 'Plan'
-instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Maybe (Maybe LogCallStackDepth)) (ReaderT (Weak (IORef Plan)) m) where
-    askEnviron = do
+instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Maybe (Maybe LogCallStackDepth)) (Maybe (Maybe LogCallStackDepth)) (ReaderT (Weak (IORef Plan)) m) where
+    askEnviron _ = do
         ref <- askPlanWeakRef
         liftIO $ go ref
       where

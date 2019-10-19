@@ -5,6 +5,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralisedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Glazier.React.ReactPath where
 
@@ -33,16 +34,16 @@ getReactPath :: ReactPath -> [(J.JSString, Int)]
 getReactPath (ReactPath (Nothing, xs)) = xs
 getReactPath (ReactPath (Just x, xs)) = x : xs
 
-type AskReactPath = MonadAsk ReactPath
+type AskReactPath = MonadAsk' ReactPath
 askReactPath :: AskReactPath m => m ReactPath
-askReactPath = askEnviron
+askReactPath = askEnviron @ReactPath Proxy
 
-type PutReactPath = MonadPut ReactPath
+type PutReactPath = MonadPut' ReactPath
 putReactPath :: PutReactPath m => ReactPath -> m ()
-putReactPath = putEnviron
+putReactPath = putEnviron @ReactPath Proxy
 
 modifyReactPath :: PutReactPath m => (ReactPath -> ReactPath) -> m ()
-modifyReactPath = modifyEnviron
+modifyReactPath = modifyEnviron @ReactPath Proxy
 
 -- | create a sibling 'ReactPath'
 nextReactPath :: J.JSString -> ReactPath -> ReactPath
