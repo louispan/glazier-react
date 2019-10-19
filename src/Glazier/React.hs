@@ -17,8 +17,6 @@ module Glazier.React
     , module Control.Monad.Observer
     , module Control.Monad.Reader
     , module Control.Monad.Except
-    , module Control.Monad.RWS.Strict
-    , module Control.Monad.State.Strict
     , module Control.Monad.Trans
     , module Control.Monad.Trans.Extras
     , module Control.Monad.Trans.Maybe
@@ -42,8 +40,6 @@ import Control.Monad.Environ
 import Control.Monad.Except
 import Control.Monad.Observer
 import Control.Monad.Reader
-import Control.Monad.RWS.Strict
-import Control.Monad.State.Strict
 import Control.Monad.Trans
 import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
