@@ -89,6 +89,7 @@ type Widget s c =
     (ObserverT (Tagged "Destructor" c) -- 'AskDestructor'
     (ObserverT (Tagged "Constructor" c) -- 'AskConstructor'
     (ReaderT (Weak (IORef Plan)) -- 'AskPlanWeakRef', 'AskLogLevel', 'AskLogCallStackDepth'
+    (ReaderT (Weak (IORef Notifier)) -- 'AskNotifierWeakRef'
     (ReaderT (Tagged "ModelWeakVar" (Weak (MVar s))) -- 'AskModelWeakVar'
     (ReaderT (Tagged "Model" s) -- 'AskModel'
     (MaybeT -- 'Alternative'
@@ -97,7 +98,7 @@ type Widget s c =
     (StateT ReactPath -- 'PutReactPath', 'AskReactPath', 'AskLogName'
     (StateT (DL.DList ReactMarkup) -- 'PutMarkup'
     (ProgramT c IO -- 'MonadComand', 'MonadIO'
-    ))))))))))
+    )))))))))))
 
 
 askMarkup2 :: Widget s c (DL.DList ReactMarkup)

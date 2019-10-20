@@ -49,8 +49,7 @@ releaseWidgetCallbacks (WidgetCallbacks a b c) = do
 
 -- | Interactivity data for a react component
 data Plan = Plan
-    -- guaranteed unique for every widget instance
-    { reactId :: ReactId
+    { planId :: ReactId -- guaranteed unique
     , logName :: LogName
     , logLevel :: IO (Maybe LogLevel)
     , logDepth :: IO (Maybe (Maybe LogCallStackDepth))
@@ -67,11 +66,8 @@ data Plan = Plan
     -- Optimization varaible: means whether the 'prerendered' frame is stale.
     , rerenderRequired :: RerenderRequired
 
-    -- | watchers that need to be rerendered when this is mutated
-    , watchers :: M.Map ReactId (Weak (IORef Plan))
-
-    -- | notifiers that need to be unsubscribed from when this is destroyed
-    , notifiers :: M.Map ReactId (Weak (IORef Plan))
+    -- | notifiers that need to be unsubscribed from, when this is destroyed
+    , notifiers :: M.Map ReactId (Weak (IORef Notifier))
 
     -- Called after every rendered call fromReact
     , rendered :: IO ()
@@ -87,6 +83,21 @@ data Plan = Plan
 
     } deriving (G.Generic)
 
+-- | Contains list of watchers that are interested in this model
+data Notifier = Notifier
+    { notifierId :: ReactId -- guaranteed unique
+      -- watchers that need to be rerendered when this is mutated
+    , watchers :: M.Map ReactId (Weak (IORef Plan))
+    } deriving (G.Generic)
+
+instance Show Notifier where
+    showsPrec p pln = showParen
+        (p >= 11)
+        ( showString "Notifier "
+            . showParen True (shows $ notifierId pln)
+        )
+
+makeLenses_ ''Notifier
 makeLenses_ ''Plan
 
 releasePlanCallbacks :: Plan -> IO ()
@@ -98,7 +109,7 @@ instance Show Plan where
     showsPrec p pln = showParen
         (p >= 11)
         ( showString "Plan "
-            . showParen True (shows $ reactId pln)
+            . showParen True (shows $ planId pln)
             . showParen True (shows $ logName pln)
         -- , showString ", " . showString "componentRef ? " . shows (isJust $ shimRef pln)
         )
@@ -106,6 +117,10 @@ instance Show Plan where
 type AskPlanWeakRef = MonadAsk' (Weak (IORef Plan))
 askPlanWeakRef :: AskPlanWeakRef m => m (Weak (IORef Plan))
 askPlanWeakRef = askEnviron @(Weak (IORef Plan)) Proxy
+
+type AskNotifierWeakRef = MonadAsk' (Weak (IORef Notifier))
+askNotifierWeakRef :: AskNotifierWeakRef m => m (Weak (IORef Notifier))
+askNotifierWeakRef = askEnviron @(Weak (IORef Notifier)) Proxy
 
 -- | Get the 'LogLevel' from a 'WeakRef' 'Plan'
 instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Maybe LogLevel) (Maybe LogLevel) (ReaderT (Weak (IORef Plan)) m) where

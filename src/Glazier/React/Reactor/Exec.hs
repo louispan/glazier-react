@@ -167,7 +167,7 @@ markPlanDirty wk = do
     plnRef <- maybeIO $ deRefWeak wk
     (oldReq, i) <- liftIO $ atomicModifyIORef' plnRef $ \pln ->
         let (oldReq, pln') = (pln & _rerenderRequired <<.~ RerenderNotRequired)
-        in (pln', (oldReq, reactId pln))
+        in (pln', (oldReq, planId pln))
     case oldReq of
         RerenderRequired -> pure () -- we have scheduled already
         RerenderNotRequired -> do
@@ -261,6 +261,35 @@ execLogLineJS lvl n msg cs = do
         Nothing -> ""
         Just cs' -> " [" <> cs' <> "]"
 
+watchModel :: MonadIO m => (IORef Plan, Weak (IORef Plan)) -> (IORef Notifier, Weak (IORef Notifier)) -> m ()
+watchModel (plnRef, plnWkRef) (notifierRef, notifierWkRef) = do
+    notiId <- liftIO $ notifierId <$> readIORef notifierRef
+    watcherId <- liftIO $ planId <$> readIORef plnRef
+    liftIO $ atomicModifyIORef_' notifierRef (_watchers.at watcherId .~ Just plnWkRef)
+    liftIO $ atomicModifyIORef_' plnRef (_notifiers.at notiId .~ Just notifierWkRef)
+
+unwatchModel :: MonadIO m => IORef Plan -> IORef Notifier -> m ()
+unwatchModel plnRef notifierRef = do
+    notiId <- liftIO $ notifierId <$> readIORef notifierRef
+    watcherId <- liftIO $ planId <$> readIORef plnRef
+    liftIO $ atomicModifyIORef_' notifierRef (_watchers.at watcherId .~ Nothing)
+    liftIO $ atomicModifyIORef_' plnRef (_notifiers.at notiId .~ Nothing)
+
+execReadWeakObj :: MonadIO m => Weak (IORef Plan) -> WeakObj s -> MaybeT m s
+execReadWeakObj plnWkRef (WeakObj _ notifierWkRef mdlWkVar) = do
+    plnRef <- maybeIO $ deRefWeak plnWkRef
+    notifierRef <- maybeIO $ deRefWeak notifierWkRef
+    watchModel (plnRef, plnWkRef) (notifierRef, notifierWkRef)
+    -- finally we can read the model
+    otherMdlVar <- maybeIO $ deRefWeak mdlWkVar
+    liftIO $ readMVar otherMdlVar
+
+execUnwatchWeakObj :: MonadIO m => Weak (IORef Plan) -> WeakObj s -> m ()
+execUnwatchWeakObj plnWkRef (WeakObj _ notifierWkRef _) = (`evalMaybeT` ()) $ do
+    plnRef <- maybeIO $ deRefWeak plnWkRef
+    notifierRef <- maybeIO $ deRefWeak notifierWkRef
+    unwatchModel plnRef notifierRef
+
 execMkObj ::
     ( MonadIO m
     , MonadUnliftIO m
@@ -271,14 +300,61 @@ execMkObj ::
     => (c -> m ())
     -> Widget s c ()
     -> LogName
-    -> ModelVar s
+    -> s
     -> m (Obj s)
-execMkObj executor wid logName' mdlRef@(Ref _ mdlWkVar) = do
+execMkObj executor wid logName' s = do
+    i <- mkReactId
+    notifierRef <- liftIO $ newIORef $ Notifier i mempty
+    notifierWkRef <- liftIO $ mkWeakIORef notifierRef $ do
+        ws <- liftIO $ watchers <$> readIORef notifierRef
+        foldMap (unregisterFromNotifier i) ws
+    mdlVar <- liftIO $ newMVar s
+    mdlWkVar <- liftIO $ mkWeakMVar mdlVar (pure ())
+    execMkObjWithModelVar executor wid logName' notifierRef notifierWkRef mdlVar mdlWkVar
+  where
+    unregisterFromNotifier :: ReactId -> Weak (IORef Plan) -> IO ()
+    unregisterFromNotifier i plnWkRef = (`evalMaybeT` ()) $ do
+        plnRef <- maybeIO $ deRefWeak plnWkRef
+        liftIO $ atomicModifyIORef_' plnRef (_notifiers.at i .~ Nothing)
+
+execMkLinkedObj ::
+    ( MonadIO m
+    , MonadUnliftIO m
+    , AskLogConfigRef m
+    , AskNextReactIdRef m
+    , CmdReactor c
+    )
+    => (c -> m ())
+    -> Widget s c ()
+    -> LogName
+    -> WeakObj s
+    -> MaybeT m (Obj s)
+execMkLinkedObj executor wid logName' (WeakObj _ notifierWkRef mdlWkVar) = do
+    notifierRef <- maybeIO $ deRefWeak notifierWkRef
+    mdlVar <- maybeIO $ deRefWeak mdlWkVar
+    lift $ execMkObjWithModelVar executor wid logName' notifierRef notifierWkRef mdlVar mdlWkVar
+
+execMkObjWithModelVar ::
+    ( MonadIO m
+    , MonadUnliftIO m
+    , AskLogConfigRef m
+    , AskNextReactIdRef m
+    , CmdReactor c
+    )
+    => (c -> m ())
+    -> Widget s c ()
+    -> LogName
+    -> IORef Notifier
+    -> Weak (IORef Notifier)
+    -> MVar s
+    -> Weak (MVar s)
+    -> m (Obj s)
+execMkObjWithModelVar executor wid logName' notifierRef_ notifierWkRef mdlVar_ mdlWkVar = do
     UnliftIO u <- askUnliftIO
     fixme $ liftIO $ putStrLn "LOUISDEBUG: execMkObj"
     (logLevel', logDepth') <- getLogConfig logName'
     i <- mkReactId
-    planRef_ <- liftIO $ newIORef $ Plan
+    plnRef_ <- liftIO $ newIORef $ Plan
         i
         logName'
         logLevel'
@@ -287,7 +363,6 @@ execMkObj executor wid logName' mdlRef@(Ref _ mdlWkVar) = do
         J.nullRef -- prerendered, null for now
         mempty -- prerender
         RerenderRequired -- prerendered is null
-        mempty -- listeners
         mempty -- notifiers
         mempty -- rendered
         mempty -- destructor
@@ -300,11 +375,13 @@ execMkObj executor wid logName' mdlRef@(Ref _ mdlWkVar) = do
 
     -- Create automatic garbage collection of the callbacks
     -- that will run when the Obj is garbage collected.
-    plnWkRef <- liftIO $ mkWeakIORef planRef_ $ do
+    plnWkRef <- liftIO $ mkWeakIORef plnRef_ $ do
         fixme $ putStrLn "LOUISDEBUG: release plnRef"
         -- references for finalizers do not keep reference alive
-        pln <- readIORef planRef_
-        foldMap (unregisterFromNotifier i) (notifiers pln)
+        pln <- readIORef plnRef_
+        (`evalMaybeT` ()) $ do
+            notifierRef <- maybeIO $ deRefWeak notifierWkRef
+            liftIO $ atomicModifyIORef_' notifierRef (_watchers.at i .~ Nothing)
         destructor pln
         releasePlanCallbacks pln
 
@@ -341,6 +418,7 @@ execMkObj executor wid logName' mdlRef@(Ref _ mdlWkVar) = do
                 $ (`evalMaybeT` ())
                 $ (`runReaderT` Tagged @"Model" mdl)
                 $ (`runReaderT` Tagged @"ModelWeakVar" mdlWkVar)
+                $ (`runReaderT` notifierWkRef)
                 $ (`runReaderT` plnWkRef)
                 $ (`runObserverT` onConstruct')
                 $ (`runObserverT` onDestruct')
@@ -367,12 +445,15 @@ execMkObj executor wid logName' mdlRef@(Ref _ mdlWkVar) = do
     renderedCb <- liftIO . J.syncCallback J.ContinueAsync $ onRenderedCb plnWkRef
 
     -- update the plan to include the real WidgetCallbacks and prerender functon
-    liftIO $ atomicModifyIORef_' planRef_ $ \pln ->
+    liftIO $ atomicModifyIORef_' plnRef_ $ \pln ->
         (pln
             { widgetCallbacks = WidgetCallbacks renderCb refCb renderedCb
             -- when rerendering, don't do anything during onConstruction calls
             , prerender = prerndr (const $ pure ()) (const $ pure ()) (const $ pure ())
             })
+
+    -- link the plan ot the model so it gets notified of mutations
+    watchModel (plnRef_, plnWkRef) (notifierRef_, notifierWkRef)
 
     -- run the prerender function for the first time, allowing onConstruction calls.
     -- This will also initialize the widget, and set the rendered frame in the Plan
@@ -382,7 +463,7 @@ execMkObj executor wid logName' mdlRef@(Ref _ mdlWkVar) = do
     -- This is the responsiblity of the caller of MkObj
 
     -- return the obj created
-    pure $ Obj (Ref planRef_ plnWkRef) mdlRef
+    pure $ Obj plnRef_ plnWkRef notifierRef_ notifierWkRef mdlVar_ mdlWkVar
 
   where
     setPrerendered :: AlternativeIO m => Weak (IORef Plan) -> DL.DList ReactMarkup -> m ()
@@ -412,20 +493,15 @@ execMkObj executor wid logName' mdlRef@(Ref _ mdlWkVar) = do
         plnRef <- maybeIO $ deRefWeak wk
         liftIO $ readIORef plnRef >>= rendered
 
-    unregisterFromNotifier :: ReactId -> Weak (IORef Plan) -> IO ()
-    unregisterFromNotifier i wk = (`evalMaybeT` ()) $ do
-        plnRef <- maybeIO $ deRefWeak wk
-        liftIO $ atomicModifyIORef_' plnRef (_watchers.at i .~ Nothing)
-
 execMutate ::
     (AlternativeIO m, AskDirtyPlan m)
     => (c -> m ())
-    -> Weak (IORef Plan)
+    -> Weak (IORef Notifier)
     -> Weak (MVar s)
     -> RerenderRequired
     -> StateT s IO c
     -> m ()
-execMutate executor plnWk mdlWk req tick = do
+execMutate executor notifierWkRef mdlWk req tick = do
     liftIO $ putStrLn $ "LOUISDEBUG: execMutate"
     mdlVar <- maybeIO $ deRefWeak mdlWk
     s <- liftIO $ takeMVar mdlVar
@@ -433,34 +509,12 @@ execMutate executor plnWk mdlWk req tick = do
     liftIO $ putMVar mdlVar s'
     executor c
     -- now rerender
-    plnRef <- maybeIO $ deRefWeak plnWk
-    ws <- liftIO $ watchers <$> readIORef plnRef
     case req of
         RerenderNotRequired -> pure ()
-        RerenderRequired -> markPlanDirty plnWk
-    -- also mark watchers are dirty
-    foldr (\wk b -> markPlanDirty wk *> b) (pure ()) ws
-
-execReadObj :: AlternativeIO m => Weak (IORef Plan) -> WeakObj s -> m s
-execReadObj thisPlnWk (WeakObj otherPlnWk otherMdlWk) = do
-    thisPlnRef <- maybeIO $ deRefWeak thisPlnWk
-    otherPlnRef <- maybeIO $ deRefWeak otherPlnWk
-    thisId <- liftIO $ reactId <$> readIORef thisPlnRef
-    otherId <- liftIO $ reactId <$> readIORef otherPlnRef
-    liftIO $ atomicModifyIORef_' otherPlnRef (_watchers.at thisId .~ Just thisPlnWk)
-    liftIO $ atomicModifyIORef_' thisPlnRef (_notifiers.at otherId .~ Just otherPlnWk)
-    -- finally we can read the model
-    otherMdlVar <- maybeIO $ deRefWeak otherMdlWk
-    liftIO $ readMVar otherMdlVar
-
-execUnreadObj :: AlternativeIO m => Weak (IORef Plan) -> WeakObj s -> m ()
-execUnreadObj thisPlnWk (WeakObj otherPlnWk _) = do
-    thisPlnRef <- maybeIO $ deRefWeak thisPlnWk
-    otherPlnRef <- maybeIO $ deRefWeak otherPlnWk
-    thisId <- liftIO $ reactId <$> readIORef thisPlnRef
-    otherId <- liftIO $ reactId <$> readIORef otherPlnRef
-    liftIO $ atomicModifyIORef_' otherPlnRef (_watchers.at thisId .~ Nothing)
-    liftIO $ atomicModifyIORef_' thisPlnRef (_notifiers.at otherId .~ Nothing)
+        RerenderRequired -> do
+            notifierRef <- maybeIO $ deRefWeak notifierWkRef
+            ws <- liftIO $ watchers <$> readIORef notifierRef
+            foldr (\wk b -> markPlanDirty wk *> b) (pure ()) ws
 
 execMkHandler :: (NFData a, AlternativeIO m, MonadUnliftIO m)
         => (c -> m ())
