@@ -194,13 +194,6 @@ listenEventTarget j n goStrict goLazy =
         liftIO $ addEventListener j n cb
         initDestructor $ liftIO $ removeEventListener j n cb
 
-
--- -- | Run a widget on an @Obj t@
--- -- The markup, initialization (initConstructor, etc) effects are ignored.
--- runWidget :: MonadGadget s m => Widget t c () -> Obj t -> m ()
--- runWidget
-
-
 -- | Orphan instance because it requires AsReactor
 -- LOUISFIXME: Think about this, use ReaderT (s -> Either e Obj s)?
 -- Use a new typeclass?
@@ -283,13 +276,7 @@ bh j gads props child = do
     putPopReactPath
     pure a
 
--- displayWeakObj :: MonadWidget s m => WeakObj t -> m ()
--- displayWeakObj = (`evalMaybeT` ()) $ do
---     mdlRef <- MaybeT $ liftIO $ deRefWeak that
---     displayPlanRef mdlRef
-
-displayObj
- :: MonadWidget s m => Obj t -> m ()
+displayObj :: MonadWidget s m => Obj t -> m ()
 displayObj (Obj plnRef _ _ _ _ _) = do
     pln <- liftIO $ readIORef plnRef
     let cbs = widgetCallbacks pln

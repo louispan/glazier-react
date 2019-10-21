@@ -10,6 +10,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -20,17 +21,19 @@
 module Glazier.React.Widget where
 
 import Control.Concurrent.MVar
-import Control.Monad.Cont
 import Control.Monad.Observer
 import Control.Monad.Reader
 import Control.Monad.State.Strict
+import Control.Monad.Trans.Cont
+import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Identity
 import Control.Monad.Trans.Maybe
 import qualified Data.DList as DL
 import Data.IORef
-import Data.Tagged.Extras
+import Data.Tagged
 import Glazier.Command
 import Glazier.React.Markup
+import Glazier.React.Obj.Internal
 import Glazier.React.Plan
 import Glazier.React.ReactPath
 import System.Mem.Weak
@@ -84,17 +87,40 @@ type Widget s c =
     ObserverT (Tagged "Rendered" c) -- 'AskRendered'
     (ObserverT (Tagged "Destructor" c) -- 'AskDestructor'
     (ObserverT (Tagged "Constructor" c) -- 'AskConstructor'
-    (ReaderT (Weak (IORef Plan)) -- 'AskPlanWeakRef', 'AskLogLevel', 'AskLogCallStackDepth'
+    (ReaderT (Weak (IORef Plan)) -- 'AskPlanWeakRef', 'AskLogLevel', 'AskLogCallStackDepth', 'AskLogName'
     (ReaderT (Weak (IORef Notifier)) -- 'AskNotifierWeakRef'
     (ReaderT (Tagged "ModelWeakVar" (Weak (MVar s))) -- 'AskModelWeakVar'
     (ReaderT (Tagged "Model" s) -- 'AskModel'
     (MaybeT -- 'Alternative'
     (ContT () -- 'MonadDelegate'
     -- State monads must be inside ContT to be a 'MonadDelegate'
-    (StateT ReactPath -- 'PutReactPath', 'AskReactPath', 'AskLogName'
+    (StateT ReactPath -- 'PutReactPath', 'AskReactPath'
     (StateT (DL.DList ReactMarkup) -- 'PutMarkup'
     (ProgramT c IO -- 'MonadComand', 'MonadIO'
     )))))))))))
+
+-- | Run a widget on an @Obj t@
+-- The markup, initialization (initConstructor, etc) effects are ignored.
+runWidget :: (MonadIO m, MonadCommand m, Cmd' [] (Command m)) => Widget t (Command m) a -> Obj t -> m a
+runWidget wid (Obj _ plnWkRef _ notifierWkRef mdlVar mdlWkVar) = do
+    mdl <- liftIO $ readMVar mdlVar
+    -- get the commands from running the widget using the refs/var from the given
+    delegatify $ \fire -> do
+        let wid' = wid >>= instruct . fire
+        cs <- liftIO $ execProgramT'
+            $ (`evalStateT` mempty) -- markup
+            $ (`evalStateT` (ReactPath (Nothing, [])))
+            $ evalContT
+            $ (`evalMaybeT` ())
+            $ (`runReaderT` Tagged @"Model" mdl)
+            $ (`runReaderT` Tagged @"ModelWeakVar" mdlWkVar)
+            $ (`runReaderT` notifierWkRef)
+            $ (`runReaderT` plnWkRef)
+            $ (`runObserverT` (const $ pure ()))
+            $ (`runObserverT` (const $ pure ()))
+            $ (`runObserverT` (const $ pure ()))
+            $ wid'
+        exec' (DL.toList cs)
 
 -- | ALlow additional user ReaderT and IdentityT stack on top of Widget c s
 -- Like 'Control.Monad.IO.Unlift.UnliftIO', this newtype wrapper prevents impredicative types.
