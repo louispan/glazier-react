@@ -9,6 +9,7 @@
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -40,8 +41,8 @@ import Glazier.Logger
 import Glazier.React.Common
 import Glazier.React.Component
 import Glazier.React.Markup
-import Glazier.React.Obj
-import Glazier.React.Plan
+import Glazier.React.Obj.Internal
+import Glazier.React.Plan.Internal
 import Glazier.React.ReactPath
 import Glazier.React.Widget
 import qualified JavaScript.Extras as JE
@@ -122,15 +123,15 @@ data Reactor c where
     -- | Make a fully initialized 'Obj' from a widget and another 'Obj'
     -- 'Reactor' is not a functor because of the @Widget@ in 'MkObj'
     -- which is in a positive agument position.
-    MkLinkedObj :: Widget s c () -> LogName -> WeakObj s -> (Obj s -> c) -> Reactor c
+    MkLinkedObj :: Widget s c () -> LogName -> Obj s -> (Obj s -> c) -> Reactor c
 
     -- | Reads from an 'Obj', also registering this as a listener
     -- so this widget will get rerendered whenever the 'Obj' is 'mutate'd.
-    ReadWeakObj :: Weak (IORef Plan) -> WeakObj s -> (s -> c) -> Reactor c
+    ReadObj :: Weak (IORef Plan) -> Obj s -> (s -> c) -> Reactor c
 
     -- | Deregister from reading an 'Obj' so that this widget will *not* get
     -- rerendered if th 'Obj' is mutated
-    UnwatchWeakObj :: Weak (IORef Plan) -> WeakObj s -> Reactor c
+    UnwatchObj :: Weak (IORef Plan) -> Obj s -> Reactor c
 
     -- Modifies the model and flags 'RerenderRequired' for this widget.
     -- If 'RerenderRequired' it will notifier any watchers (from 'readWeakObj')
@@ -183,7 +184,7 @@ logJS lvl msg = withFrozenCallStack $ do
 mkObj :: MonadGadget s m => Widget t (Command m) () -> LogName -> t -> m (Obj t)
 mkObj wid logname s = delegatify $ exec' . MkObj wid logname s
 
-mkLinkedObj :: MonadGadget s m => Widget t (Command m) () -> LogName -> WeakObj t -> m (Obj t)
+mkLinkedObj :: MonadGadget s m => Widget t (Command m) () -> LogName -> Obj t -> m (Obj t)
 mkLinkedObj wid logname s = delegatify $ exec' . MkLinkedObj wid logname s
 
 -- | Convenient variation of 'mkObj' where the widget is unlifted from the given monad.
@@ -196,24 +197,24 @@ unliftMkObj m logname s = do
     mkObj (unliftWidget u m) logname s
 
 unliftMkLinkedObj :: (MonadUnliftWidget s m, MonadGadget s m)
-    => m () -> LogName -> WeakObj s -> m (Obj s)
+    => m () -> LogName -> Obj s -> m (Obj s)
 unliftMkLinkedObj m logname s = do
     u <- askUnliftWidget
     mkLinkedObj (unliftWidget u m) logname s
 
 -- | Reads from an 'Obj', also registering this as a listener
 -- so this will get rerendered whenever the 'Obj' is 'mutate'd.
-readWeakObj :: MonadGadget s m => WeakObj t -> m t
+readWeakObj :: MonadGadget s m => Obj t -> m t
 readWeakObj obj = do
     this <- askPlanWeakRef
-    delegatify $ exec' . ReadWeakObj this obj
+    delegatify $ exec' . ReadObj this obj
 
 -- | Reads from an 'Obj', also registering this as a listener
 -- so this will get rerendered whenever the 'Obj' is 'mutate'd.
-unwatchWeakObj :: MonadGadget s m => WeakObj t -> m ()
-unwatchWeakObj obj = do
+unwatchObj :: MonadGadget s m => Obj t -> m ()
+unwatchObj obj = do
     this <- askPlanWeakRef
-    exec' $ UnwatchWeakObj this obj
+    exec' $ UnwatchObj this obj
 
 -- | 'mutate' with 'RerenderRequired'
 mutate' :: (MonadGadget s m) => StateT s IO a -> m a
@@ -270,6 +271,13 @@ listenEventTarget j n goStrict goLazy =
         cb <- mkListener hdl
         liftIO $ addEventListener j n cb
         initDestructor $ liftIO $ removeEventListener j n cb
+
+
+-- -- | Run a widget on an @Obj t@
+-- -- The markup, initialization (initConstructor, etc) effects are ignored.
+-- runWidget :: MonadGadget s m => Widget t c () -> Obj t -> m ()
+-- runWidget
+
 
 -- | Orphan instance because it requires AsReactor
 -- LOUISFIXME: Think about this, use ReaderT (s -> Either e Obj s)?
@@ -352,4 +360,28 @@ bh j gads props child = do
         child
     putPopReactPath
     pure a
+
+-- displayWeakObj :: MonadWidget s m => WeakObj t -> m ()
+-- displayWeakObj = (`evalMaybeT` ()) $ do
+--     mdlRef <- MaybeT $ liftIO $ deRefWeak that
+--     displayPlanRef mdlRef
+
+
+displayObj :: MonadWidget s m => Obj t -> m ()
+displayObj (Obj plnRef _ _ _ _ _) = do
+    pln <- liftIO $ readIORef plnRef
+    let cbs = widgetCallbacks pln
+        renderCb = widgetOnRender cbs
+        refCb = widgetOnRef cbs
+        renderedCb = widgetOnRendered cbs
+        n = logName pln
+    -- These are the callbacks on the 'WidgetComponent'
+    -- See jsbits/glazier_react.js
+    leafMarkup (JE.toJS widgetComponent)
+        [ ("key", JE.toJS $ untag' @"LogName" n)
+        , ("render", JE.toJS renderCb)
+        , ("ref", JE.toJS refCb)
+        , ("rendered", JE.toJS renderedCb)
+        ]
+
 

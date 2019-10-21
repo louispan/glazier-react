@@ -10,6 +10,7 @@ module Glazier.React.Obj
     -- , ModelVar
       -- | constructor not exported
       Obj
+    -- , objPlan
     -- , modelVar
     -- , _modelVar
     -- , planRef
@@ -18,6 +19,7 @@ module Glazier.React.Obj
     , WeakObj
     , weakObj
     , _weakObj
+    , fromWeakObj
     ) where
 
 import Glazier.React.Obj.Internal

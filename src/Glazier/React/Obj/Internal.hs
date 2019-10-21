@@ -5,6 +5,7 @@ module Glazier.React.Obj.Internal where
 
 import Control.Concurrent.MVar
 import Control.Lens
+import Control.Monad.Trans.Extras
 import Data.IORef
 import qualified GHC.Generics as G
 import Glazier.React.Plan.Internal
@@ -31,4 +32,12 @@ weakObj (Obj _ plnWk _ nfrWk _ mdlWk) = WeakObj plnWk nfrWk mdlWk
 
 _weakObj :: (Profunctor p, Contravariant f) => Optic' p f (Obj s) (WeakObj s)
 _weakObj = to weakObj
+
+fromWeakObj :: AlternativeIO m => WeakObj s -> m (Obj s)
+fromWeakObj (WeakObj plnWkRef notifierWkRef mdlWkVar) = do
+    plnRef <- fromJustIO $ deRefWeak plnWkRef
+    notifierRef <- fromJustIO $ deRefWeak notifierWkRef
+    mdlVar <- fromJustIO $ deRefWeak mdlWkVar
+    pure $ Obj plnRef plnWkRef notifierRef notifierWkRef mdlVar mdlWkVar
+
 
