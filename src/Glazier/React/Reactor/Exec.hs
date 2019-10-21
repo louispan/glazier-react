@@ -262,45 +262,16 @@ execLogLineJS lvl n msg cs = do
         Nothing -> ""
         Just cs' -> " [" <> cs' <> "]"
 
-watchModel :: MonadIO m => (IORef Plan, Weak (IORef Plan)) -> (IORef Notifier, Weak (IORef Notifier)) -> m ()
-watchModel (plnRef, plnWkRef) (notifierRef, notifierWkRef) = do
-    notiId <- liftIO $ notifierId <$> readIORef notifierRef
-    watcherId <- liftIO $ planId <$> readIORef plnRef
-    liftIO $ atomicModifyIORef_' notifierRef (_watchers.at watcherId .~ Just plnWkRef)
-    liftIO $ atomicModifyIORef_' plnRef (_notifiers.at notiId .~ Just notifierWkRef)
-
-unwatchModel :: MonadIO m => IORef Plan -> IORef Notifier -> m ()
-unwatchModel plnRef notifierRef = do
-    notiId <- liftIO $ notifierId <$> readIORef notifierRef
-    watcherId <- liftIO $ planId <$> readIORef plnRef
-    liftIO $ atomicModifyIORef_' notifierRef (_watchers.at watcherId .~ Nothing)
-    liftIO $ atomicModifyIORef_' plnRef (_notifiers.at notiId .~ Nothing)
-
-execReadObj :: MonadIO m => Weak (IORef Plan) -> Obj s -> MaybeT m s
-execReadObj plnWkRef (Obj _ _ notifierRef notifierWkRef mdlVar _) = do
-    plnRef <- fromJustIO $ deRefWeak plnWkRef
-    watchModel (plnRef, plnWkRef) (notifierRef, notifierWkRef)
-    -- finally we can read the model
-    liftIO $ readMVar mdlVar
-
-execUnwatchObj :: MonadIO m => Weak (IORef Plan) -> Obj s -> m ()
-execUnwatchObj plnWkRef (Obj _ _ notifierRef _ _ _) = (`evalMaybeT` ()) $ do
-    plnRef <- fromJustIO $ deRefWeak plnWkRef
-    unwatchModel plnRef notifierRef
-
-execMkObj ::
+execMkModel ::
     ( MonadIO m
-    , MonadUnliftIO m
-    , AskLogConfigRef m
-    , AskNextReactIdRef m
     , CmdReactor c
+    , AskNextReactIdRef m
     )
-    => (c -> m ())
-    -> Widget s c ()
+    => Widget s c ()
     -> LogName
     -> s
-    -> m (Obj s)
-execMkObj executor wid logName' s = do
+    -> m (IORef Notifier, Weak (IORef Notifier), MVar s, Weak (MVar s))
+execMkModel wid logName' s = do
     i <- mkReactId
     notifierRef <- liftIO $ newIORef $ Notifier i mempty
     notifierWkRef <- liftIO $ mkWeakIORef notifierRef $ do
@@ -308,14 +279,14 @@ execMkObj executor wid logName' s = do
         foldMap (unregisterFromNotifier i) ws
     mdlVar <- liftIO $ newMVar s
     mdlWkVar <- liftIO $ mkWeakMVar mdlVar (pure ())
-    execMkObjWithModelVar executor wid logName' notifierRef notifierWkRef mdlVar mdlWkVar
+    pure (notifierRef, notifierWkRef, mdlVar, mdlWkVar)
   where
     unregisterFromNotifier :: ReactId -> Weak (IORef Plan) -> IO ()
     unregisterFromNotifier i plnWkRef = (`evalMaybeT` ()) $ do
         plnRef <- fromJustIO $ deRefWeak plnWkRef
         liftIO $ atomicModifyIORef_' plnRef (_notifiers.at i .~ Nothing)
 
-execMkLinkedObj ::
+mkObj ::
     ( MonadIO m
     , MonadUnliftIO m
     , AskLogConfigRef m
@@ -325,28 +296,9 @@ execMkLinkedObj ::
     => (c -> m ())
     -> Widget s c ()
     -> LogName
-    -> Obj s
-    -> MaybeT m (Obj s)
-execMkLinkedObj executor wid logName' (Obj _ _ notifierRef notifierWkRef mdlVar mdlWkVar) = do
-    lift $ execMkObjWithModelVar executor wid logName' notifierRef notifierWkRef mdlVar mdlWkVar
-
-
-execMkObjWithModelVar ::
-    ( MonadIO m
-    , MonadUnliftIO m
-    , AskLogConfigRef m
-    , AskNextReactIdRef m
-    , CmdReactor c
-    )
-    => (c -> m ())
-    -> Widget s c ()
-    -> LogName
-    -> IORef Notifier
-    -> Weak (IORef Notifier)
-    -> MVar s
-    -> Weak (MVar s)
+    -> (IORef Notifier, Weak (IORef Notifier), MVar s, Weak (MVar s))
     -> m (Obj s)
-execMkObjWithModelVar executor wid logName' notifierRef_ notifierWkRef mdlVar_ mdlWkVar = do
+mkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar) = do
     UnliftIO u <- askUnliftIO
     fixme $ liftIO $ putStrLn "LOUISDEBUG: execMkObj"
     (logLevel', logDepth') <- getLogConfig logName'

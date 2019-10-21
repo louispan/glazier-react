@@ -1,7 +1,6 @@
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -44,8 +43,10 @@ module Glazier.React.Reactor
     , displayObj
     ) where
 
+import Control.Concurrent.MVar
 import Control.DeepSeq
 import Control.Monad.State.Strict
+import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
 import qualified Data.DList as DL
 import Data.IORef
@@ -70,6 +71,7 @@ import Glazier.React.Reactor.Internal
 import Glazier.React.ReactPath
 import Glazier.React.Widget
 import qualified JavaScript.Extras as JE
+import System.Mem.Weak
 
 logPrefix :: MonadGadget s m => m J.JSString
 logPrefix = do
@@ -89,24 +91,18 @@ logJS lvl msg = withFrozenCallStack $ do
 -- Basic
 ------------------------------------------------------
 
--- -- | Make a 'MVar' and 'Weak' 'MVar' for a model.
--- -- This is used if you want to share the same model between different widgets.
--- mkModelVar :: MonadIO m => s -> m (ModelVar s)
--- mkModelVar s = liftIO $ do
---     mdlVar <- newMVar s
---     mdlWkVar <- mkWeakMVar mdlVar (pure ())
---     pure $ Ref mdlVar mdlWkVar
-
--- FIXME: WRong, mutate wont notifiy all different mkObj!
-
--- | Make an initialized 'Obj' for a given meta using the given 'Widget' and 'ModelVar'
+-- | Make an initialized 'Obj' using the given 'Widget' and @s@
 -- Unlike 'unliftMkObj', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
--- The same 'ModelVar' can be used for different 'mkObj'
 mkObj :: MonadGadget s m => Widget t (Command m) () -> LogName -> t -> m (Obj t)
-mkObj wid logname s = delegatify $ exec' . MkObj wid logname s
+mkObj wid logname s = do
+    s' <- mkModel s
+    delegatify $ exec' . MkObj wid logname s'
 
+-- | Make an initialized 'Obj' using the given 'Widget' linked to the data in another 'Obj'
+-- Unlike 'unliftMkObj', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
 mkLinkedObj :: MonadGadget s m => Widget t (Command m) () -> LogName -> Obj t -> m (Obj t)
-mkLinkedObj wid logname s = delegatify $ exec' . MkLinkedObj wid logname s
+mkLinkedObj wid logname (Obj _ _ notifierRef notifierWkRef mdlVar mdlWkVar) =
+    delegatify $ exec' . MkObj wid logname (notifierRef, notifierWkRef, mdlVar, mdlWkVar)
 
 -- | Convenient variation of 'mkObj' where the widget is unlifted from the given monad.
 -- This is useful for transformer stacks that require addition MonadReader-like effects.
@@ -126,16 +122,20 @@ unliftMkLinkedObj m logname s = do
 -- | Reads from an 'Obj', also registering this as a listener
 -- so this will get rerendered whenever the 'Obj' is 'mutate'd.
 readObj :: MonadGadget s m => Obj t -> m t
-readObj obj = do
-    this <- askPlanWeakRef
-    delegatify $ exec' . ReadObj this obj
+readObj (Obj _ _ notifierRef notifierWkRef mdlVar _) = do
+    plnWkRef <- askPlanWeakRef
+    plnRef <- fromJustIO $ deRefWeak plnWkRef
+    watchModel (plnRef, plnWkRef) (notifierRef, notifierWkRef)
+    -- finally we can read the model
+    liftIO $ readMVar mdlVar
 
 -- | Reads from an 'Obj', also registering this as a listener
 -- so this will get rerendered whenever the 'Obj' is 'mutate'd.
 unwatchObj :: MonadGadget s m => Obj t -> m ()
-unwatchObj obj = do
-    this <- askPlanWeakRef
-    exec' $ UnwatchObj this obj
+unwatchObj (Obj _ _ notifierRef _ _ _) = do
+    plnWkRef <- askPlanWeakRef
+    plnRef <- fromJustIO $ deRefWeak plnWkRef
+    unwatchModel plnRef notifierRef
 
 -- | 'mutate' with 'RerenderRequired'
 mutate' :: (MonadGadget s m) => StateT s IO a -> m a

@@ -16,10 +16,11 @@ module Glazier.React.Reactor.Internal where
 import Control.Also
 import Control.Concurrent.MVar
 import Control.DeepSeq
+import Control.Lens
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
-import Data.IORef
+import Data.IORef.Extras
 import qualified Data.JSString as J
 import qualified GHCJS.Types as J
 import Glazier.Command
@@ -99,23 +100,12 @@ data Reactor c where
         -> (Listener -> c)
         -> Reactor c
 
+    MkModel :: s -> ((IORef Notifier, Weak (IORef Notifier), MVar s, Weak (MVar s)) -> c) -> Reactor c
+
     -- | Make a fully initialized 'Obj' from a widget and model
     -- 'Reactor' is not a functor because of the @Widget@ in 'MkObj'
     -- which is in a positive agument position.
-    MkObj :: Widget s c () -> LogName -> s -> (Obj s -> c) -> Reactor c
-
-    -- | Make a fully initialized 'Obj' from a widget and another 'Obj'
-    -- 'Reactor' is not a functor because of the @Widget@ in 'MkObj'
-    -- which is in a positive agument position.
-    MkLinkedObj :: Widget s c () -> LogName -> Obj s -> (Obj s -> c) -> Reactor c
-
-    -- | Reads from an 'Obj', also registering this as a listener
-    -- so this widget will get rerendered whenever the 'Obj' is 'mutate'd.
-    ReadObj :: Weak (IORef Plan) -> Obj s -> (s -> c) -> Reactor c
-
-    -- | Deregister from reading an 'Obj' so that this widget will *not* get
-    -- rerendered if th 'Obj' is mutated
-    UnwatchObj :: Weak (IORef Plan) -> Obj s -> Reactor c
+    MkObj :: Widget s c () -> LogName -> (IORef Notifier, Weak (IORef Notifier), MVar s, Weak (MVar s)) -> (Obj s -> c) -> Reactor c
 
     -- Modifies the model and flags 'RerenderRequired' for this widget.
     -- If 'RerenderRequired' it will notifier any watchers (from 'readWeakObj')
@@ -129,3 +119,19 @@ data Reactor c where
 --     showsPrecIO p (ReadObj this _ _) = showParenIO (p >= 11) $ (showStr "ReadObj " .) <$> (showsIO this)
 --     showsPrecIO p (Mutate this _ req _) = showParenIO (p >= 11) $ (\x -> (showStr "Mutate ") . x . (showFromStr " ") . (showsStr req)) <$> (showsIO this)
 
+mkModel :: (CmdReactor (Command m), MonadCommand m) => s -> m (IORef Notifier, Weak (IORef Notifier), MVar s, Weak (MVar s))
+mkModel s = delegatify $ exec' . MkModel s
+
+watchModel :: MonadIO m => (IORef Plan, Weak (IORef Plan)) -> (IORef Notifier, Weak (IORef Notifier)) -> m ()
+watchModel (plnRef, plnWkRef) (notifierRef, notifierWkRef) = do
+    notiId <- liftIO $ notifierId <$> readIORef notifierRef
+    watcherId <- liftIO $ planId <$> readIORef plnRef
+    liftIO $ atomicModifyIORef_' notifierRef (_watchers.at watcherId .~ Just plnWkRef)
+    liftIO $ atomicModifyIORef_' plnRef (_notifiers.at notiId .~ Just notifierWkRef)
+
+unwatchModel :: MonadIO m => IORef Plan -> IORef Notifier -> m ()
+unwatchModel plnRef notifierRef = do
+    notiId <- liftIO $ notifierId <$> readIORef notifierRef
+    watcherId <- liftIO $ planId <$> readIORef plnRef
+    liftIO $ atomicModifyIORef_' notifierRef (_watchers.at watcherId .~ Nothing)
+    liftIO $ atomicModifyIORef_' plnRef (_notifiers.at notiId .~ Nothing)
