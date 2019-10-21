@@ -54,6 +54,7 @@ import Glazier.React.Plan.Internal
 import Glazier.React.ReactBatch
 import Glazier.React.ReactId.Internal
 import Glazier.React.Reactor
+import Glazier.React.Reactor.Internal
 import Glazier.React.ReactPath
 import Glazier.React.Widget
 import qualified JavaScript.Extras as JE
@@ -328,6 +329,7 @@ execMkLinkedObj ::
     -> MaybeT m (Obj s)
 execMkLinkedObj executor wid logName' (Obj _ _ notifierRef notifierWkRef mdlVar mdlWkVar) = do
     lift $ execMkObjWithModelVar executor wid logName' notifierRef notifierWkRef mdlVar mdlWkVar
+
 
 execMkObjWithModelVar ::
     ( MonadIO m
