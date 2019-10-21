@@ -1,14 +1,8 @@
--- {-# LANGUAGE CPP #-}
 {-# LANGUAGE ConstraintKinds #-}
--- {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
--- {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
--- {-# LANGUAGE RankNTypes #-}
--- {-# LANGUAGE ScopedTypeVariables #-}
--- {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Glazier.React.Reactor.Internal where

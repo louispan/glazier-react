@@ -264,14 +264,11 @@ execLogLineJS lvl n msg cs = do
 
 execMkModel ::
     ( MonadIO m
-    , CmdReactor c
     , AskNextReactIdRef m
     )
-    => Widget s c ()
-    -> LogName
-    -> s
+    => s
     -> m (IORef Notifier, Weak (IORef Notifier), MVar s, Weak (MVar s))
-execMkModel wid logName' s = do
+execMkModel s = do
     i <- mkReactId
     notifierRef <- liftIO $ newIORef $ Notifier i mempty
     notifierWkRef <- liftIO $ mkWeakIORef notifierRef $ do

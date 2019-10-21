@@ -21,6 +21,7 @@
 module Glazier.React.Widget where
 
 import Control.Concurrent.MVar
+import Control.Monad.Delegate
 import Control.Monad.Observer
 import Control.Monad.Reader
 import Control.Monad.State.Strict
@@ -105,8 +106,8 @@ runWidget :: (MonadIO m, MonadCommand m, Cmd' [] (Command m)) => Widget t (Comma
 runWidget wid (Obj _ plnWkRef _ notifierWkRef mdlVar mdlWkVar) = do
     mdl <- liftIO $ readMVar mdlVar
     -- get the commands from running the widget using the refs/var from the given
-    delegatify $ \fire -> do
-        let wid' = wid >>= instruct . fire
+    delegatify $ \f -> do
+        let wid' = wid >>= instruct . f
         cs <- liftIO $ execProgramT'
             $ (`evalStateT` mempty) -- markup
             $ (`evalStateT` (ReactPath (Nothing, [])))
@@ -122,12 +123,26 @@ runWidget wid (Obj _ plnWkRef _ notifierWkRef mdlVar mdlWkVar) = do
             $ wid'
         exec' (DL.toList cs)
 
+-- | Allows handling @Widget t c@ that return @a@ as if it returns @()@
+-- by delegating the handling of @a@
+handleWidget :: (MonadCommand m, Cmd' [] (Command m)) => Widget t (Command m) a -> m (Either a (Widget t (Command m) ()))
+handleWidget wid = delegate2 $ \(f, g) -> do
+    f' <- codify f
+    g (wid >>= instruct . f')
+
 -- | ALlow additional user ReaderT and IdentityT stack on top of Widget c s
 -- Like 'Control.Monad.IO.Unlift.UnliftIO', this newtype wrapper prevents impredicative types.
 newtype UniftWidget s m = UniftWidget { unliftWidget :: forall a. m a -> Widget s (Command m) a }
 
 -- | Similar to 'Control.Monad.IO.Unlift.MonadUnliftIO', except we want to unlift a @Widget (Gizmo c s) a@.
 -- This limits transformers stack to 'ReaderT' and 'IdentityT' on top of @Gizmo c s m@
+-- Example @
+-- unliftMkObj :: (MonadUnliftWidget s m, MonadGadget s m)
+--     => m () -> LogName -> s -> m (Obj s)
+-- unliftMkObj m logname s = do
+--     u <- askUnliftWidget
+--     mkObj (unliftWidget u m) logname s
+-- @
 class MonadUnliftWidget s m | m -> s where
     askUnliftWidget :: m (UniftWidget s m)
 

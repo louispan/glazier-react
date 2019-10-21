@@ -23,9 +23,9 @@ module Glazier.React.Reactor
     , logPrefix
     , logJS
     , mkObj
+    , mkObj'
     , mkLinkedObj
-    , unliftMkObj
-    , unliftMkLinkedObj
+    , mkLinkedObj'
     , readObj
     , unwatchObj
     , mutate'
@@ -91,33 +91,34 @@ logJS lvl msg = withFrozenCallStack $ do
 -- Basic
 ------------------------------------------------------
 
+-- | 'mkObj'' that also handles the @a@ for 'Widget's that return an @a@
+mkObj :: MonadGadget s m => Widget t (Command m) a -> LogName -> t -> m (Either a (Obj t))
+mkObj wid logname s = do
+    x <- handleWidget wid
+    case x of
+        Left a -> pure $ Left a
+        Right wid' -> Right <$> mkObj' wid' logname s
+
 -- | Make an initialized 'Obj' using the given 'Widget' and @s@
 -- Unlike 'unliftMkObj', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
-mkObj :: MonadGadget s m => Widget t (Command m) () -> LogName -> t -> m (Obj t)
-mkObj wid logname s = do
+mkObj' :: MonadGadget s m => Widget t (Command m) () -> LogName -> t -> m (Obj t)
+mkObj' wid logname s = do
     s' <- mkModel s
     delegatify $ exec' . MkObj wid logname s'
 
+-- | 'mkLinkedObj'' that also handles the @a@ for 'Widget's that return an @a@
+mkLinkedObj :: MonadGadget s m => Widget t (Command m) a -> LogName -> Obj t -> m (Either a (Obj t))
+mkLinkedObj wid logname obj = do
+    x <- handleWidget wid
+    case x of
+        Left a -> pure $ Left a
+        Right wid' -> Right <$> mkLinkedObj' wid' logname obj
+
 -- | Make an initialized 'Obj' using the given 'Widget' linked to the data in another 'Obj'
 -- Unlike 'unliftMkObj', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
-mkLinkedObj :: MonadGadget s m => Widget t (Command m) () -> LogName -> Obj t -> m (Obj t)
-mkLinkedObj wid logname (Obj _ _ notifierRef notifierWkRef mdlVar mdlWkVar) =
+mkLinkedObj' :: MonadGadget s m => Widget t (Command m) () -> LogName -> Obj t -> m (Obj t)
+mkLinkedObj' wid logname (Obj _ _ notifierRef notifierWkRef mdlVar mdlWkVar) =
     delegatify $ exec' . MkObj wid logname (notifierRef, notifierWkRef, mdlVar, mdlWkVar)
-
--- | Convenient variation of 'mkObj' where the widget is unlifted from the given monad.
--- This is useful for transformer stacks that require addition MonadReader-like effects.
--- The same 'ModelVar' can be used for different 'unliftMkObj'
-unliftMkObj :: (MonadUnliftWidget s m, MonadGadget s m)
-    => m () -> LogName -> s -> m (Obj s)
-unliftMkObj m logname s = do
-    u <- askUnliftWidget
-    mkObj (unliftWidget u m) logname s
-
-unliftMkLinkedObj :: (MonadUnliftWidget s m, MonadGadget s m)
-    => m () -> LogName -> Obj s -> m (Obj s)
-unliftMkLinkedObj m logname s = do
-    u <- askUnliftWidget
-    mkLinkedObj (unliftWidget u m) logname s
 
 -- | Reads from an 'Obj', also registering this as a listener
 -- so this will get rerendered whenever the 'Obj' is 'mutate'd.
