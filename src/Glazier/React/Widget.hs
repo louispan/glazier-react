@@ -34,12 +34,16 @@ import Control.Monad.Trans.Identity
 import Control.Monad.Trans.Maybe
 import qualified Data.DList as DL
 import Data.IORef
+import Data.String
 import Data.Tagged.Extras
+import qualified GHCJS.Types as J
 import Glazier.Command
 import Glazier.React.Markup
 import Glazier.React.Obj.Internal
 import Glazier.React.Plan.Internal
+import Glazier.React.ReactId
 import Glazier.React.ReactPath
+import qualified JavaScript.Extras as JE
 import qualified JavaScript.Object as JO
 import System.Mem.Weak
 
@@ -48,6 +52,19 @@ instance {-# OVERLAPPING #-} Monad m => MonadAsk (Tagged "Scratch" JO.Object) (T
     askEnviron _ = ask
 askScratch :: AskScratch m => m JO.Object
 askScratch = (untag' @"Scratch") <$> askEnviron @(Tagged "Scratch" JO.Object) Proxy
+
+scratchAccessor :: ReactId -> J.JSString -> J.JSString
+scratchAccessor i n = "$" <> (fromString $ show $ unReactId i) <> "_" <> n
+
+setScratch :: (MonadIO m, AskScratch m) => ReactId -> J.JSString -> J.JSVal -> m ()
+setScratch i n v = do
+    d <- askScratch
+    liftIO $ JE.setProperty d (scratchAccessor i n) v
+
+getScratch :: (MonadIO m, AskScratch m) => ReactId -> J.JSString -> m J.JSVal
+getScratch i n = do
+    d <- askScratch
+    liftIO $ JE.getProperty d (scratchAccessor i n)
 
 type AskModelWeakVar s = MonadAsk "ModelWeakVar" (Tagged "ModelWeakVar" (Weak (MVar s)))
 instance {-# OVERLAPPING #-} Monad m => MonadAsk "ModelWeakVar" (Tagged "ModelWeakVar" (Weak (MVar s))) (ReaderT (Tagged "ModelWeakVar" (Weak (MVar s))) m) where

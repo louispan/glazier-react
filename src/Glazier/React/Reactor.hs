@@ -69,7 +69,6 @@ import Glazier.React.Component
 import Glazier.React.Markup
 import Glazier.React.Obj.Internal
 import Glazier.React.Plan.Internal
-import Glazier.React.ReactId
 import Glazier.React.Reactor.Internal
 import Glazier.React.ReactPath
 import Glazier.React.Widget
@@ -93,9 +92,6 @@ logJS lvl msg = withFrozenCallStack $ do
 ------------------------------------------------------
 -- Basic
 ------------------------------------------------------
-
-mkReactId :: MonadGadget s m => m ReactId
-mkReactId = delegatify $ exec' . MkReactId
 
 -- | 'mkObj'' that also handles the @a@ for 'Widget's that return an @a@
 mkObj :: MonadGadget s m => Widget t (Command m) a -> LogName -> t -> m (Either a (Obj t))

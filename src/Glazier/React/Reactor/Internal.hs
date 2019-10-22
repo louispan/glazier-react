@@ -117,9 +117,12 @@ data Reactor c where
 --     showsPrecIO p (ReadObj this _ _) = showParenIO (p >= 11) $ (showStr "ReadObj " .) <$> (showsIO this)
 --     showsPrecIO p (Mutate this _ req _) = showParenIO (p >= 11) $ (\x -> (showStr "Mutate ") . x . (showFromStr " ") . (showsStr req)) <$> (showsIO this)
 
+mkReactId :: (CmdReactor (Command m), MonadCommand m) => m ReactId
+mkReactId = delegatify $ exec' . MkReactId
+
 mkModel :: (MonadIO m, CmdReactor (Command m), MonadCommand m) => s -> m (IORef Notifier, Weak (IORef Notifier), MVar s, Weak (MVar s))
 mkModel s = do
-    i <- delegatify $ exec' . MkReactId
+    i <- mkReactId
     notifierRef <- liftIO $ newIORef $ Notifier i mempty
     notifierWkRef <- liftIO $ mkWeakIORef notifierRef $ do
         ws <- liftIO $ watchers <$> readIORef notifierRef
