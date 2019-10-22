@@ -24,7 +24,7 @@ import Glazier.Logger
 import Glazier.React.Common
 import Glazier.React.Component
 import Glazier.React.ReactId
-import qualified JavaScript.Object as JO
+import qualified JavaScript.Extras as JE
 import System.Mem.AnyStableName
 import System.Mem.Weak
 
@@ -60,7 +60,7 @@ data Plan = Plan
     , logLevel :: IO (Maybe LogLevel)
     , logDepth :: IO (Maybe (Maybe LogCallStackDepth))
     -- a javascript object to store/set miscellaneous data
-    , scratch :: JO.Object
+    , scratch :: JE.Object
     -- a react "ref" to the javascript instance of ReactComponent
     -- so that react "componentRef.setState()" can be called.
     , widgetRef :: Maybe WidgetRef

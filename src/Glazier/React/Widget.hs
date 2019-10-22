@@ -44,22 +44,26 @@ import Glazier.React.Plan.Internal
 import Glazier.React.ReactId
 import Glazier.React.ReactPath
 import qualified JavaScript.Extras as JE
-import qualified JavaScript.Object as JO
 import System.Mem.Weak
 
-type AskScratch = MonadAsk' (Tagged "Scratch" JO.Object)
-instance {-# OVERLAPPING #-} Monad m => MonadAsk (Tagged "Scratch" JO.Object) (Tagged "Scratch" JO.Object) (ReaderT (Tagged "Scratch" JO.Object) m) where
+type AskScratch = MonadAsk' (Tagged "Scratch" JE.Object)
+instance {-# OVERLAPPING #-} Monad m => MonadAsk (Tagged "Scratch" JE.Object) (Tagged "Scratch" JE.Object) (ReaderT (Tagged "Scratch" JE.Object) m) where
     askEnviron _ = ask
-askScratch :: AskScratch m => m JO.Object
-askScratch = (untag' @"Scratch") <$> askEnviron @(Tagged "Scratch" JO.Object) Proxy
+askScratch :: AskScratch m => m JE.Object
+askScratch = (untag' @"Scratch") <$> askEnviron @(Tagged "Scratch" JE.Object) Proxy
 
 scratchAccessor :: ReactId -> J.JSString -> J.JSString
 scratchAccessor i n = "$" <> (fromString $ show $ unReactId i) <> "_" <> n
 
-setScratch :: (MonadIO m, AskScratch m) => ReactId -> J.JSString -> J.JSVal -> m ()
+deleteScratch :: (MonadIO m, AskScratch m) => ReactId -> J.JSString -> m ()
+deleteScratch i n = do
+    d <- askScratch
+    liftIO $ JE.deleteProperty d (scratchAccessor i n)
+
+setScratch :: (MonadIO m, AskScratch m, JE.ToJS a) => ReactId -> J.JSString -> a -> m ()
 setScratch i n v = do
     d <- askScratch
-    liftIO $ JE.setProperty d (scratchAccessor i n) v
+    liftIO $ JE.setProperty d (scratchAccessor i n) (JE.toJS v)
 
 getScratch :: (MonadIO m, AskScratch m) => ReactId -> J.JSString -> m J.JSVal
 getScratch i n = do
@@ -129,7 +133,7 @@ type Widget s c =
     (ObserverT (Tagged "Constructor" c) -- 'AskConstructor'
     (ReaderT (Tagged "ModelWeakVar" (Weak (MVar s))) -- 'AskModelWeakVar'
     (ReaderT (Tagged "Model" s) -- 'AskModel'
-    (ReaderT (Tagged "Scratch" JO.Object) -- 'AskScratch'
+    (ReaderT (Tagged "Scratch" JE.Object) -- 'AskScratch'
     (ReaderT (Weak (IORef Notifier)) -- 'AskNotifierWeakRef'
     (ReaderT (Weak (IORef Plan)) -- 'AskPlanWeakRef', 'AskLogLevel', 'AskLogCallStackDepth', 'AskLogName'
     (MaybeT -- 'Alternative'

@@ -44,7 +44,8 @@ type CmdReactor c =
 class (CmdReactor (Command m)
     , AlternativeIO m, Also () m
     , MonadLogger J.JSString m, AskLogName m, AskReactPath m
-    , AskPlanWeakRef m, AskNotifierWeakRef m, AskModel s m, AskModelWeakVar s m) => MonadGadget s m
+    , AskScratch m, AskPlanWeakRef m
+    , AskNotifierWeakRef m, AskModel s m, AskModelWeakVar s m) => MonadGadget s m
 
 instance {-# OVERLAPPABLE #-} (Monad (t m), MonadTrans t, MonadGadget s m
     , Command (t m) ~ Command m
