@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
+
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveFunctor #-}
@@ -22,6 +24,7 @@ module Glazier.React.Widget where
 
 import Control.Concurrent.MVar
 import Control.Monad.Delegate
+import Control.Monad.Environ
 import Control.Monad.Observer
 import Control.Monad.Reader
 import Control.Monad.State.Strict
@@ -31,13 +34,32 @@ import Control.Monad.Trans.Identity
 import Control.Monad.Trans.Maybe
 import qualified Data.DList as DL
 import Data.IORef
-import Data.Tagged
+import Data.Tagged.Extras
 import Glazier.Command
 import Glazier.React.Markup
 import Glazier.React.Obj.Internal
-import Glazier.React.Plan
+import Glazier.React.Plan.Internal
 import Glazier.React.ReactPath
+import qualified JavaScript.Object as JO
 import System.Mem.Weak
+
+type AskScratch = MonadAsk' (Tagged "Scratch" JO.Object)
+instance {-# OVERLAPPING #-} Monad m => MonadAsk (Tagged "Scratch" JO.Object) (Tagged "Scratch" JO.Object) (ReaderT (Tagged "Scratch" JO.Object) m) where
+    askEnviron _ = ask
+askScratch :: AskScratch m => m JO.Object
+askScratch = (untag' @"Scratch") <$> askEnviron @(Tagged "Scratch" JO.Object) Proxy
+
+type AskModelWeakVar s = MonadAsk "ModelWeakVar" (Tagged "ModelWeakVar" (Weak (MVar s)))
+instance {-# OVERLAPPING #-} Monad m => MonadAsk "ModelWeakVar" (Tagged "ModelWeakVar" (Weak (MVar s))) (ReaderT (Tagged "ModelWeakVar" (Weak (MVar s))) m) where
+    askEnviron _ = ask
+askModelWeakVar :: AskModelWeakVar s m => m (Weak (MVar s))
+askModelWeakVar = (untag' @"ModelWeakVar") <$> askEnviron @"ModelWeakVar" Proxy
+
+type AskModel s = MonadAsk "Model" (Tagged "Model" s)
+instance {-# OVERLAPPING #-} Monad m => MonadAsk "Model" (Tagged "Model" s) (ReaderT (Tagged "Model" s) m) where
+    askEnviron _ = ask
+askModel :: AskModel s m => m s
+askModel = (untag' @"Model") <$> askEnviron @"Model" Proxy
 
 type AskConstructor m = MonadObserver' (Tagged "Constructor" (Command m)) m
 askConstructor :: forall m. AskConstructor m => m (Command m -> m ())
@@ -88,23 +110,25 @@ type Widget s c =
     ObserverT (Tagged "Rendered" c) -- 'AskRendered'
     (ObserverT (Tagged "Destructor" c) -- 'AskDestructor'
     (ObserverT (Tagged "Constructor" c) -- 'AskConstructor'
-    (ReaderT (Weak (IORef Plan)) -- 'AskPlanWeakRef', 'AskLogLevel', 'AskLogCallStackDepth', 'AskLogName'
-    (ReaderT (Weak (IORef Notifier)) -- 'AskNotifierWeakRef'
     (ReaderT (Tagged "ModelWeakVar" (Weak (MVar s))) -- 'AskModelWeakVar'
     (ReaderT (Tagged "Model" s) -- 'AskModel'
+    (ReaderT (Tagged "Scratch" JO.Object) -- 'AskScratch'
+    (ReaderT (Weak (IORef Notifier)) -- 'AskNotifierWeakRef'
+    (ReaderT (Weak (IORef Plan)) -- 'AskPlanWeakRef', 'AskLogLevel', 'AskLogCallStackDepth', 'AskLogName'
     (MaybeT -- 'Alternative'
     (ContT () -- 'MonadDelegate'
     -- State monads must be inside ContT to be a 'MonadDelegate'
     (StateT ReactPath -- 'PutReactPath', 'AskReactPath'
     (StateT (DL.DList ReactMarkup) -- 'PutMarkup'
     (ProgramT c IO -- 'MonadComand', 'MonadIO'
-    )))))))))))
+    ))))))))))))
 
 -- | Run a widget on an @Obj t@
 -- The markup, initialization (initConstructor, etc) effects are ignored.
 runWidget :: (MonadIO m, MonadCommand m, Cmd' [] (Command m)) => Widget t (Command m) a -> Obj t -> m a
-runWidget wid (Obj _ plnWkRef _ notifierWkRef mdlVar mdlWkVar) = do
+runWidget wid (Obj plnRef plnWkRef _ notifierWkRef mdlVar mdlWkVar) = do
     mdl <- liftIO $ readMVar mdlVar
+    o <- liftIO $ scratch <$> readIORef plnRef
     -- get the commands from running the widget using the refs/var from the given
     delegatify $ \f -> do
         let wid' = wid >>= instruct . f
@@ -113,10 +137,11 @@ runWidget wid (Obj _ plnWkRef _ notifierWkRef mdlVar mdlWkVar) = do
             $ (`evalStateT` (ReactPath (Nothing, [])))
             $ evalContT
             $ (`evalMaybeT` ())
+            $ (`runReaderT` plnWkRef)
+            $ (`runReaderT` notifierWkRef)
+            $ (`runReaderT` Tagged @"Scratch" o)
             $ (`runReaderT` Tagged @"Model" mdl)
             $ (`runReaderT` Tagged @"ModelWeakVar" mdlWkVar)
-            $ (`runReaderT` notifierWkRef)
-            $ (`runReaderT` plnWkRef)
             $ (`runObserverT` (const $ pure ()))
             $ (`runObserverT` (const $ pure ()))
             $ (`runObserverT` (const $ pure ()))
@@ -125,6 +150,7 @@ runWidget wid (Obj _ plnWkRef _ notifierWkRef mdlVar mdlWkVar) = do
 
 -- | Allows handling @Widget t c@ that return @a@ as if it returns @()@
 -- by delegating the handling of @a@
+-- FIXME: Use Gadget transformer stack without all the other stuff
 handleWidget :: (MonadCommand m, Cmd' [] (Command m)) => Widget t (Command m) a -> m (Either a (Widget t (Command m) ()))
 handleWidget wid = delegate2 $ \(f, g) -> do
     f' <- codify f

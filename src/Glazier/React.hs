@@ -23,6 +23,7 @@ module Glazier.React
     , module Control.Monad.Trans.Maybe
     , module GHC.Stack
     , module GHCJS.Types
+    , Object
     , module JavaScript.Extras
     , module Data.Function.Extras
     , module Data.Proxy
@@ -61,3 +62,4 @@ import Glazier.React.ReactId
 import Glazier.React.Reactor
 import Glazier.React.Widget
 import JavaScript.Extras
+import JavaScript.Object

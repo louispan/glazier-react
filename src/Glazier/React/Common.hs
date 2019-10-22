@@ -1,4 +1,3 @@
-{-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -8,13 +7,9 @@
 
 module Glazier.React.Common where
 
-import Control.Concurrent.MVar
-import Control.Monad.Environ
-import Control.Monad.Reader
 import Data.Tagged.Extras
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Types as J
-import System.Mem.Weak
 
 type LogName = Tagged "LogName" J.JSString
 
@@ -29,20 +24,3 @@ type Handler = (J.JSVal -> IO (), IO ())
 
 -- A 'Listener' is a callable function from JS that accepts a JS value as in input.
 type Listener = J.Callback (J.JSVal -> IO ())
-
-data RerenderRequired
-    = RerenderNotRequired
-    | RerenderRequired
-    deriving (Show, Eq)
-
-type AskModelWeakVar s = MonadAsk "ModelWeakVar" (Tagged "ModelWeakVar" (Weak (MVar s)))
-instance {-# OVERLAPPING #-} Monad m => MonadAsk "ModelWeakVar" (Tagged "ModelWeakVar" (Weak (MVar s))) (ReaderT (Tagged "ModelWeakVar" (Weak (MVar s))) m) where
-    askEnviron _ = ask
-askModelWeakVar :: AskModelWeakVar s m => m (Weak (MVar s))
-askModelWeakVar = (untag' @"ModelWeakVar") <$> askEnviron @"ModelWeakVar" Proxy
-
-type AskModel s = MonadAsk "Model" (Tagged "Model" s)
-instance {-# OVERLAPPING #-} Monad m => MonadAsk "Model" (Tagged "Model" s) (ReaderT (Tagged "Model" s) m) where
-    askEnviron _ = ask
-askModel :: AskModel s m => m s
-askModel = (untag' @"Model") <$> askEnviron @"Model" Proxy

@@ -24,8 +24,14 @@ import Glazier.Logger
 import Glazier.React.Common
 import Glazier.React.Component
 import Glazier.React.ReactId
+import qualified JavaScript.Object as JO
 import System.Mem.AnyStableName
 import System.Mem.Weak
+
+data RerenderRequired
+    = RerenderNotRequired
+    | RerenderRequired
+    deriving (Show, Eq)
 
 data WidgetCallbacks = WidgetCallbacks
     -- render function of the ReactComponent
@@ -53,7 +59,8 @@ data Plan = Plan
     , logName :: LogName
     , logLevel :: IO (Maybe LogLevel)
     , logDepth :: IO (Maybe (Maybe LogCallStackDepth))
-
+    -- a javascript object to store/set miscellaneous data
+    , scratch :: JO.Object
     -- a react "ref" to the javascript instance of ReactComponent
     -- so that react "componentRef.setState()" can be called.
     , widgetRef :: Maybe WidgetRef

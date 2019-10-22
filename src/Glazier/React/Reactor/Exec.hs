@@ -58,6 +58,7 @@ import Glazier.React.Reactor.Internal
 import Glazier.React.ReactPath
 import Glazier.React.Widget
 import qualified JavaScript.Extras as JE
+import qualified JavaScript.Object as JO
 import System.IO
 import System.Mem.AnyStableName
 import System.Mem.Weak
@@ -124,8 +125,8 @@ type AskNextReactIdRef = MonadAsk' (IORef (Tagged "NextReactId" ReactId))
 askNextReactIdRef :: AskNextReactIdRef m => m (IORef (Tagged "NextReactId" ReactId))
 askNextReactIdRef = askEnviron @(IORef (Tagged "NextReactId" ReactId)) Proxy
 
-mkReactId :: (MonadIO m, AskNextReactIdRef m) => m ReactId
-mkReactId = do
+execMkReactId :: (MonadIO m, AskNextReactIdRef m) => m ReactId
+execMkReactId = do
     ref <- askNextReactIdRef
     liftIO $ atomicModifyIORef' ref $ \n ->
         let ReactId i = untag' @"NextReactId" n
@@ -262,27 +263,6 @@ execLogLineJS lvl n msg cs = do
         Nothing -> ""
         Just cs' -> " [" <> cs' <> "]"
 
-execMkModel ::
-    ( MonadIO m
-    , AskNextReactIdRef m
-    )
-    => s
-    -> m (IORef Notifier, Weak (IORef Notifier), MVar s, Weak (MVar s))
-execMkModel s = do
-    i <- mkReactId
-    notifierRef <- liftIO $ newIORef $ Notifier i mempty
-    notifierWkRef <- liftIO $ mkWeakIORef notifierRef $ do
-        ws <- liftIO $ watchers <$> readIORef notifierRef
-        foldMap (unregisterFromNotifier i) ws
-    mdlVar <- liftIO $ newMVar s
-    mdlWkVar <- liftIO $ mkWeakMVar mdlVar (pure ())
-    pure (notifierRef, notifierWkRef, mdlVar, mdlWkVar)
-  where
-    unregisterFromNotifier :: ReactId -> Weak (IORef Plan) -> IO ()
-    unregisterFromNotifier i plnWkRef = (`evalMaybeT` ()) $ do
-        plnRef <- fromJustIO $ deRefWeak plnWkRef
-        liftIO $ atomicModifyIORef_' plnRef (_notifiers.at i .~ Nothing)
-
 mkObj ::
     ( MonadIO m
     , MonadUnliftIO m
@@ -299,12 +279,14 @@ mkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar) = d
     UnliftIO u <- askUnliftIO
     fixme $ liftIO $ putStrLn "LOUISDEBUG: execMkObj"
     (logLevel', logDepth') <- getLogConfig logName'
-    i <- mkReactId
+    i <- execMkReactId
+    o <- liftIO $ JO.create
     plnRef_ <- liftIO $ newIORef $ Plan
         i
         logName'
         logLevel'
         logDepth'
+        o
         Nothing -- widgetRef
         J.nullRef -- prerendered, null for now
         mempty -- prerender
@@ -356,16 +338,19 @@ mkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar) = d
             -- get the latest state from the weak ref
             mdlVar' <- fromJustIO $ deRefWeak mdlWkVar
             mdl <- liftIO $ readMVar mdlVar'
+            plnRef' <- fromJustIO $ deRefWeak plnWkRef
+            o' <- liftIO $ scratch <$> readIORef plnRef'
             -- then get the latest markup using the state
             liftIO $ execProgramT'
                 $ (`evalStateT` mempty) -- markup
                 $ (`evalStateT` (ReactPath (Nothing, [])))
                 $ evalContT
                 $ (`evalMaybeT` ())
+                $ (`runReaderT` plnWkRef)
+                $ (`runReaderT` notifierWkRef)
+                $ (`runReaderT` Tagged @"Scratch" o')
                 $ (`runReaderT` Tagged @"Model" mdl)
                 $ (`runReaderT` Tagged @"ModelWeakVar" mdlWkVar)
-                $ (`runReaderT` notifierWkRef)
-                $ (`runReaderT` plnWkRef)
                 $ (`runObserverT` onConstruct')
                 $ (`runObserverT` onDestruct')
                 $ (`runObserverT` onRendrd')
@@ -442,25 +427,26 @@ mkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar) = d
 execMutate ::
     (AlternativeIO m, AskDirtyPlan m)
     => (c -> m ())
-    -> Weak (IORef Notifier)
     -> Weak (MVar s)
-    -> RerenderRequired
     -> StateT s IO c
     -> m ()
-execMutate executor notifierWkRef mdlWk req tick = do
+execMutate executor mdlWk tick = do
     liftIO $ putStrLn $ "LOUISDEBUG: execMutate"
     mdlVar <- fromJustIO $ deRefWeak mdlWk
     s <- liftIO $ takeMVar mdlVar
     (c, s') <- liftIO $ runStateT tick s
     liftIO $ putMVar mdlVar s'
     executor c
-    -- now rerender
-    case req of
-        RerenderNotRequired -> pure ()
-        RerenderRequired -> do
-            notifierRef <- fromJustIO $ deRefWeak notifierWkRef
-            ws <- liftIO $ watchers <$> readIORef notifierRef
-            foldr (\wk b -> markPlanDirty wk *> b) (pure ()) ws
+
+execNotifyDirty ::
+    (AlternativeIO m, AskDirtyPlan m)
+    => Weak (IORef Notifier)
+    -> m ()
+execNotifyDirty notifierWkRef = do
+    liftIO $ putStrLn $ "LOUISDEBUG: execNotifyDirty"
+    notifierRef <- fromJustIO $ deRefWeak notifierWkRef
+    ws <- liftIO $ watchers <$> readIORef notifierRef
+    foldr (\wk b -> markPlanDirty wk *> b) (pure ()) ws
 
 execMkHandler :: (NFData a, AlternativeIO m, MonadUnliftIO m)
         => (c -> m ())

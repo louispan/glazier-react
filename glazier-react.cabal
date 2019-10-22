@@ -16,8 +16,8 @@ extra-source-files:   README.md
 library
   hs-source-dirs:     src
   js-sources:         jsbits/glazier-react.js
-  exposed-modules:    Glazier.React.Common
-                      Glazier.React
+  exposed-modules:    Glazier.React
+                      Glazier.React.Common
                       Glazier.React.Component
                       Glazier.React.Component.Internal
                       Glazier.DOM

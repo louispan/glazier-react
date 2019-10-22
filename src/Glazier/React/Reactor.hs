@@ -22,14 +22,16 @@ module Glazier.React.Reactor
     , Reactor
     , logPrefix
     , logJS
+    , mkReactId
     , mkObj
     , mkObj'
     , mkLinkedObj
     , mkLinkedObj'
     , readObj
     , unwatchObj
-    , mutate'
-    , mutate
+    , noisyMutate
+    , quietMutate
+    , notifyDirty
     , mkHandler
     , mkHandler'
     , handleSyntheticEvent
@@ -67,6 +69,7 @@ import Glazier.React.Component
 import Glazier.React.Markup
 import Glazier.React.Obj.Internal
 import Glazier.React.Plan.Internal
+import Glazier.React.ReactId
 import Glazier.React.Reactor.Internal
 import Glazier.React.ReactPath
 import Glazier.React.Widget
@@ -90,6 +93,9 @@ logJS lvl msg = withFrozenCallStack $ do
 ------------------------------------------------------
 -- Basic
 ------------------------------------------------------
+
+mkReactId :: MonadGadget s m => m ReactId
+mkReactId = delegatify $ exec' . MkReactId
 
 -- | 'mkObj'' that also handles the @a@ for 'Widget's that return an @a@
 mkObj :: MonadGadget s m => Widget t (Command m) a -> LogName -> t -> m (Either a (Obj t))
@@ -138,18 +144,28 @@ unwatchObj (Obj _ _ notifierRef _ _ _) = do
     plnRef <- fromJustIO $ deRefWeak plnWkRef
     unwatchModel plnRef notifierRef
 
--- | 'mutate' with 'RerenderRequired'
-mutate' :: (MonadGadget s m) => StateT s IO a -> m a
-mutate' = mutate RerenderRequired
+-- | Mutates the Model for the current widget.
+-- Doesn't automatically flags the widget as dirty
+noisyMutate :: MonadGadget s m => StateT s IO a -> m a
+noisyMutate m = do
+    a <- quietMutate m
+    notifyDirty
+    pure a
 
 -- | Mutates the Model for the current widget.
--- Expose 'Rerender' for "uncontrolled (by react)" components like <input>
--- which doesn't necessarily require a rerender if the model changes.
-mutate :: MonadGadget s m => RerenderRequired -> StateT s IO a -> m a
-mutate r m = do
+-- Doesn't automatically flags the widget as dirty
+quietMutate :: MonadGadget s m => StateT s IO a -> m a
+quietMutate m = do
     mdlWk <- askModelWeakVar
+    delegatify $ \f -> exec' $ Mutate mdlWk (f <$> m)
+
+-- | Notifys any watchers (from 'readWeakObj')
+-- that the model has changed so that the watchers can rerender.
+-- Any rerendering is batched and might be be done immediately
+notifyDirty :: MonadGadget s m => m ()
+notifyDirty = do
     notifierWk <- askNotifierWeakRef
-    delegatify $ \f -> exec' $ Mutate notifierWk mdlWk r (f <$> m)
+    exec' $ NotifyDirty notifierWk
 
 -- | This convert the input @goStrict@ and @f@ into (preprocess, postprocess).
 -- Multiple preprocess must be run for the same event before any of the postprocess,

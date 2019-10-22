@@ -23,6 +23,7 @@ import Glazier.React.Common
 import Glazier.React.Markup
 import Glazier.React.Obj.Internal
 import Glazier.React.Plan.Internal
+import Glazier.React.ReactId
 import Glazier.React.ReactPath
 import Glazier.React.Widget
 import System.Mem.Weak
@@ -74,6 +75,8 @@ instance {-# OVERLAPPABLE #-} (CmdReactor c, c ~ Command (Widget s c)) => MonadW
 -- which is in a positive agument position.
 data Reactor c where
 
+    MkReactId :: (ReactId -> c) -> Reactor c
+
     -- Turn some handling function into a 'Handler'.
     -- The reason for the two handling functions is detailed in 'Glazier.React.Reactor.Exec.execMkHandler'
     -- Glazier will try to return the same 'Handler for the same input functions as much as possible
@@ -94,17 +97,18 @@ data Reactor c where
         -> (Listener -> c)
         -> Reactor c
 
-    MkModel :: s -> ((IORef Notifier, Weak (IORef Notifier), MVar s, Weak (MVar s)) -> c) -> Reactor c
-
     -- | Make a fully initialized 'Obj' from a widget and model
     -- 'Reactor' is not a functor because of the @Widget@ in 'MkObj'
     -- which is in a positive agument position.
     MkObj :: Widget s c () -> LogName -> (IORef Notifier, Weak (IORef Notifier), MVar s, Weak (MVar s)) -> (Obj s -> c) -> Reactor c
 
-    -- Modifies the model and flags 'RerenderRequired' for this widget.
-    -- If 'RerenderRequired' it will notifier any watchers (from 'readWeakObj')
+    -- Modifies the model
+    Mutate :: Weak (MVar s) -> StateT s IO c -> Reactor c
+
+    -- Notifies any watchers (from 'readWeakObj')
     -- that the model has changed so that the watchers can rerender.
-    Mutate :: Weak (IORef Notifier) -> Weak (MVar s) -> RerenderRequired -> StateT s IO c -> Reactor c
+    -- Any rerendering is batched and might be be done immediately
+    NotifyDirty :: Weak (IORef Notifier) -> Reactor c
 
 -- instance (IsString str, Semigroup str) => ShowIO str (Reactor c) where
 --     showsPrecIO p (MkHandler this _ _ _) = showParenIO (p >= 11) $ (showStr "MkHandler " .) <$> (showsIO this)
@@ -113,8 +117,22 @@ data Reactor c where
 --     showsPrecIO p (ReadObj this _ _) = showParenIO (p >= 11) $ (showStr "ReadObj " .) <$> (showsIO this)
 --     showsPrecIO p (Mutate this _ req _) = showParenIO (p >= 11) $ (\x -> (showStr "Mutate ") . x . (showFromStr " ") . (showsStr req)) <$> (showsIO this)
 
-mkModel :: (CmdReactor (Command m), MonadCommand m) => s -> m (IORef Notifier, Weak (IORef Notifier), MVar s, Weak (MVar s))
-mkModel s = delegatify $ exec' . MkModel s
+mkModel :: (MonadIO m, CmdReactor (Command m), MonadCommand m) => s -> m (IORef Notifier, Weak (IORef Notifier), MVar s, Weak (MVar s))
+mkModel s = do
+    i <- delegatify $ exec' . MkReactId
+    notifierRef <- liftIO $ newIORef $ Notifier i mempty
+    notifierWkRef <- liftIO $ mkWeakIORef notifierRef $ do
+        ws <- liftIO $ watchers <$> readIORef notifierRef
+        foldMap (unregisterFromNotifier i) ws
+    mdlVar <- liftIO $ newMVar s
+    mdlWkVar <- liftIO $ mkWeakMVar mdlVar (pure ())
+    pure (notifierRef, notifierWkRef, mdlVar, mdlWkVar)
+  where
+    unregisterFromNotifier :: ReactId -> Weak (IORef Plan) -> IO ()
+    unregisterFromNotifier i plnWkRef = (`evalMaybeT` ()) $ do
+        plnRef <- fromJustIO $ deRefWeak plnWkRef
+        liftIO $ atomicModifyIORef_' plnRef (_notifiers.at i .~ Nothing)
+
 
 watchModel :: MonadIO m => (IORef Plan, Weak (IORef Plan)) -> (IORef Notifier, Weak (IORef Notifier)) -> m ()
 watchModel (plnRef, plnWkRef) (notifierRef, notifierWkRef) = do
