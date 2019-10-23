@@ -56,6 +56,7 @@ import Data.IORef
 import qualified Data.JSString as J
 import qualified Data.List as L
 import qualified Data.Map.Strict as M
+import Data.Maybe
 import Data.String
 import Data.Tagged.Extras
 import GHC.Stack
@@ -225,38 +226,36 @@ listenEventTarget j n goStrict goLazy =
 
 ----------------------------------------------------------------------------------
 
-type Prop s = ReaderT s (MaybeT IO)
+type Prop s a = ReaderT s IO (Maybe a)
 
--- | This orphan instance allows using "blah" is a prop in 'txt'
+-- | This orphan instance allows using "blah" is a prop in 'txt', 'lf', and 'bh'
 -- when using @OverloadedString@ with @ExtendedDefaultRules@
-instance IsString (Prop s J.JSString) where
-    fromString = pure . J.pack
+instance IsString a => IsString (Prop s a) where
+    fromString = pure . Just . fromString
 
--- | This orphan instance allows using "blah" is a prop in 'lf' and 'bh'
--- when using @OverloadedString@ with @ExtendedDefaultRules@
-instance IsString (Prop s J.JSVal) where
-    fromString = pure . JE.toJS
-
--- | write some text from the model.
+-- | Possibly write some text from the model
 txt :: MonadWidget s m => Prop s J.JSString -> m ()
 txt m = do
     s <- askModel
-    t <- fromJustIO $ runMaybeT $ (`runReaderT` s) m
-    textMarkup t
+    t <- liftIO $ runReaderT m s
+    maybe (pure ()) textMarkup t
 
 -- | Creates a JSVal for "className" property from a list of (JSString, Bool)
 -- Idea from https://github.com/JedWatson/classnames
 classNames :: [(J.JSString, Prop s Bool)] -> Prop s J.JSVal
 classNames xs = do
-    xs' <- filterM snd xs
-    pure . JE.toJS . J.unwords . fmap fst $ xs'
+    xs' <- filterM (fmap ok . snd) xs
+    pure . Just . JE.toJS . J.unwords . fmap fst $ xs'
+  where
+    ok (Just True) = True
+    ok _ = False
 
 runProps :: (MonadWidget s m)
     => [(J.JSString, Prop s J.JSVal)]
     -> m [(J.JSString, J.JSVal)]
 runProps props = do
     s <- askModel
-    let f = liftIO . (`evalMaybeT` J.nullRef) . (`runReaderT` s)
+    let f = liftIO . fmap (fromMaybe J.nullRef) . (`runReaderT` s)
     traverse (traverse f) props
 
 runGads :: (MonadWidget s m)
