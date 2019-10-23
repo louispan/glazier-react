@@ -27,7 +27,7 @@ instance IEventTarget Node
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
-    "$1 != undefined && $1 instanceof Node"
+    "typeof $1 !== 'undefined' && $1 instanceof Node"
     js_isNode :: J.JSVal -> Bool
 
 #else

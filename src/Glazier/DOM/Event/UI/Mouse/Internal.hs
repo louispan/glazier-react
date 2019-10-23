@@ -24,12 +24,12 @@ newtype SyntheticMouseEvent = SyntheticMouseEvent J.JSVal
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString)
 
 instance JE.FromJS NativeMouseEvent where
-    validInstance = js_isNativeMouseEvent
+    validFromJS = js_isNativeMouseEvent
     fromJS a | js_isNativeMouseEvent a = Just $ NativeMouseEvent a
     fromJS _ = Nothing
 
 instance JE.FromJS SyntheticMouseEvent where
-    validInstance = js_isSyntheticMouseEvent
+    validFromJS = js_isSyntheticMouseEvent
     fromJS a | js_isSyntheticMouseEvent a = Just $ SyntheticMouseEvent a
     fromJS _ = Nothing
 
@@ -44,7 +44,7 @@ instance ICommonKeyboardEvent SyntheticMouseEvent
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
-    "$1 != undefined && $1 instanceof MouseEvent"
+    "typeof $1 !== 'undefined' && $1 instanceof MouseEvent"
     js_isNativeMouseEvent :: J.JSVal -> Bool
 
 foreign import javascript unsafe

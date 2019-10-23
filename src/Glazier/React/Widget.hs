@@ -70,6 +70,17 @@ getScratch i n = do
     d <- askScratch
     liftIO $ JE.getProperty d (scratchAccessor i n)
 
+scratchXTimes :: (MonadIO m, AskScratch m) => Int -> ReactId -> J.JSString -> m () -> m ()
+scratchXTimes maxTimes i n m = do
+    d <- JE.fromJS @Int <$> getScratch i n
+    let (x', m') = case (d, maxTimes) of
+            (_, x) | x <= 0         -> (0, pure ())
+            (Nothing, _)            -> (1, m)
+            (Just y, x) | y < x     -> (y + 1, m)
+            _                       -> (maxTimes, pure ())
+    setScratch i n x'
+    m'
+
 type AskModelWeakVar s = MonadAsk "ModelWeakVar" (Tagged "ModelWeakVar" (Weak (MVar s)))
 instance {-# OVERLAPPING #-} Monad m => MonadAsk "ModelWeakVar" (Tagged "ModelWeakVar" (Weak (MVar s))) (ReaderT (Tagged "ModelWeakVar" (Weak (MVar s))) m) where
     askEnviron _ = ask
@@ -122,11 +133,7 @@ initRendered m = do
     c <- codify' m
     f c
 
--- | 'Gizmo' is an instance of 'MonadWidget'
--- Gizmo contains the effects (eg register listener)
--- as well as the html for rendering.
--- It is expected that the interpreter of the Gizmo will add a final effect
--- which is to set the final html for the component.
+-- | 'Widget' is an instance of 'MonadWidget' and 'MonadGadget'
 type Widget s c =
     ObserverT (Tagged "Rendered" c) -- 'AskRendered'
     (ObserverT (Tagged "Destructor" c) -- 'AskDestructor'
@@ -143,6 +150,14 @@ type Widget s c =
     (StateT (DL.DList ReactMarkup) -- 'PutMarkup'
     (ProgramT c IO -- 'MonadComand', 'MonadIO'
     ))))))))))))
+
+
+-- | Allows handling @Widget t c@ that return @a@ as if it returns @()@
+-- by delegating the handling of @a@
+handleWidget :: (MonadCommand m, Cmd' [] (Command m)) => Widget t (Command m) a -> m (Either a (Widget t (Command m) ()))
+handleWidget wid = delegate2 $ \(f, g) -> do
+    f' <- codify f
+    g (wid >>= instruct . f')
 
 -- | Run a widget on an @Obj t@
 -- The markup, initialization (initConstructor, etc) effects are ignored.
@@ -169,21 +184,14 @@ runWidget wid (Obj plnRef plnWkRef _ notifierWkRef mdlVar mdlWkVar) = do
             $ wid'
         exec' (DL.toList cs)
 
--- | Allows handling @Widget t c@ that return @a@ as if it returns @()@
--- by delegating the handling of @a@
--- FIXME: Use Gadget transformer stack without all the other stuff
-handleWidget :: (MonadCommand m, Cmd' [] (Command m)) => Widget t (Command m) a -> m (Either a (Widget t (Command m) ()))
-handleWidget wid = delegate2 $ \(f, g) -> do
-    f' <- codify f
-    g (wid >>= instruct . f')
-
--- | ALlow additional user ReaderT and IdentityT stack on top of Widget c s
+-- | ALlow additional user ReaderT and IdentityT stack on top of @Widget s@
 -- Like 'Control.Monad.IO.Unlift.UnliftIO', this newtype wrapper prevents impredicative types.
 newtype UniftWidget s m = UniftWidget { unliftWidget :: forall a. m a -> Widget s (Command m) a }
 
--- | Similar to 'Control.Monad.IO.Unlift.MonadUnliftIO', except we want to unlift a @Widget (Gizmo c s) a@.
--- This limits transformers stack to 'ReaderT' and 'IdentityT' on top of @Gizmo c s m@
--- Example @
+-- | Similar to 'Control.Monad.IO.Unlift.MonadUnliftIO', except we want to unlift a @Widget s m a@.
+-- This limits transformers stack to 'ReaderT' and 'IdentityT' on top of @Widget s m@
+-- Example
+-- @
 -- unliftMkObj :: (MonadUnliftWidget s m, MonadGadget s m)
 --     => m () -> LogName -> s -> m (Obj s)
 -- unliftMkObj m logname s = do
@@ -205,106 +213,58 @@ instance (Functor m, MonadUnliftWidget s m) => MonadUnliftWidget s (IdentityT m)
         (\u -> UniftWidget (unliftWidget u . runIdentityT)) <$> askUnliftWidget
 
 
+-- | 'Gadget' is an instance of MonadGadget'
+type Gadget s c =
+    ReaderT (Tagged "ModelWeakVar" (Weak (MVar s))) -- 'AskModelWeakVar'
+    (ReaderT (Tagged "Model" s) -- 'AskModel'
+    (ReaderT (Tagged "Scratch" JE.Object) -- 'AskScratch'
+    (ReaderT (Weak (IORef Notifier)) -- 'AskNotifierWeakRef'
+    (ReaderT (Weak (IORef Plan)) -- 'AskPlanWeakRef', 'AskLogLevel', 'AskLogCallStackDepth', 'AskLogName'
+    (MaybeT -- 'Alternative'
+    (ContT () -- 'MonadDelegate'
+    -- State monads must be inside ContT to be a 'MonadDelegate'
+    (StateT ReactPath -- 'PutReactPath', 'AskReactPath' -- used for logging
+    (ProgramT c IO -- 'MonadComand', 'MonadIO'
+    ))))))))
 
--- -- | Create a MonadState that run the given given a combining function
--- -- where the first arg is the state from running the markup producing MonadState with mempty,
--- -- and the 2nd arg the starting state of the resultant MonadState.
--- withWindow :: PutMarkup s m
---     => (Window s () -> Window s () -> Window s ())
---     -> m a
---     -> m a
--- withWindow f childs = do
---     -- save state
---     s <- askWindow
---     -- run children with mempty
---     putWindow mempty
---     a <- childs
---     childs' <- askWindow
---     -- restore state
---     putWindow s
---     modifyWindow (f childs')
---     pure a
+-- | Run a gadget on an @Obj t@
+-- The markup, initialization (initConstructor, etc) effects are ignored.
+runGadget :: (MonadIO m, MonadCommand m, Cmd' [] (Command m)) => Gadget t (Command m) a -> Obj t -> m a
+runGadget gad (Obj plnRef plnWkRef _ notifierWkRef mdlVar mdlWkVar) = do
+    mdl <- liftIO $ readMVar mdlVar
+    o <- liftIO $ scratch <$> readIORef plnRef
+    -- get the commands from running the gadget using the refs/var from the args
+    delegatify $ \f -> do
+        let gad' = gad >>= instruct . f
+        cs <- liftIO $ execProgramT'
+            $ (`evalStateT` (ReactPath (Nothing, [])))
+            $ evalContT
+            $ (`evalMaybeT` ())
+            $ (`runReaderT` plnWkRef)
+            $ (`runReaderT` notifierWkRef)
+            $ (`runReaderT` Tagged @"Scratch" o)
+            $ (`runReaderT` Tagged @"Model" mdl)
+            $ (`runReaderT` Tagged @"ModelWeakVar" mdlWkVar)
+            $ gad'
+        exec' (DL.toList cs)
 
--- import Control.Lens
--- import Control.Monad.Except
--- import Data.Bifunctor
--- import Data.Diverse.Lens
--- import Data.Diverse.Profunctor
--- import Glazier.Command.Exec
--- import Glazier.React.Entity
--- import Glazier.React.Gadget
--- import Glazier.React.Meta
--- import Glazier.React.Window
+-- | ALlow additional user ReaderT and IdentityT stack on top of @Gadget s@
+-- Like 'Control.Monad.IO.Unlift.UnliftIO', this newtype wrapper prevents impredicative types.
+newtype UniftGadget s m = UniftGadget { unliftGadget :: forall a. m a -> Gadget s (Command m) a }
 
--- -- | A 'Widget' is a gadget that fires 'Either' a 'Window' or an event.
--- type MonadWidget c s m= (MonadGadget c s m, MonadError (Window s ()) m)
+-- | Similar to 'Control.Monad.IO.Unlift.MonadUnliftIO', except we want to unlift a @Gadget s m a@.
+-- This limits transformers stack to 'ReaderT' and 'IdentityT' on top of @Gadget s m@
+class MonadUnliftGadget s m | m -> s where
+    askUnliftGadget :: m (UniftGadget s m)
 
--- type Widget c s = ExceptT (Window s ()) (Gadget c)
+instance MonadUnliftGadget s (Gadget s c) where
+    askUnliftGadget = pure (UniftGadget id)
 
--- -- -- | Pass the same MonadWidget into this function to verify at compile time
--- -- -- that a concrete instance of widget doesn't require any @AsFacet (IO c) c@.
--- -- -- LOUISFIXME: is there a simpler way @c ~ NoIOCmd c@?
--- -- noIOWidget :: Widget (NoIOCmd c) s s a -> Widget c s s a -> Widget c s s a
--- -- noIOWidget _ = id
+instance (Functor m, MonadUnliftGadget s m) => MonadUnliftGadget s (ReaderT r m) where
+    askUnliftGadget = ReaderT $ \r ->
+        (\u -> UniftGadget (unliftGadget u . flip runReaderT r)) <$> askUnliftGadget
 
--- -- magnifyWidget :: Traversal' t s -> ExceptT (Window s ()) (Gadget c s s') a -> ExceptT (Window t ()) (Gadget c o t) a
--- -- magnifyWidget l wid = ExceptT $ (first (magnifiedMeta l)) <$> (magnifiedEntity l (runExceptT wid))
+instance (Functor m, MonadUnliftGadget s m) => MonadUnliftGadget s (IdentityT m) where
+    askUnliftGadget = IdentityT $
+        (\u -> UniftGadget (unliftGadget u . runIdentityT)) <$> askUnliftGadget
 
--- -- | Convert a 'Gadget' into a 'Widget'
--- widget :: Gadget c s s' (Either (Window s ()) a) -> Widget c s s' a
--- widget = ExceptT
-
--- runWidget :: Widget c s s' a -> Gadget c s s' (Either (Window s ()) a)
--- runWidget = runExceptT
-
--- -- mapWidget ::
--- --     (Gadget c s s' (Either (Window s ()) a) -> Gadget c o' s' (Either (Window s' ()) b))
--- --     -> Widget c s s' a -> Widget c o' s' b
--- -- mapWidget = mapExceptT
-
--- display :: Window s () -> Widget c s s' a
--- display = throwError
-
--- display' :: Window s () -> Widget c s s' (Which '[])
--- display' = throwError
-
--- overWindow :: (Window s () -> Window s ()) -> Widget c s s' a -> Widget c s s' a
--- overWindow = withExceptT
-
--- overWindow2 :: (Window s () -> Window s () -> Window s ())
---     -> Widget c s s' a -> Widget c s s' a -> Widget c s s' a
--- overWindow2 f x y = withWindow x $ \x' -> withWindow y $ \y' -> display $ f x' y'
-
--- overWindow3 :: (Window s () -> Window s () -> Window s () -> Window s ())
---     -> Widget c s s' a -> Widget c s s' a -> Widget c s s' a -> Widget c s s' a
--- overWindow3 f x y z = withWindow x $
---     \x' -> withWindow y $
---     \y' -> withWindow z $
---     \z' -> display $ f x' y' z'
-
--- overWindow2' ::
---     ( ChooseBoth x1 x2 ys)
---     => (Window s () -> Window s () -> Window s ())
---     -> Widget c s s' (Which x1) -> Widget c s s' (Which x2) -> Widget c s s' (Which ys)
--- overWindow2' f x1 x2 = overWindow2 f (diversify <$> x1) (diversify <$> x2)
-
--- overWindow3' ::
---     ( Diversify x1 ys
---     , Diversify x2 ys
---     , Diversify x3 ys
---     , ys ~ AppendUnique x1 (AppendUnique x2 x3))
---     => (Window s () -> Window s () -> Window s () -> Window s ())
---     -> Widget c s s' (Which x1) -> Widget c s s' (Which x2) -> Widget c s s' (Which x3) -> Widget c s s' (Which ys)
--- overWindow3' f x1 x2 x3 = overWindow3 f
---     (diversify <$> x1)
---     (diversify <$> x2)
---     (diversify <$> x3)
-
--- withWindow :: Widget c s s' a -> (Window s () -> Widget c s s' a) -> Widget c s s' a
--- withWindow = catchError
-
--- withWindow' :: (ChooseBoth xs ys zs)
---     => Widget c s s' (Which xs)
---     -> (Window s () -> Widget c s s' (Which ys))
---     -> Widget c s s' (Which zs)
--- withWindow' m f = withWindow (diversify <$> m) (fmap diversify . f)

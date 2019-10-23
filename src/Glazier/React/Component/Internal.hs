@@ -70,7 +70,7 @@ foreign import javascript unsafe
 --   js_isReactComponent :: J.JSVal -> Bool
 
 foreign import javascript unsafe
-    "$1 != undefined && $1 instanceof hgr$WidgetComponent"
+    "typeof $1 !== 'undefined' && $1 instanceof hgr$WidgetComponent"
     js_isWidgetComponent :: J.JSVal -> Bool
 
 foreign import javascript unsafe

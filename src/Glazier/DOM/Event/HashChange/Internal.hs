@@ -18,7 +18,7 @@ newtype HashChangeEvent = HashChangeEvent J.JSVal
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
 instance JE.FromJS HashChangeEvent where
-    validInstance = js_isHashChangeEvent
+    validFromJS = js_isHashChangeEvent
     fromJS a | js_isHashChangeEvent a = Just $ HashChangeEvent a
     fromJS _ = Nothing
 
@@ -27,7 +27,7 @@ instance IEvent HashChangeEvent
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
-    "$1 != undefined && $1 instanceof HashChangeEvent"
+    "typeof $1 !== 'undefined' && $1 instanceof HashChangeEvent"
     js_isHashChangeEvent :: J.JSVal -> Bool
 
 #else

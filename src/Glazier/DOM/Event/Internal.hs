@@ -30,12 +30,12 @@ newtype SyntheticEvent = SyntheticEvent J.JSVal
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString)
 
 instance JE.FromJS NativeEvent where
-    validInstance = js_isNativeEvent
+    validFromJS = js_isNativeEvent
     fromJS a | js_isNativeEvent a = Just $ NativeEvent a
     fromJS _ = Nothing
 
 instance JE.FromJS SyntheticEvent where
-    validInstance = js_isSyntheticEvent
+    validFromJS = js_isSyntheticEvent
     fromJS a | js_isSyntheticEvent a = Just $ SyntheticEvent a
     fromJS _ = Nothing
 

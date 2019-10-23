@@ -17,7 +17,7 @@ newtype EventTarget = EventTarget J.JSVal
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
 instance JE.FromJS EventTarget where
-    validInstance = js_isEventTarget
+    validFromJS = js_isEventTarget
     fromJS a | js_isEventTarget a = Just $ EventTarget a
     fromJS _ = Nothing
 

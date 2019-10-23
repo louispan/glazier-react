@@ -44,6 +44,7 @@ type CmdReactor c =
 class (CmdReactor (Command m)
     , AlternativeIO m, Also () m
     , MonadLogger J.JSString m, AskLogName m, AskReactPath m
+
     , AskScratch m, AskPlanWeakRef m
     , AskNotifierWeakRef m, AskModel s m, AskModelWeakVar s m) => MonadGadget s m
 
@@ -54,6 +55,7 @@ instance {-# OVERLAPPABLE #-} (Monad (t m), MonadTrans t, MonadGadget s m
     ) => MonadGadget s (t m)
 
 instance {-# OVERLAPPABLE #-} (CmdReactor c, c ~ Command (Widget s c)) => MonadGadget s (Widget s c)
+-- instance {-# OVERLAPPABLE #-} (CmdReactor c, c ~ Command (Gadget s c)) => MonadGadget s (Gadget s c)
 
 -- A 'MonadWidget' is a 'MonadGadget' that additionally have access to
 -- 'initConstructor', 'initDestructor', 'initRendered',

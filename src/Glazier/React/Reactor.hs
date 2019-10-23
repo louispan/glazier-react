@@ -24,9 +24,9 @@ module Glazier.React.Reactor
     , logJS
     , mkReactId
     , mkObj
-    , mkObj'
+    , mkObj2
     , mkLinkedObj
-    , mkLinkedObj'
+    , mkLinkedObj2
     , readObj
     , unwatchObj
     , noisyMutate
@@ -94,32 +94,32 @@ logJS lvl msg = withFrozenCallStack $ do
 ------------------------------------------------------
 
 -- | 'mkObj'' that also handles the @a@ for 'Widget's that return an @a@
-mkObj :: MonadGadget s m => Widget t (Command m) a -> LogName -> t -> m (Either a (Obj t))
-mkObj wid logname s = do
+mkObj2 :: MonadGadget s m => Widget t (Command m) a -> LogName -> t -> m (Either a (Obj t))
+mkObj2 wid logname s = do
     x <- handleWidget wid
     case x of
         Left a -> pure $ Left a
-        Right wid' -> Right <$> mkObj' wid' logname s
+        Right wid' -> Right <$> mkObj wid' logname s
 
 -- | Make an initialized 'Obj' using the given 'Widget' and @s@
 -- Unlike 'unliftMkObj', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
-mkObj' :: MonadGadget s m => Widget t (Command m) () -> LogName -> t -> m (Obj t)
-mkObj' wid logname s = do
+mkObj :: MonadGadget s m => Widget t (Command m) () -> LogName -> t -> m (Obj t)
+mkObj wid logname s = do
     s' <- mkModel s
     delegatify $ exec' . MkObj wid logname s'
 
 -- | 'mkLinkedObj'' that also handles the @a@ for 'Widget's that return an @a@
-mkLinkedObj :: MonadGadget s m => Widget t (Command m) a -> LogName -> Obj t -> m (Either a (Obj t))
-mkLinkedObj wid logname obj = do
+mkLinkedObj2 :: MonadGadget s m => Widget t (Command m) a -> LogName -> Obj t -> m (Either a (Obj t))
+mkLinkedObj2 wid logname obj = do
     x <- handleWidget wid
     case x of
         Left a -> pure $ Left a
-        Right wid' -> Right <$> mkLinkedObj' wid' logname obj
+        Right wid' -> Right <$> mkLinkedObj wid' logname obj
 
 -- | Make an initialized 'Obj' using the given 'Widget' linked to the data in another 'Obj'
 -- Unlike 'unliftMkObj', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
-mkLinkedObj' :: MonadGadget s m => Widget t (Command m) () -> LogName -> Obj t -> m (Obj t)
-mkLinkedObj' wid logname (Obj _ _ notifierRef notifierWkRef mdlVar mdlWkVar) =
+mkLinkedObj :: MonadGadget s m => Widget t (Command m) () -> LogName -> Obj t -> m (Obj t)
+mkLinkedObj wid logname (Obj _ _ notifierRef notifierWkRef mdlVar mdlWkVar) =
     delegatify $ exec' . MkObj wid logname (notifierRef, notifierWkRef, mdlVar, mdlWkVar)
 
 -- | Reads from an 'Obj', also registering this as a listener

@@ -18,7 +18,7 @@ newtype ReactElement = ReactElement J.JSVal
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
 
 instance JE.FromJS ReactElement where
-    validInstance = js_isReactElement
+    validFromJS = js_isReactElement
     fromJS a | js_isReactElement a = Just $ ReactElement a
     fromJS _ = Nothing
 

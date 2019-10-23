@@ -23,12 +23,12 @@ newtype SyntheticKeyboardEvent = SyntheticKeyboardEvent J.JSVal
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString)
 
 instance JE.FromJS NativeKeyboardEvent where
-    validInstance = js_isNativeKeyboardEvent
+    validFromJS = js_isNativeKeyboardEvent
     fromJS a | js_isNativeKeyboardEvent a = Just $ NativeKeyboardEvent a
     fromJS _ = Nothing
 
 instance JE.FromJS SyntheticKeyboardEvent where
-    validInstance = js_isSyntheticKeyboardEvent
+    validFromJS = js_isSyntheticKeyboardEvent
     fromJS a | js_isSyntheticKeyboardEvent a = Just $ SyntheticKeyboardEvent a
     fromJS _ = Nothing
 
@@ -41,7 +41,7 @@ instance IUIEvent SyntheticKeyboardEvent
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
-    "$1 != undefined && $1 instanceof KeyboardEvent"
+    "typeof $1 !== 'undefined' && $1 instanceof KeyboardEvent"
     js_isNativeKeyboardEvent :: J.JSVal -> Bool
 
 foreign import javascript unsafe

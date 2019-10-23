@@ -22,12 +22,12 @@ newtype SyntheticUIEvent = SyntheticUIEvent J.JSVal
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString)
 
 instance JE.FromJS NativeUIEvent where
-    validInstance = js_isNativeUIEvent
+    validFromJS = js_isNativeUIEvent
     fromJS a | js_isNativeUIEvent a = Just $ NativeUIEvent a
     fromJS _ = Nothing
 
 instance JE.FromJS SyntheticUIEvent where
-    validInstance = js_isSyntheticUIEvent
+    validFromJS = js_isSyntheticUIEvent
     fromJS a | js_isSyntheticUIEvent a = Just $ SyntheticUIEvent a
     fromJS _ = Nothing
 
@@ -38,7 +38,7 @@ instance IEvent SyntheticUIEvent
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
-    "$1 != undefined && $1 instanceof UIEvent"
+    "typeof $1 !== 'undefined' && $1 instanceof UIEvent"
     js_isNativeUIEvent :: J.JSVal -> Bool
 
 foreign import javascript unsafe
