@@ -47,6 +47,7 @@ module Glazier.React.Reactor
 
 import Control.Concurrent.MVar
 import Control.DeepSeq
+import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
@@ -55,7 +56,6 @@ import Data.IORef
 import qualified Data.JSString as J
 import qualified Data.List as L
 import qualified Data.Map.Strict as M
-import Data.Maybe
 import Data.String
 import Data.Tagged.Extras
 import GHC.Stack
@@ -225,66 +225,72 @@ listenEventTarget j n goStrict goLazy =
 
 ----------------------------------------------------------------------------------
 
--- | write some text from the model.
-txt :: MonadWidget s m => (s -> J.JSString) -> m ()
-txt f = do
-    s <- askModel
-    textMarkup $ f s
+type Prop s = ReaderT s (MaybeT IO)
 
 -- | This orphan instance allows using "blah" is a prop in 'txt'
 -- when using @OverloadedString@ with @ExtendedDefaultRules@
-instance IsString (s -> J.JSString) where
-    fromString = const . J.pack
-
-type Prop s = s -> Maybe J.JSVal
+instance IsString (Prop s J.JSString) where
+    fromString = pure . J.pack
 
 -- | This orphan instance allows using "blah" is a prop in 'lf' and 'bh'
 -- when using @OverloadedString@ with @ExtendedDefaultRules@
-instance IsString (Prop s) where
-    fromString = const . Just . JE.toJS
+instance IsString (Prop s J.JSVal) where
+    fromString = pure . JE.toJS
 
--- | Creates a JE.JSRep single string for "className" property from a list of (JSString, Bool)
+-- | write some text from the model.
+txt :: MonadWidget s m => Prop s J.JSString -> m ()
+txt m = do
+    s <- askModel
+    t <- fromJustIO $ runMaybeT $ (`runReaderT` s) m
+    textMarkup t
+
+-- | Creates a JSVal for "className" property from a list of (JSString, Bool)
 -- Idea from https://github.com/JedWatson/classnames
-classNames :: [(J.JSString, s -> Maybe Bool)] -> Prop s
-classNames xs s =
-    Just
-    . JE.toJS
-    . J.unwords
-    . fmap fst
-    . filter (fromMaybe False . snd)
-    $ (fmap ($ s)) <$> xs
+classNames :: [(J.JSString, Prop s Bool)] -> Prop s J.JSVal
+classNames xs = do
+    xs' <- filterM snd xs
+    pure . JE.toJS . J.unwords . fmap fst $ xs'
+
+runProps :: (MonadWidget s m)
+    => [(J.JSString, Prop s J.JSVal)]
+    -> m [(J.JSString, J.JSVal)]
+runProps props = do
+    s <- askModel
+    let f = liftIO . (`evalMaybeT` J.nullRef) . (`runReaderT` s)
+    traverse (traverse f) props
+
+runGads :: (MonadWidget s m)
+    => [(J.JSString, m Handler)]
+    -> m [(J.JSString, J.JSVal)]
+runGads gads = do
+    gads' <- traverse sequenceA gads -- :: m [(JString, Handler)]
+    let gads'' = M.toList $ M.fromListWith (<>) gads' -- combine same keys together
+        f = fmap JE.toJS . mkListener -- convert to JS callback
+    traverse (traverse f) gads''
 
 lf :: (Component j, MonadWidget s m)
     => j -- ^ "input" or a @ReactComponent@
     -> DL.DList (J.JSString, m Handler)
-    -> DL.DList (J.JSString, Prop s)
+    -> DL.DList (J.JSString, Prop s J.JSVal)
     -> m ()
 lf j gads props = do
-    s <- askModel
-    let props' = (fmap (fromMaybe J.nullRef . ($ s))) <$> props
+    props' <- runProps (DL.toList props)
     putNextReactPath (componentName j)
-    gads' <- traverse sequenceA (DL.toList gads) -- :: m [(JString, Handler)]
-    let gads'' = M.fromListWith (<>) gads' -- combine same keys together
-    gads''' <- traverse mkListener gads'' -- convert to JS callback
-    leafMarkup (JE.toJS j)
-        (props' <> (DL.fromList . M.toList $ JE.toJS <$> gads'''))
+    gads' <- runGads (DL.toList gads)
+    leafMarkup (JE.toJS j) (DL.fromList (props' <> gads'))
 
 bh :: (Component j, MonadWidget s m)
     => j-- ^ eg "div" or a @ReactComponent@
     -> DL.DList (J.JSString, m Handler)
-    -> DL.DList (J.JSString, Prop s)
+    -> DL.DList (J.JSString, Prop s J.JSVal)
     -> m a
     -> m a
 bh j gads props child = do
-    s <- askModel
-    let props' = (fmap (fromMaybe J.nullRef . ($ s))) <$> props
+    props' <- runProps (DL.toList props)
     putNextReactPath (componentName j)
-    gads' <- traverse sequenceA (DL.toList gads) -- :: m [(JString, Handler)]
-    let gads'' = M.fromListWith (<>) gads' -- combine same keys together
-    gads''' <- traverse mkListener gads'' -- convert to JS callback
+    gads' <- runGads (DL.toList gads)
     putPushReactPath
-    a <- branchMarkup (JE.toJS j)
-        (props' <> (DL.fromList . M.toList $ JE.toJS <$> gads'''))
+    a <- branchMarkup (JE.toJS j) (DL.fromList (props' <> gads'))
         child
     putPopReactPath
     pure a
