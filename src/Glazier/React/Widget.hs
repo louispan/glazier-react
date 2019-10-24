@@ -29,11 +29,11 @@ import Control.Concurrent.MVar
 import Control.Lens
 import Control.Monad.Delegate
 import Control.Monad.Environ
+import Control.Monad.Morph
 import Control.Monad.Observer
 import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Cont
-import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Identity
 import Control.Monad.Trans.Maybe
 import qualified Data.DList as DL
@@ -45,8 +45,7 @@ import Data.Tagged.Extras
 import qualified GHCJS.Types as J
 import Glazier.Command
 import Glazier.React.Markup
-import Glazier.React.Obj.Internal
-import Glazier.React.Plan.Internal
+import Glazier.React.Plan
 import Glazier.React.ReactId
 import Glazier.React.ReactPath
 import qualified JavaScript.Extras as JE
@@ -55,8 +54,12 @@ import System.Mem.Weak
 type AskScratch = MonadAsk' (Tagged "Scratch" JE.Object)
 instance {-# OVERLAPPING #-} Monad m => MonadAsk (Tagged "Scratch" JE.Object) (Tagged "Scratch" JE.Object) (ReaderT (Tagged "Scratch" JE.Object) m) where
     askEnviron _ = ask
+    localEnviron _ = local
+
 askScratch :: AskScratch m => m JE.Object
 askScratch = (untag' @"Scratch") <$> askEnviron @(Tagged "Scratch" JE.Object) Proxy
+localScratch :: AskScratch m => (JE.Object -> JE.Object) -> m a -> m a
+localScratch f = localEnviron @(Tagged "Scratch" JE.Object) Proxy (Tagged @"Scratch" . f . untag' @"Scratch")
 
 scratchAccessor :: ReactId -> J.JSString -> J.JSString
 scratchAccessor i n = "$" <> (fromString $ show $ unReactId i) <> "_" <> n
@@ -90,14 +93,22 @@ scratchXTimes maxTimes i n m = do
 type AskModelWeakVar s = MonadAsk "ModelWeakVar" (Tagged "ModelWeakVar" (Weak (MVar s)))
 instance {-# OVERLAPPING #-} Monad m => MonadAsk "ModelWeakVar" (Tagged "ModelWeakVar" (Weak (MVar s))) (ReaderT (Tagged "ModelWeakVar" (Weak (MVar s))) m) where
     askEnviron _ = ask
+    localEnviron _ = local
+
 askModelWeakVar :: AskModelWeakVar s m => m (Weak (MVar s))
 askModelWeakVar = (untag' @"ModelWeakVar") <$> askEnviron @"ModelWeakVar" Proxy
+localModelWeakVar :: AskModelWeakVar s m => (Weak (MVar s) -> Weak (MVar s)) -> m a -> m a
+localModelWeakVar f = localEnviron @"ModelWeakVar" Proxy (Tagged @"ModelWeakVar" . f . untag' @"ModelWeakVar")
 
 type AskModel s = MonadAsk "Model" (Tagged "Model" s)
 instance {-# OVERLAPPING #-} Monad m => MonadAsk "Model" (Tagged "Model" s) (ReaderT (Tagged "Model" s) m) where
     askEnviron _ = ask
+    localEnviron _ = local
+
 askModel :: AskModel s m => m s
 askModel = (untag' @"Model") <$> askEnviron @"Model" Proxy
+localModel :: AskModel s m => (s -> s) -> m a -> m a
+localModel f = localEnviron @"Model" Proxy (Tagged @"Model" . f . untag' @"Model")
 
 -- | This is like 'view' but for the 'AskModel', not 'MonadReader'
 model :: AskModel s m => Getting a s a -> m a
@@ -241,6 +252,9 @@ deriving via (IdentityT f) instance (Also a f) => Also a (GadgetT f)
 instance MonadTrans GadgetT where
     lift = GadgetT
 
+instance MFunctor GadgetT where
+    hoist nat m = GadgetT (nat (runGadgetT m))
+
 -- | This instance allows using "plain string" in 'txt', and in props for 'lf', and 'bh'
 -- when using @OverloadedString@ with @ExtendedDefaultRules@
 instance {-# OVERLAPPABLE #-} (Applicative m, IsString a) => IsString (GadgetT m a) where
@@ -248,59 +262,3 @@ instance {-# OVERLAPPABLE #-} (Applicative m, IsString a) => IsString (GadgetT m
 
 instance {-# OVERLAPPABLE #-} (Applicative m, IsString a) => IsString (GadgetT m (Maybe a)) where
     fromString = pure . Just . fromString
-
--- | 'Gadget' is a concrete transformer stack which is instance of 'MonadGadget'
-type Gadget s c =
-    ReaderT (Tagged "ModelWeakVar" (Weak (MVar s))) -- 'AskModelWeakVar'
-    (ReaderT (Tagged "Model" s) -- 'AskModel'
-    (ReaderT (Tagged "Scratch" JE.Object) -- 'AskScratch'
-    (ReaderT (Weak (IORef Notifier)) -- 'AskNotifierWeakRef'
-    (ReaderT (Weak (IORef Plan)) -- 'AskPlanWeakRef', 'AskLogLevel', 'AskLogCallStackDepth', 'AskLogName'
-    (MaybeT -- 'Alternative'
-    (ContT () -- 'MonadDelegate'
-    -- State monads must be inside ContT to be a 'MonadDelegate'
-    (StateT ReactPath -- 'PutReactPath', 'AskReactPath' -- used for logging
-    (ProgramT c IO -- 'MonadComand', 'MonadIO'
-    ))))))))
-
--- | Run a gadget on an @Obj t@
--- The markup, initialization (initConstructor, etc) effects are ignored.
-runGadget :: (MonadIO m, MonadCommand m, Cmd' [] (Command m)) => Gadget s (Command m) a -> Obj s -> m a
-runGadget gad (Obj plnRef plnWkRef _ notifierWkRef mdlVar mdlWkVar) = do
-    mdl <- liftIO $ readMVar mdlVar
-    o <- liftIO $ scratch <$> readIORef plnRef
-    -- get the commands from running the gadget using the refs/var from the args
-    delegatify $ \f -> do
-        let gad' = gad >>= instruct . f
-        cs <- liftIO $ execProgramT'
-            $ (`evalStateT` (ReactPath (Nothing, [])))
-            $ evalContT
-            $ (`evalMaybeT` ())
-            $ (`runReaderT` plnWkRef)
-            $ (`runReaderT` notifierWkRef)
-            $ (`runReaderT` Tagged @"Scratch" o)
-            $ (`runReaderT` Tagged @"Model" mdl)
-            $ (`runReaderT` Tagged @"ModelWeakVar" mdlWkVar)
-            $ gad'
-        exec' (DL.toList cs)
-
--- -- | ALlow additional user ReaderT and IdentityT stack on top of @Gadget s@
--- -- Like 'Control.Monad.IO.Unlift.UnliftIO', this newtype wrapper prevents impredicative types.
--- newtype UniftGadget s m = UniftGadget { unliftGadget :: forall a. m a -> Gadget s (Command m) a }
-
--- -- | Similar to 'Control.Monad.IO.Unlift.MonadUnliftIO', except we want to unlift a @Gadget s m a@.
--- -- This limits transformers stack to 'ReaderT' and 'IdentityT' on top of @Gadget s m@
--- class MonadUnliftGadget s m | m -> s where
---     askUnliftGadget :: m (UniftGadget s m)
-
--- instance MonadUnliftGadget s (Gadget s c) where
---     askUnliftGadget = pure (UniftGadget id)
-
--- instance (Functor m, MonadUnliftGadget s m) => MonadUnliftGadget s (ReaderT r m) where
---     askUnliftGadget = ReaderT $ \r ->
---         (\u -> UniftGadget (unliftGadget u . flip runReaderT r)) <$> askUnliftGadget
-
--- instance (Functor m, MonadUnliftGadget s m) => MonadUnliftGadget s (IdentityT m) where
---     askUnliftGadget = IdentityT $
---         (\u -> UniftGadget (unliftGadget u . runIdentityT)) <$> askUnliftGadget
-

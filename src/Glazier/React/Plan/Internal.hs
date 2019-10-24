@@ -124,10 +124,14 @@ instance Show Plan where
 type AskPlanWeakRef = MonadAsk' (Weak (IORef Plan))
 askPlanWeakRef :: AskPlanWeakRef m => m (Weak (IORef Plan))
 askPlanWeakRef = askEnviron @(Weak (IORef Plan)) Proxy
+localPlanWeakRef :: AskPlanWeakRef m => (Weak (IORef Plan) -> Weak (IORef Plan)) -> m a -> m a
+localPlanWeakRef = localEnviron @(Weak (IORef Plan)) Proxy
 
 type AskNotifierWeakRef = MonadAsk' (Weak (IORef Notifier))
 askNotifierWeakRef :: AskNotifierWeakRef m => m (Weak (IORef Notifier))
 askNotifierWeakRef = askEnviron @(Weak (IORef Notifier)) Proxy
+localNotifierWeakRef :: AskNotifierWeakRef m => (Weak (IORef Notifier) -> Weak (IORef Notifier)) -> m a -> m a
+localNotifierWeakRef = localEnviron @(Weak (IORef Notifier)) Proxy
 
 -- | Get the 'LogLevel' from a 'WeakRef' 'Plan'
 instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Maybe LogLevel) (Maybe LogLevel) (ReaderT (Weak (IORef Plan)) m) where
@@ -139,6 +143,10 @@ instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Maybe LogLevel) (Maybe LogLe
             ref <- MaybeT $ deRefWeak wk
             pln <- lift $ readIORef ref
             MaybeT . logLevel $ pln
+
+    -- | lie and don't actually use the given function to modify the environment
+    -- Use 'localPlanWeakRef' instead
+    localEnviron _ _ = id
 
 -- | Get the 'LogName' from a 'WeakRef' 'Plan'
 type AskLogName = MonadAsk' LogName
@@ -155,6 +163,10 @@ instance {-# OVERLAPPING #-} MonadIO m => MonadAsk LogName LogName (ReaderT (Wea
             pln <- lift $ readIORef ref
             pure $ logName pln
 
+    -- | lie and don't actually use the given function to modify the environment
+    -- Use 'localPlanWeakRef' instead
+    localEnviron _ _ = id
+
 -- | Get the 'LogCallStackDepth' from a 'WeakRef' 'Plan'
 instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Maybe (Maybe LogCallStackDepth)) (Maybe (Maybe LogCallStackDepth)) (ReaderT (Weak (IORef Plan)) m) where
     askEnviron _ = do
@@ -165,3 +177,7 @@ instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Maybe (Maybe LogCallStackDep
             ref <- MaybeT $ deRefWeak wk
             pln <- lift $ readIORef ref
             MaybeT . logDepth $ pln
+
+    -- | lie and don't actually use the given function to modify the environment
+    -- Use 'localPlanWeakRef' instead
+    localEnviron _ _ = id

@@ -63,7 +63,6 @@ instance {-# OVERLAPPABLE #-} (MonadGadget s m) => MonadGadget s (ReaderT r m)
 instance {-# OVERLAPPABLE #-} (MonadGadget s m) => MonadGadget s (GadgetT m)
 
 instance {-# OVERLAPPABLE #-} (CmdReactor c, c ~ Command (Widget s c)) => MonadGadget s (Widget s c)
-instance {-# OVERLAPPABLE #-} (CmdReactor c, c ~ Command (Gadget s c)) => MonadGadget s (Gadget s c)
 
 -- A 'MonadWidget' is a 'MonadGadget' that additionally have access to
 -- 'initConstructor', 'initDestructor', 'initRendered',

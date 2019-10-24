@@ -39,9 +39,10 @@ module Glazier.React.Reactor
     , handleSyntheticEvent
     , mkListener
     , listenEventTarget
+    , runGadget
+    , Prop
     , txt
     , classNames
-    , Prop
     , lf
     , bh
     , displayObj
@@ -100,7 +101,7 @@ logJS lvl msg = withFrozenCallStack $ do
 -- | 'mkObj'' that also handles the @a@ for 'Widget's that return an @a@
 mkObj2 :: MonadGadget s m => Widget t (Command m) a -> LogName -> t -> m (Either a (Obj t))
 mkObj2 wid logname s = do
-    x <- handleWidget wid
+    x <- delegating wid
     case x of
         Left a -> pure $ Left a
         Right wid' -> Right <$> mkObj wid' logname s
@@ -115,7 +116,7 @@ mkObj wid logname s = do
 -- | 'mkLinkedObj'' that also handles the @a@ for 'Widget's that return an @a@
 mkLinkedObj2 :: MonadGadget s m => Widget t (Command m) a -> LogName -> Obj t -> m (Either a (Obj t))
 mkLinkedObj2 wid logname obj = do
-    x <- handleWidget wid
+    x <- delegating wid
     case x of
         Left a -> pure $ Left a
         Right wid' -> Right <$> mkLinkedObj wid' logname obj
@@ -210,6 +211,22 @@ listenEventTarget j n goStrict goLazy =
         cb <- mkListener hdl
         liftIO $ addEventListener j n cb
         initDestructor $ liftIO $ removeEventListener j n cb
+
+
+-- | Run a gadget on an @Obj t@
+runGadget :: MonadGadget s m => Obj s -> GadgetT m a -> m a
+runGadget (Obj plnRef plnWkRef _ notifierWkRef mdlVar mdlWkVar) m = do
+    mdl <- liftIO $ readMVar mdlVar
+    sch <- liftIO $ scratch <$> readIORef plnRef
+    rp <- askReactPath
+
+    let f = localReactPath (const rp)
+            . localPlanWeakRef (const plnWkRef)
+            . localNotifierWeakRef (const notifierWkRef)
+            . localScratch (const sch)
+            . localModel (const mdl)
+            . localModelWeakVar (const mdlWkVar)
+    f (runGadgetT m)
 
 -- | Orphan instance because it requires AsReactor
 -- LOUISFIXME: Think about this, use ReaderT (s -> Either e Obj s)?

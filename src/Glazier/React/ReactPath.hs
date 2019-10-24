@@ -37,6 +37,8 @@ getReactPath (ReactPath (Just x, xs)) = x : xs
 type AskReactPath = MonadAsk' ReactPath
 askReactPath :: AskReactPath m => m ReactPath
 askReactPath = askEnviron @ReactPath Proxy
+localReactPath :: AskReactPath m => (ReactPath -> ReactPath) -> m a -> m a
+localReactPath = localEnviron @ReactPath Proxy
 
 type PutReactPath = MonadPut' ReactPath
 putReactPath :: PutReactPath m => ReactPath -> m ()
