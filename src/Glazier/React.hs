@@ -1,14 +1,15 @@
 module Glazier.React
-    ( module Glazier.Command
-    , module Glazier.Logger
-    , module Glazier.React.Common
+    ( module Glazier.React.Reactor
     , module Glazier.React.Component
-    , module Glazier.React.Obj
-    , module Glazier.React.Plan
     , module Glazier.React.ReactDOM
-    , module Glazier.React.ReactId
-    , module Glazier.React.Reactor
     , module Glazier.React.Widget
+    , module Glazier.React.Gadget
+    , module Glazier.React.Obj
+    , module Glazier.React.Common
+    , module Glazier.React.ReactId
+    , module Glazier.React.Plan
+    , module Glazier.Command
+    , module Glazier.Logger
     , module Control.Also
     , module Control.Applicative
     , module Control.DeepSeq
@@ -54,6 +55,7 @@ import Glazier.Command
 import Glazier.Logger
 import Glazier.React.Common
 import Glazier.React.Component
+import Glazier.React.Gadget
 import Glazier.React.Obj
 import Glazier.React.Plan
 import Glazier.React.ReactDOM

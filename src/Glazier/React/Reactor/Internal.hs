@@ -22,6 +22,7 @@ import qualified GHCJS.Types as J
 import Glazier.Command
 import Glazier.Logger
 import Glazier.React.Common
+import Glazier.React.Gadget
 import Glazier.React.Markup
 import Glazier.React.Obj.Internal
 import Glazier.React.Plan.Internal
@@ -48,13 +49,6 @@ class (CmdReactor (Command m)
     , MonadLogger J.JSString m, AskLogName m, AskReactPath m
     , AskScratch m, AskPlanWeakRef m
     , AskNotifierWeakRef m, AskModel s m, AskModelWeakVar s m) => MonadGadget s m
-
--- -- | Any transformer on top of MonadGadget is also a MonadGadget
--- instance {-# OVERLAPPABLE #-} (Monad (t m), MonadTrans t, MonadGadget s m
---     , Command (t m) ~ Command m
---     , AlternativeIO (t m), Also () (t m)
---     , MonadCommand (t m)
---     ) => MonadGadget s (t m)
 
 instance {-# OVERLAPPABLE #-} (MonadGadget s m) => MonadGadget s (IdentityT m)
 

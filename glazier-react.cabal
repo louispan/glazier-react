@@ -20,6 +20,8 @@ library
                       Glazier.React.Common
                       Glazier.React.Component
                       Glazier.React.Component.Internal
+                      Glazier.React.Gadget
+                      Glazier.React.Gadget.Internal
                       Glazier.React.Markup
                       Glazier.React.Plan
                       Glazier.React.Plan.Internal

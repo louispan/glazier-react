@@ -71,6 +71,7 @@ import Glazier.DOM.EventTarget
 import Glazier.Logger
 import Glazier.React.Common
 import Glazier.React.Component
+import Glazier.React.Gadget.Internal
 import Glazier.React.Markup
 import Glazier.React.Obj.Internal
 import Glazier.React.Plan.Internal
@@ -178,7 +179,7 @@ mkHandler ::
     -> m Handler -- (preprocess, postprocess)
 mkHandler goStrict f = do
     plnRef <- askPlanWeakRef
-    f' <- codify (runGadgetT . f)
+    f' <- codify (unGadgetT . f)
     delegatify $ exec' . MkHandler plnRef goStrict f'
 
 mkHandler' ::
@@ -226,7 +227,7 @@ runGadget (Obj plnRef plnWkRef _ notifierWkRef mdlVar mdlWkVar) m = do
             . localScratch (const sch)
             . localModel (const mdl)
             . localModelWeakVar (const mdlWkVar)
-    f (runGadgetT m)
+    f (unGadgetT m)
 
 -- | Orphan instance because it requires AsReactor
 -- LOUISFIXME: Think about this, use ReaderT (s -> Either e Obj s)?
@@ -261,7 +262,7 @@ type Prop m a = GadgetT m (Maybe a)
 -- | Possibly write some text
 txt :: MonadWidget s m => Prop m J.JSString -> m ()
 txt m = do
-    t <- runGadgetT m
+    t <- unGadgetT m
     maybe (pure ()) textMarkup t
 
 -- | Creates a JSVal for "className" property from a list of (JSString, Bool)
@@ -278,7 +279,7 @@ runProps :: Monad m
     => [(J.JSString, Prop m J.JSVal)]
     -> m [(J.JSString, J.JSVal)]
 runProps props = do
-    let f = fmap (fromMaybe J.nullRef) . runGadgetT
+    let f = fmap (fromMaybe J.nullRef) . unGadgetT
     traverse (traverse f) props
 
 runGads :: (MonadGadget s m)

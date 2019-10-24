@@ -2,34 +2,22 @@
 
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE DerivingVia #-}
-{-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Glazier.React.Widget where
 
-import Control.Also
 import Control.Applicative
 import Control.Concurrent.MVar
 import Control.Lens
-import Control.Monad.Delegate
 import Control.Monad.Environ
-import Control.Monad.Morph
 import Control.Monad.Observer
 import Control.Monad.Reader
 import Control.Monad.State.Strict
@@ -176,31 +164,6 @@ type Widget s c =
     (ProgramT c IO -- 'MonadComand', 'MonadIO'
     ))))))))))))
 
--- -- | Run a widget on an @Obj t@
--- -- The markup, initialization (initConstructor, etc) effects are ignored.
--- runWidget :: (MonadIO m, MonadCommand m, Cmd' [] (Command m)) => Widget t (Command m) a -> Obj t -> m a
--- runWidget wid (Obj plnRef plnWkRef _ notifierWkRef mdlVar mdlWkVar) = do
---     mdl <- liftIO $ readMVar mdlVar
---     o <- liftIO $ scratch <$> readIORef plnRef
---     -- get the commands from running the widget using the refs/var from the given
---     delegatify $ \f -> do
---         let wid' = wid >>= instruct . f
---         cs <- liftIO $ execProgramT'
---             $ (`evalStateT` mempty) -- markup
---             $ (`evalStateT` (ReactPath (Nothing, [])))
---             $ evalContT
---             $ (`evalMaybeT` ())
---             $ (`runReaderT` plnWkRef)
---             $ (`runReaderT` notifierWkRef)
---             $ (`runReaderT` Tagged @"Scratch" o)
---             $ (`runReaderT` Tagged @"Model" mdl)
---             $ (`runReaderT` Tagged @"ModelWeakVar" mdlWkVar)
---             $ (`runObserverT` (const $ pure ()))
---             $ (`runObserverT` (const $ pure ()))
---             $ (`runObserverT` (const $ pure ()))
---             $ wid'
---         exec' (DL.toList cs)
-
 -- | ALlow additional user ReaderT and IdentityT stack on top of @Widget s@
 -- Like 'Control.Monad.IO.Unlift.UnliftIO', this newtype wrapper prevents impredicative types.
 newtype UniftWidget s m = UniftWidget { unliftWidget :: forall a. m a -> Widget s (Command m) a }
@@ -229,36 +192,3 @@ instance (Functor m, MonadUnliftWidget s m) => MonadUnliftWidget s (IdentityT m)
     askUnliftWidget = IdentityT $
         (\u -> UniftWidget (unliftWidget u . runIdentityT)) <$> askUnliftWidget
 
--- FIXME: protect constructor
-
--- | A newtype wrapper to indicate that only 'Glazier.React.Reactor.Internal.MonadGadget'
--- effect are allowed.
--- 'GadgetT' is an instance of 'Glazier.React.Reactor.Internal.MonadGadget'
--- 'GadgetT' is *not* an instance of 'Glazier.React.Reactor.Internal.MonadWidget'
-newtype GadgetT f a = GadgetT { runGadgetT :: f a}
-    deriving newtype
-        ( Functor
-        , Applicative
-        , Monad
-        , MonadIO
-        , Alternative
-        , MonadDelegate
-        , MonadCodify
-        , MonadProgram
-        )
-
-deriving via (IdentityT f) instance (Also a f) => Also a (GadgetT f)
-
-instance MonadTrans GadgetT where
-    lift = GadgetT
-
-instance MFunctor GadgetT where
-    hoist nat m = GadgetT (nat (runGadgetT m))
-
--- | This instance allows using "plain string" in 'txt', and in props for 'lf', and 'bh'
--- when using @OverloadedString@ with @ExtendedDefaultRules@
-instance {-# OVERLAPPABLE #-} (Applicative m, IsString a) => IsString (GadgetT m a) where
-    fromString = pure . fromString
-
-instance {-# OVERLAPPABLE #-} (Applicative m, IsString a) => IsString (GadgetT m (Maybe a)) where
-    fromString = pure . Just . fromString
