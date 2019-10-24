@@ -20,6 +20,23 @@ library
                       Glazier.React.Common
                       Glazier.React.Component
                       Glazier.React.Component.Internal
+                      Glazier.React.Markup
+                      Glazier.React.Plan
+                      Glazier.React.Plan.Internal
+                      Glazier.React.Obj
+                      Glazier.React.Obj.Internal
+                      Glazier.React.ReactBatch
+                      Glazier.React.ReactBatch.Internal
+                      Glazier.React.ReactDOM
+                      Glazier.React.ReactElement
+                      Glazier.React.ReactElement.Internal
+                      Glazier.React.ReactId
+                      Glazier.React.ReactId.Internal
+                      Glazier.React.Reactor
+                      Glazier.React.Reactor.Internal
+                      Glazier.React.Reactor.Exec
+                      Glazier.React.ReactPath
+                      Glazier.React.Widget
                       Glazier.DOM
                       Glazier.DOM.Event
                       Glazier.DOM.Event.Internal
@@ -43,23 +60,6 @@ library
                       Glazier.DOM.EventTarget.Node.Element.HTML.Internal
                       Glazier.DOM.EventTarget.Window
                       Glazier.DOM.EventTarget.Window.Internal
-                      Glazier.React.Markup
-                      Glazier.React.Plan
-                      Glazier.React.Plan.Internal
-                      Glazier.React.Obj
-                      Glazier.React.Obj.Internal
-                      Glazier.React.ReactBatch
-                      Glazier.React.ReactBatch.Internal
-                      Glazier.React.ReactDOM
-                      Glazier.React.ReactElement
-                      Glazier.React.ReactElement.Internal
-                      Glazier.React.ReactId
-                      Glazier.React.ReactId.Internal
-                      Glazier.React.Reactor
-                      Glazier.React.Reactor.Internal
-                      Glazier.React.Reactor.Exec
-                      Glazier.React.ReactPath
-                      Glazier.React.Widget
   build-depends:      base >= 4.9.0 && < 5
                     , aeson >= 1.4.2.0
                     , aeson-applicative >= 1.4

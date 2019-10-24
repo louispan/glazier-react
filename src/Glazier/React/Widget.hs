@@ -3,6 +3,7 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -12,9 +13,9 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -22,7 +23,10 @@
 
 module Glazier.React.Widget where
 
+import Control.Also
+import Control.Applicative
 import Control.Concurrent.MVar
+import Control.Lens
 import Control.Monad.Delegate
 import Control.Monad.Environ
 import Control.Monad.Observer
@@ -34,6 +38,8 @@ import Control.Monad.Trans.Identity
 import Control.Monad.Trans.Maybe
 import qualified Data.DList as DL
 import Data.IORef
+import Data.Monoid
+import Data.Profunctor.Unsafe
 import Data.String
 import Data.Tagged.Extras
 import qualified GHCJS.Types as J
@@ -93,6 +99,14 @@ instance {-# OVERLAPPING #-} Monad m => MonadAsk "Model" (Tagged "Model" s) (Rea
 askModel :: AskModel s m => m s
 askModel = (untag' @"Model") <$> askEnviron @"Model" Proxy
 
+-- | This is like 'view' but for the 'AskModel', not 'MonadReader'
+model :: AskModel s m => Getting a s a -> m a
+model l = (getConst #. l Const) <$> askModel
+
+-- | This is like 'preview' but for the 'AskModel', not 'MonadReader'
+premodel :: AskModel s m => Getting (First a) s a -> m (Maybe a)
+premodel l = (getFirst #. foldMapOf l (First #. Just)) <$> askModel
+
 type AskConstructor m = MonadObserver' (Tagged "Constructor" (Command m)) m
 askConstructor :: forall m. AskConstructor m => m (Command m -> m ())
 askConstructor = (. Tagged @"Constructor") <$> askObserver @(Tagged "Constructor" (Command m)) Proxy
@@ -133,7 +147,7 @@ initRendered m = do
     c <- codify' m
     f c
 
--- | 'Widget' is an instance of 'MonadWidget' and 'MonadGadget'
+-- | 'Widget' is a concrete transformer stack of 'MonadWidget' and 'MonadGadget'
 type Widget s c =
     ObserverT (Tagged "Rendered" c) -- 'AskRendered'
     (ObserverT (Tagged "Destructor" c) -- 'AskDestructor'
@@ -151,38 +165,30 @@ type Widget s c =
     (ProgramT c IO -- 'MonadComand', 'MonadIO'
     ))))))))))))
 
-
--- | Allows handling @Widget t c@ that return @a@ as if it returns @()@
--- by delegating the handling of @a@
-handleWidget :: (MonadCommand m, Cmd' [] (Command m)) => Widget t (Command m) a -> m (Either a (Widget t (Command m) ()))
-handleWidget wid = delegate2 $ \(f, g) -> do
-    f' <- codify f
-    g (wid >>= instruct . f')
-
--- | Run a widget on an @Obj t@
--- The markup, initialization (initConstructor, etc) effects are ignored.
-runWidget :: (MonadIO m, MonadCommand m, Cmd' [] (Command m)) => Widget t (Command m) a -> Obj t -> m a
-runWidget wid (Obj plnRef plnWkRef _ notifierWkRef mdlVar mdlWkVar) = do
-    mdl <- liftIO $ readMVar mdlVar
-    o <- liftIO $ scratch <$> readIORef plnRef
-    -- get the commands from running the widget using the refs/var from the given
-    delegatify $ \f -> do
-        let wid' = wid >>= instruct . f
-        cs <- liftIO $ execProgramT'
-            $ (`evalStateT` mempty) -- markup
-            $ (`evalStateT` (ReactPath (Nothing, [])))
-            $ evalContT
-            $ (`evalMaybeT` ())
-            $ (`runReaderT` plnWkRef)
-            $ (`runReaderT` notifierWkRef)
-            $ (`runReaderT` Tagged @"Scratch" o)
-            $ (`runReaderT` Tagged @"Model" mdl)
-            $ (`runReaderT` Tagged @"ModelWeakVar" mdlWkVar)
-            $ (`runObserverT` (const $ pure ()))
-            $ (`runObserverT` (const $ pure ()))
-            $ (`runObserverT` (const $ pure ()))
-            $ wid'
-        exec' (DL.toList cs)
+-- -- | Run a widget on an @Obj t@
+-- -- The markup, initialization (initConstructor, etc) effects are ignored.
+-- runWidget :: (MonadIO m, MonadCommand m, Cmd' [] (Command m)) => Widget t (Command m) a -> Obj t -> m a
+-- runWidget wid (Obj plnRef plnWkRef _ notifierWkRef mdlVar mdlWkVar) = do
+--     mdl <- liftIO $ readMVar mdlVar
+--     o <- liftIO $ scratch <$> readIORef plnRef
+--     -- get the commands from running the widget using the refs/var from the given
+--     delegatify $ \f -> do
+--         let wid' = wid >>= instruct . f
+--         cs <- liftIO $ execProgramT'
+--             $ (`evalStateT` mempty) -- markup
+--             $ (`evalStateT` (ReactPath (Nothing, [])))
+--             $ evalContT
+--             $ (`evalMaybeT` ())
+--             $ (`runReaderT` plnWkRef)
+--             $ (`runReaderT` notifierWkRef)
+--             $ (`runReaderT` Tagged @"Scratch" o)
+--             $ (`runReaderT` Tagged @"Model" mdl)
+--             $ (`runReaderT` Tagged @"ModelWeakVar" mdlWkVar)
+--             $ (`runObserverT` (const $ pure ()))
+--             $ (`runObserverT` (const $ pure ()))
+--             $ (`runObserverT` (const $ pure ()))
+--             $ wid'
+--         exec' (DL.toList cs)
 
 -- | ALlow additional user ReaderT and IdentityT stack on top of @Widget s@
 -- Like 'Control.Monad.IO.Unlift.UnliftIO', this newtype wrapper prevents impredicative types.
@@ -212,8 +218,38 @@ instance (Functor m, MonadUnliftWidget s m) => MonadUnliftWidget s (IdentityT m)
     askUnliftWidget = IdentityT $
         (\u -> UniftWidget (unliftWidget u . runIdentityT)) <$> askUnliftWidget
 
+-- FIXME: protect constructor
 
--- | 'Gadget' is an instance of MonadGadget'
+-- | A newtype wrapper to indicate that only 'Glazier.React.Reactor.Internal.MonadGadget'
+-- effect are allowed.
+-- 'GadgetT' is an instance of 'Glazier.React.Reactor.Internal.MonadGadget'
+-- 'GadgetT' is *not* an instance of 'Glazier.React.Reactor.Internal.MonadWidget'
+newtype GadgetT f a = GadgetT { runGadgetT :: f a}
+    deriving newtype
+        ( Functor
+        , Applicative
+        , Monad
+        , MonadIO
+        , Alternative
+        , MonadDelegate
+        , MonadCodify
+        , MonadProgram
+        )
+
+deriving via (IdentityT f) instance (Also a f) => Also a (GadgetT f)
+
+instance MonadTrans GadgetT where
+    lift = GadgetT
+
+-- | This instance allows using "plain string" in 'txt', and in props for 'lf', and 'bh'
+-- when using @OverloadedString@ with @ExtendedDefaultRules@
+instance {-# OVERLAPPABLE #-} (Applicative m, IsString a) => IsString (GadgetT m a) where
+    fromString = pure . fromString
+
+instance {-# OVERLAPPABLE #-} (Applicative m, IsString a) => IsString (GadgetT m (Maybe a)) where
+    fromString = pure . Just . fromString
+
+-- | 'Gadget' is a concrete transformer stack which is instance of 'MonadGadget'
 type Gadget s c =
     ReaderT (Tagged "ModelWeakVar" (Weak (MVar s))) -- 'AskModelWeakVar'
     (ReaderT (Tagged "Model" s) -- 'AskModel'
@@ -229,7 +265,7 @@ type Gadget s c =
 
 -- | Run a gadget on an @Obj t@
 -- The markup, initialization (initConstructor, etc) effects are ignored.
-runGadget :: (MonadIO m, MonadCommand m, Cmd' [] (Command m)) => Gadget t (Command m) a -> Obj t -> m a
+runGadget :: (MonadIO m, MonadCommand m, Cmd' [] (Command m)) => Gadget s (Command m) a -> Obj s -> m a
 runGadget gad (Obj plnRef plnWkRef _ notifierWkRef mdlVar mdlWkVar) = do
     mdl <- liftIO $ readMVar mdlVar
     o <- liftIO $ scratch <$> readIORef plnRef
@@ -248,23 +284,23 @@ runGadget gad (Obj plnRef plnWkRef _ notifierWkRef mdlVar mdlWkVar) = do
             $ gad'
         exec' (DL.toList cs)
 
--- | ALlow additional user ReaderT and IdentityT stack on top of @Gadget s@
--- Like 'Control.Monad.IO.Unlift.UnliftIO', this newtype wrapper prevents impredicative types.
-newtype UniftGadget s m = UniftGadget { unliftGadget :: forall a. m a -> Gadget s (Command m) a }
+-- -- | ALlow additional user ReaderT and IdentityT stack on top of @Gadget s@
+-- -- Like 'Control.Monad.IO.Unlift.UnliftIO', this newtype wrapper prevents impredicative types.
+-- newtype UniftGadget s m = UniftGadget { unliftGadget :: forall a. m a -> Gadget s (Command m) a }
 
--- | Similar to 'Control.Monad.IO.Unlift.MonadUnliftIO', except we want to unlift a @Gadget s m a@.
--- This limits transformers stack to 'ReaderT' and 'IdentityT' on top of @Gadget s m@
-class MonadUnliftGadget s m | m -> s where
-    askUnliftGadget :: m (UniftGadget s m)
+-- -- | Similar to 'Control.Monad.IO.Unlift.MonadUnliftIO', except we want to unlift a @Gadget s m a@.
+-- -- This limits transformers stack to 'ReaderT' and 'IdentityT' on top of @Gadget s m@
+-- class MonadUnliftGadget s m | m -> s where
+--     askUnliftGadget :: m (UniftGadget s m)
 
-instance MonadUnliftGadget s (Gadget s c) where
-    askUnliftGadget = pure (UniftGadget id)
+-- instance MonadUnliftGadget s (Gadget s c) where
+--     askUnliftGadget = pure (UniftGadget id)
 
-instance (Functor m, MonadUnliftGadget s m) => MonadUnliftGadget s (ReaderT r m) where
-    askUnliftGadget = ReaderT $ \r ->
-        (\u -> UniftGadget (unliftGadget u . flip runReaderT r)) <$> askUnliftGadget
+-- instance (Functor m, MonadUnliftGadget s m) => MonadUnliftGadget s (ReaderT r m) where
+--     askUnliftGadget = ReaderT $ \r ->
+--         (\u -> UniftGadget (unliftGadget u . flip runReaderT r)) <$> askUnliftGadget
 
-instance (Functor m, MonadUnliftGadget s m) => MonadUnliftGadget s (IdentityT m) where
-    askUnliftGadget = IdentityT $
-        (\u -> UniftGadget (unliftGadget u . runIdentityT)) <$> askUnliftGadget
+-- instance (Functor m, MonadUnliftGadget s m) => MonadUnliftGadget s (IdentityT m) where
+--     askUnliftGadget = IdentityT $
+--         (\u -> UniftGadget (unliftGadget u . runIdentityT)) <$> askUnliftGadget
 

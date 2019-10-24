@@ -1,17 +1,19 @@
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
-{-# OPTIONS_GHC -Wno-orphans #-}
 
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -47,6 +49,7 @@ module Glazier.React.Reactor
 
 import Control.Concurrent.MVar
 import Control.DeepSeq
+import Control.Monad.Identity
 import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Extras
@@ -170,17 +173,17 @@ notifyDirty = do
 mkHandler ::
     (NFData a, MonadGadget s m)
     => (J.JSVal -> MaybeT IO a)
-    -> (a -> m ())
+    -> (a -> GadgetT m ())
     -> m Handler -- (preprocess, postprocess)
 mkHandler goStrict f = do
     plnRef <- askPlanWeakRef
-    f' <- codify f
+    f' <- codify (runGadgetT . f)
     delegatify $ exec' . MkHandler plnRef goStrict f'
 
 mkHandler' ::
     (NFData a, MonadGadget s m)
     => (SyntheticEvent -> MaybeT IO a)
-    -> (a -> m ())
+    -> (a -> GadgetT m ())
     -> m Handler
 mkHandler' goStrict goLazy = mkHandler (handleSyntheticEvent goStrict) goLazy
 
@@ -200,7 +203,7 @@ mkListener f = do
 -- This only does something during initialization
 listenEventTarget
  :: (NFData a, MonadWidget s m, IEventTarget j)
-    => j -> J.JSString -> (J.JSVal -> MaybeT IO a) -> (a -> m ()) -> m ()
+    => j -> J.JSString -> (J.JSVal -> MaybeT IO a) -> (a -> GadgetT m ()) -> m ()
 listenEventTarget j n goStrict goLazy =
     initConstructor $ do
         hdl <- mkHandler goStrict goLazy
@@ -226,23 +229,27 @@ listenEventTarget j n goStrict goLazy =
 
 ----------------------------------------------------------------------------------
 
-type Prop s a = ReaderT s IO (Maybe a)
+-- -- | This orphan instance allows using "blah" is a prop in 'txt', 'lf', and 'bh'
+-- -- when using @OverloadedString@ with @ExtendedDefaultRules@
+-- instance (Applicative m, IsString a) => IsString (Prop s m a) where
+--     fromString = pure . Just . fromString
+-- wackWidget :: (MonadGadget s m, MonadUnliftWidget s m) => m a -> Obj s -> m a
+-- wackWidget m o = do
+--     u <- askUnliftWidget
+--     runWidget (unliftWidget u m) o
 
--- | This orphan instance allows using "blah" is a prop in 'txt', 'lf', and 'bh'
--- when using @OverloadedString@ with @ExtendedDefaultRules@
-instance IsString a => IsString (Prop s a) where
-    fromString = pure . Just . fromString
 
--- | Possibly write some text from the model
-txt :: MonadWidget s m => Prop s J.JSString -> m ()
+type Prop m a = GadgetT m (Maybe a)
+
+-- | Possibly write some text
+txt :: MonadWidget s m => Prop m J.JSString -> m ()
 txt m = do
-    s <- askModel
-    t <- liftIO $ runReaderT m s
+    t <- runGadgetT m
     maybe (pure ()) textMarkup t
 
 -- | Creates a JSVal for "className" property from a list of (JSString, Bool)
 -- Idea from https://github.com/JedWatson/classnames
-classNames :: [(J.JSString, Prop s Bool)] -> Prop s J.JSVal
+classNames :: Monad m => [(J.JSString, Prop m Bool)] -> Prop m J.JSVal
 classNames xs = do
     xs' <- filterM (fmap ok . snd) xs
     pure . Just . JE.toJS . J.unwords . fmap fst $ xs'
@@ -250,15 +257,14 @@ classNames xs = do
     ok (Just True) = True
     ok _ = False
 
-runProps :: (MonadWidget s m)
-    => [(J.JSString, Prop s J.JSVal)]
+runProps :: Monad m
+    => [(J.JSString, Prop m J.JSVal)]
     -> m [(J.JSString, J.JSVal)]
 runProps props = do
-    s <- askModel
-    let f = liftIO . fmap (fromMaybe J.nullRef) . (`runReaderT` s)
+    let f = fmap (fromMaybe J.nullRef) . runGadgetT
     traverse (traverse f) props
 
-runGads :: (MonadWidget s m)
+runGads :: (MonadGadget s m)
     => [(J.JSString, m Handler)]
     -> m [(J.JSString, J.JSVal)]
 runGads gads = do
@@ -270,7 +276,7 @@ runGads gads = do
 lf :: (Component j, MonadWidget s m)
     => j -- ^ "input" or a @ReactComponent@
     -> DL.DList (J.JSString, m Handler)
-    -> DL.DList (J.JSString, Prop s J.JSVal)
+    -> DL.DList (J.JSString, Prop m J.JSVal)
     -> m ()
 lf j gads props = do
     props' <- runProps (DL.toList props)
@@ -281,7 +287,7 @@ lf j gads props = do
 bh :: (Component j, MonadWidget s m)
     => j-- ^ eg "div" or a @ReactComponent@
     -> DL.DList (J.JSString, m Handler)
-    -> DL.DList (J.JSString, Prop s J.JSVal)
+    -> DL.DList (J.JSString, Prop m J.JSVal)
     -> m a
     -> m a
 bh j gads props child = do
