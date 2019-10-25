@@ -2,26 +2,34 @@
 
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Glazier.React.Widget where
 
+import Control.Also
 import Control.Applicative
 import Control.Concurrent.MVar
 import Control.Lens
+import Control.Monad.Cont
+import Control.Monad.Delegate
 import Control.Monad.Environ
 import Control.Monad.Observer
 import Control.Monad.Reader
 import Control.Monad.State.Strict
-import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Identity
 import Control.Monad.Trans.Maybe
 import qualified Data.DList as DL
@@ -32,6 +40,7 @@ import Data.String
 import Data.Tagged.Extras
 import qualified GHCJS.Types as J
 import Glazier.Command
+import Glazier.Logger
 import Glazier.React.Markup
 import Glazier.React.Plan
 import Glazier.React.ReactId
@@ -146,8 +155,11 @@ initRendered m = do
     c <- codify' m
     f c
 
--- | 'Widget' is a concrete transformer stack of 'MonadWidget' and 'MonadGadget'
-type Widget s c =
+-- | 'Widget' is a concrete transformer stack of 'Glazier.React.Reactor.MonadWidget' and 'Glazier.React.Reactor.MonadGadget'
+-- It is a newtype to avoid conflicting 'Glazier.React.Reactor.ModelGadget' type instance with 'ReaderT'
+type instance Command (Widget s c) = c
+
+type Widget' s c =
     ObserverT (Tagged "Rendered" c) -- 'AskRendered'
     (ObserverT (Tagged "Destructor" c) -- 'AskDestructor'
     (ObserverT (Tagged "Constructor" c) -- 'AskConstructor'
@@ -164,9 +176,40 @@ type Widget s c =
     (ProgramT c IO -- 'MonadComand', 'MonadIO'
     ))))))))))))
 
+newtype Widget s c a = Widget { runWidget :: Widget' s c a }
+    deriving
+    ( Functor
+    , Applicative
+    , Also ()
+    , Monad
+    , MonadIO
+    , Alternative
+    , MonadPlus
+    , MonadCont
+    , MonadDelegate
+    , MonadProgram
+    , AskMarkup
+    , PutMarkup
+    , AskReactPath
+    , PutReactPath
+    , AskLogLevel
+    , AskLogName
+    , AskLogCallStackDepth
+    , AskPlanWeakRef
+    , AskNotifierWeakRef
+    , AskScratch
+    , AskModelWeakVar s
+    , AskModel s
+    )
+
+deriving via (IdentityT (Widget' s c)) instance (Cmd' IO c, Cmd' [] c) => MonadCodify (Widget s c)
+deriving via (IdentityT (Widget' s c)) instance MonadObserver (Tagged "Constructor" c) (Tagged "Constructor" c) (Widget s c)
+deriving via (IdentityT (Widget' s c)) instance MonadObserver (Tagged "Destructor" c) (Tagged "Destructor" c) (Widget s c)
+deriving via (IdentityT (Widget' s c)) instance MonadObserver (Tagged "Rendered" c) (Tagged "Rendered" c) (Widget s c)
+
 -- | ALlow additional user ReaderT and IdentityT stack on top of @Widget s@
 -- Like 'Control.Monad.IO.Unlift.UnliftIO', this newtype wrapper prevents impredicative types.
-newtype UniftWidget s m = UniftWidget { unliftWidget :: forall a. m a -> Widget s (Command m) a }
+newtype UnliftWidget s m = UnliftWidget { unliftWidget :: forall a. m a -> Widget s (Command m) a }
 
 -- | Similar to 'Control.Monad.IO.Unlift.MonadUnliftIO', except we want to unlift a @Widget s m a@.
 -- This limits transformers stack to 'ReaderT' and 'IdentityT' on top of @Widget s m@
@@ -179,16 +222,16 @@ newtype UniftWidget s m = UniftWidget { unliftWidget :: forall a. m a -> Widget 
 --     mkObj (unliftWidget u m) logname s
 -- @
 class MonadUnliftWidget s m | m -> s where
-    askUnliftWidget :: m (UniftWidget s m)
+    askUnliftWidget :: m (UnliftWidget s m)
 
 instance MonadUnliftWidget s (Widget s c) where
-    askUnliftWidget = pure (UniftWidget id)
+    askUnliftWidget = pure (UnliftWidget id)
 
 instance (Functor m, MonadUnliftWidget s m) => MonadUnliftWidget s (ReaderT r m) where
     askUnliftWidget = ReaderT $ \r ->
-        (\u -> UniftWidget (unliftWidget u . flip runReaderT r)) <$> askUnliftWidget
+        (\u -> UnliftWidget (unliftWidget u . flip runReaderT r)) <$> askUnliftWidget
 
 instance (Functor m, MonadUnliftWidget s m) => MonadUnliftWidget s (IdentityT m) where
     askUnliftWidget = IdentityT $
-        (\u -> UniftWidget (unliftWidget u . runIdentityT)) <$> askUnliftWidget
+        (\u -> UnliftWidget (unliftWidget u . runIdentityT)) <$> askUnliftWidget
 

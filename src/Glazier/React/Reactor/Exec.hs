@@ -354,7 +354,7 @@ mkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar) = d
                 $ (`runObserverT` onConstruct')
                 $ (`runObserverT` onDestruct')
                 $ (`runObserverT` onRendrd')
-                $ wid'
+                $ runWidget wid'
         -- prerndr :: (c -> m ()) -> IO ()
         prerndr onRendrd' onDestruct' onConstruct' = do
             c <- (commands . DL.toList) <$> (mkRerenderCmds onRendrd' onDestruct' onConstruct')
@@ -428,14 +428,12 @@ execMutate ::
     (AlternativeIO m, AskDirtyPlan m)
     => (c -> m ())
     -> Weak (MVar s)
-    -> StateT s IO c
+    -> State s c
     -> m ()
 execMutate executor mdlWk tick = do
     liftIO $ putStrLn $ "LOUISDEBUG: execMutate"
     mdlVar <- fromJustIO $ deRefWeak mdlWk
-    s <- liftIO $ takeMVar mdlVar
-    (c, s') <- liftIO $ runStateT tick s
-    liftIO $ putMVar mdlVar s'
+    c <- liftIO $ modifyMVar mdlVar (pure . swap . runState tick)
     executor c
 
 execNotifyDirty ::

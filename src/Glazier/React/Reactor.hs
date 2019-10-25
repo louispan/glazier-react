@@ -19,7 +19,7 @@
 
 module Glazier.React.Reactor
     ( CmdReactor
-    , MonadGadget
+    , MonadGadget(..)
     , MonadWidget
     , Reactor
     , logPrefix
@@ -39,7 +39,6 @@ module Glazier.React.Reactor
     , handleSyntheticEvent
     , mkListener
     , listenEventTarget
-    , runGadget
     , Prop
     , txt
     , classNames
@@ -148,7 +147,7 @@ unwatchObj (Obj _ _ notifierRef _ _ _) = do
 
 -- | Mutates the Model for the current widget.
 -- Doesn't automatically flags the widget as dirty
-noisyMutate :: MonadGadget s m => StateT s IO a -> m a
+noisyMutate :: MonadGadget s m => State s a -> m a
 noisyMutate m = do
     a <- quietMutate m
     notifyDirty
@@ -156,7 +155,7 @@ noisyMutate m = do
 
 -- | Mutates the Model for the current widget.
 -- Doesn't automatically flags the widget as dirty
-quietMutate :: MonadGadget s m => StateT s IO a -> m a
+quietMutate :: MonadGadget s m => State s a -> m a
 quietMutate m = do
     mdlWk <- askModelWeakVar
     delegatify $ \f -> exec' $ Mutate mdlWk (f <$> m)
@@ -179,7 +178,7 @@ mkHandler ::
     -> m Handler -- (preprocess, postprocess)
 mkHandler goStrict f = do
     plnRef <- askPlanWeakRef
-    f' <- codify (unGadgetT . f)
+    f' <- codify (runGadgetT . f)
     delegatify $ exec' . MkHandler plnRef goStrict f'
 
 mkHandler' ::
@@ -212,22 +211,6 @@ listenEventTarget j n goStrict goLazy =
         cb <- mkListener hdl
         liftIO $ addEventListener j n cb
         initDestructor $ liftIO $ removeEventListener j n cb
-
-
--- | Run a gadget on an @Obj t@
-runGadget :: MonadGadget s m => Obj s -> GadgetT m a -> m a
-runGadget (Obj plnRef plnWkRef _ notifierWkRef mdlVar mdlWkVar) m = do
-    mdl <- liftIO $ readMVar mdlVar
-    sch <- liftIO $ scratch <$> readIORef plnRef
-    rp <- askReactPath
-
-    let f = localReactPath (const rp)
-            . localPlanWeakRef (const plnWkRef)
-            . localNotifierWeakRef (const notifierWkRef)
-            . localScratch (const sch)
-            . localModel (const mdl)
-            . localModelWeakVar (const mdlWkVar)
-    f (unGadgetT m)
 
 -- | Orphan instance because it requires AsReactor
 -- LOUISFIXME: Think about this, use ReaderT (s -> Either e Obj s)?
@@ -262,7 +245,7 @@ type Prop m a = GadgetT m (Maybe a)
 -- | Possibly write some text
 txt :: MonadWidget s m => Prop m J.JSString -> m ()
 txt m = do
-    t <- unGadgetT m
+    t <- runGadgetT m
     maybe (pure ()) textMarkup t
 
 -- | Creates a JSVal for "className" property from a list of (JSString, Bool)
@@ -279,7 +262,7 @@ runProps :: Monad m
     => [(J.JSString, Prop m J.JSVal)]
     -> m [(J.JSString, J.JSVal)]
 runProps props = do
-    let f = fmap (fromMaybe J.nullRef) . unGadgetT
+    let f = fmap (fromMaybe J.nullRef) . runGadgetT
     traverse (traverse f) props
 
 runGads :: (MonadGadget s m)
