@@ -11,6 +11,7 @@ maintainer:           louis@pan.me
 copyright:            2019 Louis Pan
 category:             Web, GUI
 build-type:           Simple
+stability:           experimental
 extra-source-files:   README.md
 
 library

@@ -6,15 +6,15 @@
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Glazier.React.Reactor
@@ -47,8 +47,11 @@ module Glazier.React.Reactor
     , displayObj
     ) where
 
+
+import Control.Also
 import Control.Concurrent.MVar
 import Control.DeepSeq
+import Control.Monad.Cont
 import Control.Monad.Identity
 import Control.Monad.Reader
 import Control.Monad.State.Strict
@@ -61,6 +64,7 @@ import qualified Data.List as L
 import qualified Data.Map.Strict as M
 import Data.Maybe
 import Data.String
+import Data.Tagged
 import Data.Tagged.Extras
 import GHC.Stack
 import qualified GHCJS.Types as J
@@ -79,6 +83,81 @@ import Glazier.React.ReactPath
 import Glazier.React.Widget
 import qualified JavaScript.Extras as JE
 import System.Mem.Weak
+
+------------------------------------------------------
+-- MonadGadget
+------------------------------------------------------
+
+-- | A 'MonadGadget'' is can log, 'instruct' 'Reactor' effects, and mutate the model.
+-- It can be safely turned into a 'Handler' and used in event handling code.
+-- It is an instance of 'Alternative'. It is an instance of 'Also' so it can be combined.
+class (CmdReactor (Command m)
+        , AlternativeIO m, Also () m
+        , MonadCont m
+        , MonadLogger J.JSString m, AskLogName m, AskReactPath m
+        , AskScratch m, AskPlanWeakRef m
+        , AskNotifierWeakRef m, AskModel s m, AskModelWeakVar s m) => MonadGadget (s :: *) (m :: * -> *) where
+
+    type ModelGadget (t :: *) (m :: * -> *) :: * -> *
+    -- | Run a gadget action on an @Obj t@
+    will :: Obj t -> GadgetT (ModelGadget t m) a -> m a
+
+infixl 2 `will` -- lower than <|>
+
+instance {-# OVERLAPPABLE #-} (CmdReactor c, c ~ Command (Widget s c)) => MonadGadget s (Widget s c) where
+    type ModelGadget t (Widget s c) = Widget t c
+    will (Obj plnRef plnWkRef _ notifierWkRef mdlVar mdlWkVar) (GadgetT (Widget n)) = Widget $ do
+        mdl <- liftIO $ readMVar mdlVar
+        sch <- liftIO $ scratch <$> readIORef plnRef
+
+        -- unwrap the ReaderT layers
+        let n' = (`runReaderT` plnWkRef)
+                . (`runReaderT` notifierWkRef)
+                . (`runReaderT` (Tagged @"Scratch" sch))
+                . (`runReaderT` (Tagged @"Model" mdl))
+                . (`runReaderT` (Tagged @"ModelWeakVar" mdlWkVar))
+                . (`runReaderT` (const $ pure ()))
+                . (`runReaderT` (const $ pure ()))
+                . (`runReaderT` (const $ pure ()))
+                $ n
+
+        -- lift them into this monad
+        lift . lift . lift . lift . lift . lift . lift . lift $ n'
+
+instance {-# OVERLAPPABLE #-} (MonadGadget s m) => MonadGadget s (IdentityT m) where
+    type ModelGadget t (IdentityT m) = IdentityT (ModelGadget t m)
+    obj `will` (GadgetT (IdentityT m)) = IdentityT $ obj `will` (GadgetT m)
+
+instance {-# OVERLAPPABLE #-} (MonadGadget s m) => MonadGadget s (ReaderT r m) where
+    type ModelGadget t (ReaderT r m) = ReaderT r (ModelGadget t m)
+    obj `will` (GadgetT (ReaderT f)) = ReaderT $ \r -> obj `will` (GadgetT (f r))
+
+instance {-# OVERLAPPABLE #-} (MonadGadget s m) => MonadGadget s (GadgetT m) where
+    type ModelGadget t (GadgetT m) = GadgetT (ModelGadget t m)
+    obj `will` (GadgetT (GadgetT m)) = GadgetT $ obj `will` (GadgetT m)
+
+------------------------------------------------------
+-- MonadWidget
+------------------------------------------------------
+
+-- A 'MonadWidget' is a 'MonadGadget' that additionally have access to
+-- 'initConstructor', 'initDestructor', 'initRendered',
+-- can generate 'Markup' and so should not be be for event handling, sice those
+-- additional effects are ignored inside event handling.
+-- 'GadgetT' is *not* an instance of 'MonadWidget'
+class (CmdReactor (Command m)
+    , MonadGadget s m, PutMarkup m, PutReactPath m
+    , AskConstructor m, AskDestructor m, AskRendered m) => MonadWidget s m
+
+instance {-# OVERLAPPABLE #-} (MonadWidget s m) => MonadWidget s (IdentityT m)
+
+instance {-# OVERLAPPABLE #-} (MonadWidget s m) => MonadWidget s (ReaderT r m)
+
+instance {-# OVERLAPPABLE #-} (CmdReactor c, c ~ Command (Widget s c)) => MonadWidget s (Widget s c)
+
+------------------------------------------------------
+-- Logging
+------------------------------------------------------
 
 logPrefix :: MonadGadget s m => m J.JSString
 logPrefix = do
@@ -101,7 +180,7 @@ logJS lvl msg = withFrozenCallStack $ do
 -- | 'mkObj'' that also handles the @a@ for 'Widget's that return an @a@
 mkObj2 :: MonadGadget s m => Widget t (Command m) a -> LogName -> t -> m (Either a (Obj t))
 mkObj2 wid logname s = do
-    x <- delegating wid
+    x <- devolve wid
     case x of
         Left a -> pure $ Left a
         Right wid' -> Right <$> mkObj wid' logname s
@@ -116,7 +195,7 @@ mkObj wid logname s = do
 -- | 'mkLinkedObj'' that also handles the @a@ for 'Widget's that return an @a@
 mkLinkedObj2 :: MonadGadget s m => Widget t (Command m) a -> LogName -> Obj t -> m (Either a (Obj t))
 mkLinkedObj2 wid logname obj = do
-    x <- delegating wid
+    x <- devolve wid
     case x of
         Left a -> pure $ Left a
         Right wid' -> Right <$> mkLinkedObj wid' logname obj
