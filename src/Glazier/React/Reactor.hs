@@ -11,15 +11,18 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Glazier.React.Reactor
     ( CmdReactor
-    , MonadGadget(..)
+    , MonadGadget
+    , Will(..)
     , MonadWidget
     , Reactor
     , logPrefix
@@ -96,17 +99,24 @@ class (CmdReactor (Command m)
         , MonadCont m
         , MonadLogger J.JSString m, AskLogName m, AskReactPath m
         , AskScratch m, AskPlanWeakRef m
-        , AskNotifierWeakRef m, AskModel s m, AskModelWeakVar s m) => MonadGadget (s :: *) (m :: * -> *) where
+        , AskNotifierWeakRef m, AskModel s m, AskModelWeakVar s m
+        , Will m) => MonadGadget (s :: *) (m :: * -> *)
 
-    type ModelGadget (t :: *) (m :: * -> *) :: * -> *
+class Will m where
+    type ModelGadget (x :: *) (m :: * -> *) = (r :: * -> *) | r -> x
     -- | Run a gadget action on an @Obj t@
-    will :: Obj t -> GadgetT (ModelGadget t m) a -> m a
+    will :: (n ~ ModelGadget s m) => Obj s -> n a -> m a
 
 infixl 2 `will` -- lower than <|>
 
-instance {-# OVERLAPPABLE #-} (CmdReactor c, c ~ Command (Widget s c)) => MonadGadget s (Widget s c) where
+instance (CmdReactor c, c ~ Command (Widget s c)) => MonadGadget s (Widget s c)
+instance (MonadGadget s m) => MonadGadget s (IdentityT m)
+instance (MonadGadget s m) => MonadGadget s (ReaderT r m)
+instance (MonadGadget s m) => MonadGadget s (GadgetT m)
+
+instance Will (Widget s c) where
     type ModelGadget t (Widget s c) = Widget t c
-    will (Obj plnRef plnWkRef _ notifierWkRef mdlVar mdlWkVar) (GadgetT (Widget n)) = Widget $ do
+    will (Obj plnRef plnWkRef _ notifierWkRef mdlVar mdlWkVar) ( (Widget n)) = Widget $ do
         mdl <- liftIO $ readMVar mdlVar
         sch <- liftIO $ scratch <$> readIORef plnRef
 
@@ -124,17 +134,20 @@ instance {-# OVERLAPPABLE #-} (CmdReactor c, c ~ Command (Widget s c)) => MonadG
         -- lift them into this monad
         lift . lift . lift . lift . lift . lift . lift . lift $ n'
 
-instance {-# OVERLAPPABLE #-} (MonadGadget s m) => MonadGadget s (IdentityT m) where
-    type ModelGadget t (IdentityT m) = IdentityT (ModelGadget t m)
-    obj `will` (GadgetT (IdentityT m)) = IdentityT $ obj `will` (GadgetT m)
 
-instance {-# OVERLAPPABLE #-} (MonadGadget s m) => MonadGadget s (ReaderT r m) where
-    type ModelGadget t (ReaderT r m) = ReaderT r (ModelGadget t m)
-    obj `will` (GadgetT (ReaderT f)) = ReaderT $ \r -> obj `will` (GadgetT (f r))
+instance (Will m) => Will (IdentityT m) where
+    type ModelGadget s (IdentityT m) = IdentityT (ModelGadget s m)
+    obj `will` ( (IdentityT m)) = IdentityT $ (obj `will` ( m))
 
-instance {-# OVERLAPPABLE #-} (MonadGadget s m) => MonadGadget s (GadgetT m) where
-    type ModelGadget t (GadgetT m) = GadgetT (ModelGadget t m)
-    obj `will` (GadgetT (GadgetT m)) = GadgetT $ obj `will` (GadgetT m)
+
+instance Will m => Will (ReaderT r m) where
+    type ModelGadget s (ReaderT r m) = ReaderT r (ModelGadget s m)
+    obj `will` ( (ReaderT f)) = ReaderT $ \r -> obj `will` ( (f r))
+
+
+instance Will m => Will (GadgetT m) where
+    type ModelGadget s (GadgetT m) = GadgetT (ModelGadget s m)
+    obj `will` ( (GadgetT m)) = GadgetT $ obj `will` ( m)
 
 ------------------------------------------------------
 -- MonadWidget
