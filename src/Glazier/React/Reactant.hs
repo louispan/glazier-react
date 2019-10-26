@@ -6,10 +6,7 @@ module Glazier.React.Reactant where
 
 import Control.Concurrent.MVar
 import Control.DeepSeq
-import Control.Lens
-import Control.Monad.Cont
 import Control.Monad.State.Strict
-import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
 import Data.IORef.Extras
 import qualified Data.JSString as J
