@@ -46,14 +46,14 @@ class (CmdReactant (Command m)
         , AskScratch m, AskPlanWeakRef m
         , AskNotifierWeakRef m
         -- , AskModel s m, AskModelWeakVar s m
-        ) => MonadGadget m where
+        ) => MonadGadget' m where
 
     -- | Run a gadget action on an @Obj t@
     shall :: Obj s -> GadgetT (ModelT s m) a -> m a
 
 infixl 2 `shall` -- lower than <|>
 
-instance (CmdReactant c, c ~ Command (Reactor c)) => MonadGadget (Reactor c) where
+instance (CmdReactant c, c ~ Command (Reactor c)) => MonadGadget' (Reactor c) where
     shall (Obj plnRef plnWkRef _ notifierWkRef mdlVar mdlWkVar) (GadgetT m) = do
         mdl <- liftIO $ readMVar mdlVar
         sch <- liftIO $ scratch <$> readIORef plnRef
@@ -81,7 +81,7 @@ instance (CmdReactant c, c ~ Command (Reactor c)) => MonadGadget (Reactor c) whe
          . lift -- AskPlanWeakRef
          $ m'
 
-instance (MonadGadget m) => MonadGadget (ModelT s m) where
+instance (MonadGadget' m) => MonadGadget' (ModelT s m) where
     obj `shall` (GadgetT m) = do
         mdlWkVar <- askModelWeakVar
         mdl <- askModel
@@ -93,20 +93,20 @@ instance (MonadGadget m) => MonadGadget (ModelT s m) where
             m'' = obj `shall` GadgetT m'
         lift m'' -- lift into ModelT
 
-instance (MonadGadget m) => MonadGadget (IdentityT m) where
+instance (MonadGadget' m) => MonadGadget' (IdentityT m) where
     obj `shall` (GadgetT m) = IdentityT $ obj `shall` GadgetT (hoist runIdentityT m)
 
 
-instance (MonadGadget m) => MonadGadget (ReaderT r m) where
+instance (MonadGadget' m) => MonadGadget' (ReaderT r m) where
     obj `shall` (GadgetT m) = do
         r <- ask
         lift $ obj `shall` GadgetT (hoist (`runReaderT` r) m)
 
 
-instance (MonadGadget m) => MonadGadget (GadgetT m) where
+instance (MonadGadget' m) => MonadGadget' (GadgetT m) where
     obj `shall` (GadgetT m) = GadgetT $ obj `shall` GadgetT (hoist runGadgetT m)
 
-type MonadGadget' s m = (MonadGadget m, MonadModel s m)
+type MonadGadget s m = (MonadGadget' m, MonadModel s m)
 
 ------------------------------------------------------
 -- MonadWidget
@@ -118,27 +118,27 @@ type MonadGadget' s m = (MonadGadget m, MonadModel s m)
 -- additional effects are ignored inside event handling.
 -- 'GadgetT' is *not* an instance of 'MonadWidget'
 class (CmdReactant (Command m)
-    , MonadGadget m, PutMarkup m, PutReactPath m
-    , AskConstructor m, AskDestructor m, AskRendered m) => MonadWidget m
+    , MonadGadget' m, PutMarkup m, PutReactPath m
+    , AskConstructor m, AskDestructor m, AskRendered m) => MonadWidget' m
 
-instance {-# OVERLAPPABLE #-} (CmdReactant c) => MonadWidget (Reactor c)
+instance {-# OVERLAPPABLE #-} (CmdReactant c) => MonadWidget' (Reactor c)
 
-instance {-# OVERLAPPABLE #-} (MonadWidget m) => MonadWidget (ModelT s m)
+instance {-# OVERLAPPABLE #-} (MonadWidget' m) => MonadWidget' (ModelT s m)
 
-instance {-# OVERLAPPABLE #-} (MonadWidget m) => MonadWidget (IdentityT m)
+instance {-# OVERLAPPABLE #-} (MonadWidget' m) => MonadWidget' (IdentityT m)
 
-instance {-# OVERLAPPABLE #-} (MonadWidget m) => MonadWidget (ReaderT r m)
+instance {-# OVERLAPPABLE #-} (MonadWidget' m) => MonadWidget' (ReaderT r m)
 
-type MonadWidget' s m = (MonadWidget m, MonadModel s m)
+type MonadWidget s m = (MonadWidget' m, MonadModel s m)
 
 ------------------------------------------------------
 -- Internal functions
 ------------------------------------------------------
 
-mkReactId :: (MonadGadget m) => m ReactId
+mkReactId :: (MonadGadget' m) => m ReactId
 mkReactId = delegatify $ exec' . MkReactId
 
-mkModel :: (MonadGadget m) => s -> m (IORef Notifier, Weak (IORef Notifier), MVar s, Weak (MVar s))
+mkModel :: (MonadGadget' m) => s -> m (IORef Notifier, Weak (IORef Notifier), MVar s, Weak (MVar s))
 mkModel s = do
     i <- mkReactId
     notifierRef <- liftIO $ newIORef $ Notifier i mempty
