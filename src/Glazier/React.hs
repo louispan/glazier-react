@@ -2,6 +2,7 @@ module Glazier.React
     ( module Glazier.React.Reactor
     , module Glazier.React.Component
     , module Glazier.React.ReactDOM
+    , module Glazier.React.Model
     , module Glazier.React.Widget
     , module Glazier.React.Gadget
     , module Glazier.React.Obj
@@ -56,6 +57,7 @@ import Glazier.Logger
 import Glazier.React.Common
 import Glazier.React.Component
 import Glazier.React.Gadget
+import Glazier.React.Model
 import Glazier.React.Obj
 import Glazier.React.Plan
 import Glazier.React.ReactDOM

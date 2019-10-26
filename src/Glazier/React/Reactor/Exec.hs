@@ -49,6 +49,7 @@ import Glazier.Logger
 import Glazier.React.Common
 import Glazier.React.Component
 import Glazier.React.Markup
+import Glazier.React.Model
 import Glazier.React.Obj.Internal
 import Glazier.React.Plan.Internal
 import Glazier.React.ReactBatch

@@ -24,10 +24,11 @@ library
                       Glazier.React.Gadget
                       Glazier.React.Gadget.Internal
                       Glazier.React.Markup
-                      Glazier.React.Plan
-                      Glazier.React.Plan.Internal
+                      Glazier.React.Model
                       Glazier.React.Obj
                       Glazier.React.Obj.Internal
+                      Glazier.React.Plan
+                      Glazier.React.Plan.Internal
                       Glazier.React.ReactBatch
                       Glazier.React.ReactBatch.Internal
                       Glazier.React.ReactDOM
