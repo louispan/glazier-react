@@ -62,17 +62,17 @@ scratchAccessor i n = "$" <> (fromString $ show $ unReactId i) <> "_" <> n
 deleteScratch :: (MonadIO m, AskScratch m) => ReactId -> J.JSString -> m ()
 deleteScratch i n = do
     d <- askScratch
-    liftIO $ JE.deleteProperty d (scratchAccessor i n)
+    liftIO $ d `JE.deleteProperty` (scratchAccessor i n)
 
 setScratch :: (MonadIO m, AskScratch m, JE.ToJS a) => ReactId -> J.JSString -> a -> m ()
 setScratch i n v = do
     d <- askScratch
-    liftIO $ JE.setProperty d (scratchAccessor i n) (JE.toJS v)
+    liftIO $ d `JE.setProperty` (scratchAccessor i n, JE.toJS v)
 
 getScratch :: (MonadIO m, AskScratch m) => ReactId -> J.JSString -> m J.JSVal
 getScratch i n = do
     d <- askScratch
-    liftIO $ JE.getProperty d (scratchAccessor i n)
+    liftIO $ d `JE.getProperty` (scratchAccessor i n)
 
 scratchXTimes :: (MonadIO m, AskScratch m) => Int -> ReactId -> J.JSString -> m () -> m ()
 scratchXTimes maxTimes i n m = do
