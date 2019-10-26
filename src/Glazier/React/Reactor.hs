@@ -332,18 +332,7 @@ listenEventTarget j n goStrict goLazy =
 --                     Right obj -> pure obj
 --         pure meobj
 
-
 ----------------------------------------------------------------------------------
-
--- -- | This orphan instance allows using "blah" is a prop in 'txt', 'lf', and 'bh'
--- -- when using @OverloadedString@ with @ExtendedDefaultRules@
--- instance (Applicative m, IsString a) => IsString (Prop s m a) where
---     fromString = pure . Just . fromString
--- wackWidget :: (MonadGadget s m, MonadUnliftWidget s m) => m a -> Obj s -> m a
--- wackWidget m o = do
---     u <- askUnliftWidget
---     runWidget (unliftWidget u m) o
-
 
 type Prop s m a = GadgetT (ModelT s m) a
 
@@ -366,9 +355,12 @@ classNames xs = do
 runProps :: Monad m
     => [(J.JSString, Prop s m (Maybe J.JSVal))]
     -> ModelT s m [(J.JSString, J.JSVal)]
-runProps props = do
-    let f = fmap (fromMaybe J.nullRef) . runGadgetT
-    traverse (traverse f) props
+runProps props = catMaybes <$> traverse f props
+  where
+    f :: Monad m => (J.JSString, Prop s m (Maybe J.JSVal)) -> ModelT s m (Maybe (J.JSString, J.JSVal))
+    f = runMaybeT . traverse g
+    g :: Monad m => Prop s m (Maybe J.JSVal) -> MaybeT (ModelT s m) J.JSVal
+    g = MaybeT . runGadgetT
 
 runGads :: (MonadGadget m)
     => [(J.JSString, GadgetT m Handler)]
