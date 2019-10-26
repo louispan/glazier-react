@@ -344,17 +344,17 @@ listenEventTarget j n goStrict goLazy =
 --     runWidget (unliftWidget u m) o
 
 
-type Prop s m a = GadgetT (ModelT s m) (Maybe a)
+type Prop s m a = GadgetT (ModelT s m) a
 
 -- | Possibly write some text
-txt :: MonadWidget m => Prop s m J.JSString -> ModelT s m ()
+txt :: MonadWidget m => Prop s m (Maybe J.JSString) -> ModelT s m ()
 txt m = do
     t <- runGadgetT m
     maybe (pure ()) textMarkup t
 
 -- | Creates a JSVal for "className" property from a list of (JSString, Bool)
 -- Idea from https://github.com/JedWatson/classnames
-classNames :: Monad m => [(J.JSString, Prop s m Bool)] -> Prop s m J.JSVal
+classNames :: Monad m => [(J.JSString, Prop s m (Maybe Bool))] -> Prop s m (Maybe J.JSVal)
 classNames xs = do
     xs' <- filterM (fmap ok . snd) xs
     pure . Just . JE.toJS . J.unwords . fmap fst $ xs'
@@ -363,7 +363,7 @@ classNames xs = do
     ok _ = False
 
 runProps :: Monad m
-    => [(J.JSString, Prop s m J.JSVal)]
+    => [(J.JSString, Prop s m (Maybe J.JSVal))]
     -> ModelT s m [(J.JSString, J.JSVal)]
 runProps props = do
     let f = fmap (fromMaybe J.nullRef) . runGadgetT
@@ -380,8 +380,8 @@ runGads gads = do
 
 lf :: (Component j, MonadWidget m, MonadModel s m)
     => j -- ^ "input" or a @ReactComponent@
-    -> DL.DList (J.JSString, GadgetT (ModelT s m) Handler)
-    -> DL.DList (J.JSString, Prop s m J.JSVal)
+    -> DL.DList (J.JSString, Prop s m Handler)
+    -> DL.DList (J.JSString, Prop s m (Maybe J.JSVal))
     -> m ()
 lf j gads props = do
     mdlWkVar <- askModelWeakVar
@@ -395,8 +395,8 @@ lf j gads props = do
 
 bh :: (Component j, MonadWidget m, MonadModel s m)
     => j-- ^ eg "div" or a @ReactComponent@
-    -> DL.DList (J.JSString, GadgetT (ModelT s m) Handler)
-    -> DL.DList (J.JSString, Prop s m J.JSVal)
+    -> DL.DList (J.JSString, Prop s m Handler)
+    -> DL.DList (J.JSString, Prop s m (Maybe J.JSVal))
     -> m a
     -> m a
 bh j gads props child = do
