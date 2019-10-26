@@ -22,7 +22,6 @@
 module Glazier.React.Reactor
     ( CmdReactor
     , MonadGadget
-    , Will(..)
     , MonadWidget
     , Reactor
     , logPrefix
@@ -50,12 +49,12 @@ module Glazier.React.Reactor
     , displayObj
     ) where
 
-
 import Control.Also
 import Control.Concurrent.MVar
 import Control.DeepSeq
 import Control.Monad.Cont
 import Control.Monad.Identity
+import Control.Monad.Morph
 import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Extras
@@ -91,7 +90,7 @@ import System.Mem.Weak
 -- MonadGadget
 ------------------------------------------------------
 
--- | A 'MonadGadget'' is can log, 'instruct' 'Reactor' effects, and mutate the model.
+-- | A 'MonadGadget'' is can log, 'instruct' 'Reactor' effects.
 -- It can be safely turned into a 'Handler' and used in event handling code.
 -- It is an instance of 'Alternative'. It is an instance of 'Also' so it can be combined.
 class (CmdReactor (Command m)
@@ -99,55 +98,67 @@ class (CmdReactor (Command m)
         , MonadCont m
         , MonadLogger J.JSString m, AskLogName m, AskReactPath m
         , AskScratch m, AskPlanWeakRef m
-        , AskNotifierWeakRef m, AskModel s m, AskModelWeakVar s m
-        , Will m) => MonadGadget (s :: *) (m :: * -> *)
+        , AskNotifierWeakRef m
+        -- , AskModel s m, AskModelWeakVar s m
+        ) => MonadGadget m where
 
-class Will m where
-    type ModelGadget (x :: *) (m :: * -> *) = (r :: * -> *) | r -> x
     -- | Run a gadget action on an @Obj t@
-    will :: (n ~ ModelGadget s m) => Obj s -> n a -> m a
+    shall :: Obj s -> GadgetT (ModelT s m) a -> m a
 
-infixl 2 `will` -- lower than <|>
+infixl 2 `shall` -- lower than <|>
 
-instance (CmdReactor c, c ~ Command (Widget s c)) => MonadGadget s (Widget s c)
-instance (MonadGadget s m) => MonadGadget s (IdentityT m)
-instance (MonadGadget s m) => MonadGadget s (ReaderT r m)
-instance (MonadGadget s m) => MonadGadget s (GadgetT m)
-
-instance Will (Widget s c) where
-    type ModelGadget t (Widget s c) = Widget t c
-    will (Obj plnRef plnWkRef _ notifierWkRef mdlVar mdlWkVar) ( (Widget n)) = Widget $ do
+instance (CmdReactor c, c ~ Command (Gizmo c)) => MonadGadget (Gizmo c) where
+    shall (Obj plnRef plnWkRef _ notifierWkRef mdlVar mdlWkVar) (GadgetT m) = do
         mdl <- liftIO $ readMVar mdlVar
         sch <- liftIO $ scratch <$> readIORef plnRef
 
         -- unwrap the ReaderT layers
-        let n' = (`runReaderT` plnWkRef)
+        let m' = (`runReaderT` plnWkRef)
                 . (`runReaderT` notifierWkRef)
                 . (`runReaderT` (Tagged @"Scratch" sch))
+                . (`runReaderT` (const $ pure ()))
+                . (`runReaderT` (const $ pure ()))
+                . (`runReaderT` (const $ pure ()))
+                . runGizmo
                 . (`runReaderT` (Tagged @"Model" mdl))
                 . (`runReaderT` (Tagged @"ModelWeakVar" mdlWkVar))
-                . (`runReaderT` (const $ pure ()))
-                . (`runReaderT` (const $ pure ()))
-                . (`runReaderT` (const $ pure ()))
-                $ n
+                . unModelT
+                $ m
 
         -- lift them into this monad
-        lift . lift . lift . lift . lift . lift . lift . lift $ n'
+        Gizmo
+         . lift -- AskRendered
+         . lift -- AskDestructor
+         . lift -- AskConstructor
+         . lift -- AskScratch
+         . lift -- AskNotifierWeakRef
+         . lift -- AskPlanWeakRef
+         $ m'
+
+instance (MonadGadget m) => MonadGadget (ModelT s m) where
+    obj `shall` (GadgetT m) = do
+        mdlWkVar <- askModelWeakVar
+        mdl <- askModel
+        -- unwrap the ReaderT layers of this instance's ModelT
+        -- m :: ModelT t (ModelT s m)
+        -- m' :: ModelT t m
+        let m' = hoist (`runModelT` (mdlWkVar, mdl)) m
+            -- m'' :: m
+            m'' = obj `shall` GadgetT m'
+        lift m'' -- lift into ModelT
+
+instance (MonadGadget m) => MonadGadget (IdentityT m) where
+    obj `shall` (GadgetT m) = IdentityT $ obj `shall` GadgetT (hoist runIdentityT m)
 
 
-instance (Will m) => Will (IdentityT m) where
-    type ModelGadget s (IdentityT m) = IdentityT (ModelGadget s m)
-    obj `will` ( (IdentityT m)) = IdentityT $ (obj `will` ( m))
+instance (MonadGadget m) => MonadGadget (ReaderT r m) where
+    obj `shall` (GadgetT m) = do
+        r <- ask
+        lift $ obj `shall` GadgetT (hoist (`runReaderT` r) m)
 
 
-instance Will m => Will (ReaderT r m) where
-    type ModelGadget s (ReaderT r m) = ReaderT r (ModelGadget s m)
-    obj `will` ( (ReaderT f)) = ReaderT $ \r -> obj `will` ( (f r))
-
-
-instance Will m => Will (GadgetT m) where
-    type ModelGadget s (GadgetT m) = GadgetT (ModelGadget s m)
-    obj `will` ( (GadgetT m)) = GadgetT $ obj `will` ( m)
+instance (MonadGadget m) => MonadGadget (GadgetT m) where
+    obj `shall` (GadgetT m) = GadgetT $ obj `shall` GadgetT (hoist runGadgetT m)
 
 ------------------------------------------------------
 -- MonadWidget
@@ -159,26 +170,28 @@ instance Will m => Will (GadgetT m) where
 -- additional effects are ignored inside event handling.
 -- 'GadgetT' is *not* an instance of 'MonadWidget'
 class (CmdReactor (Command m)
-    , MonadGadget s m, PutMarkup m, PutReactPath m
-    , AskConstructor m, AskDestructor m, AskRendered m) => MonadWidget s m
+    , MonadGadget m, PutMarkup m, PutReactPath m
+    , AskConstructor m, AskDestructor m, AskRendered m) => MonadWidget m
 
-instance {-# OVERLAPPABLE #-} (MonadWidget s m) => MonadWidget s (IdentityT m)
+instance {-# OVERLAPPABLE #-} (CmdReactor c) => MonadWidget (Gizmo c)
 
-instance {-# OVERLAPPABLE #-} (MonadWidget s m) => MonadWidget s (ReaderT r m)
+instance {-# OVERLAPPABLE #-} (MonadWidget m) => MonadWidget (ModelT s m)
 
-instance {-# OVERLAPPABLE #-} (CmdReactor c, c ~ Command (Widget s c)) => MonadWidget s (Widget s c)
+instance {-# OVERLAPPABLE #-} (MonadWidget m) => MonadWidget (IdentityT m)
+
+instance {-# OVERLAPPABLE #-} (MonadWidget m) => MonadWidget (ReaderT r m)
 
 ------------------------------------------------------
 -- Logging
 ------------------------------------------------------
 
-logPrefix :: MonadGadget s m => m J.JSString
+logPrefix :: MonadGadget m => m J.JSString
 logPrefix = do
     ps <- getReactPath <$> askReactPath
     let xs = L.intersperse "." $ (\(n, i) -> n <> (fromString $ show i)) <$> ps
     pure (foldr (<>) "" xs)
 
-logJS :: (HasCallStack, MonadGadget s m)
+logJS :: (HasCallStack, MonadGadget m)
     => LogLevel -> IO J.JSString
     -> m ()
 logJS lvl msg = withFrozenCallStack $ do
@@ -191,7 +204,7 @@ logJS lvl msg = withFrozenCallStack $ do
 ------------------------------------------------------
 
 -- | 'mkObj'' that also handles the @a@ for 'Widget's that return an @a@
-mkObj2 :: MonadGadget s m => Widget t (Command m) a -> LogName -> t -> m (Either a (Obj t))
+mkObj2 :: MonadGadget m => Widget t (Command m) a -> LogName -> t -> m (Either a (Obj t))
 mkObj2 wid logname s = do
     x <- devolve wid
     case x of
@@ -200,13 +213,13 @@ mkObj2 wid logname s = do
 
 -- | Make an initialized 'Obj' using the given 'Widget' and @s@
 -- Unlike 'unliftMkObj', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
-mkObj :: MonadGadget s m => Widget t (Command m) () -> LogName -> t -> m (Obj t)
+mkObj :: MonadGadget m => Widget t (Command m) () -> LogName -> t -> m (Obj t)
 mkObj wid logname s = do
     s' <- mkModel s
     delegatify $ exec' . MkObj wid logname s'
 
 -- | 'mkLinkedObj'' that also handles the @a@ for 'Widget's that return an @a@
-mkLinkedObj2 :: MonadGadget s m => Widget t (Command m) a -> LogName -> Obj t -> m (Either a (Obj t))
+mkLinkedObj2 :: MonadGadget m => Widget t (Command m) a -> LogName -> Obj t -> m (Either a (Obj t))
 mkLinkedObj2 wid logname obj = do
     x <- devolve wid
     case x of
@@ -215,13 +228,13 @@ mkLinkedObj2 wid logname obj = do
 
 -- | Make an initialized 'Obj' using the given 'Widget' linked to the data in another 'Obj'
 -- Unlike 'unliftMkObj', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
-mkLinkedObj :: MonadGadget s m => Widget t (Command m) () -> LogName -> Obj t -> m (Obj t)
+mkLinkedObj :: MonadGadget m => Widget t (Command m) () -> LogName -> Obj t -> m (Obj t)
 mkLinkedObj wid logname (Obj _ _ notifierRef notifierWkRef mdlVar mdlWkVar) =
     delegatify $ exec' . MkObj wid logname (notifierRef, notifierWkRef, mdlVar, mdlWkVar)
 
 -- | Reads from an 'Obj', also registering this as a listener
 -- so this will get rerendered whenever the 'Obj' is 'mutate'd.
-readObj :: MonadGadget s m => Obj t -> m t
+readObj :: MonadGadget m => Obj t -> m t
 readObj (Obj _ _ notifierRef notifierWkRef mdlVar _) = do
     plnWkRef <- askPlanWeakRef
     plnRef <- fromJustIO $ deRefWeak plnWkRef
@@ -231,7 +244,7 @@ readObj (Obj _ _ notifierRef notifierWkRef mdlVar _) = do
 
 -- | Reads from an 'Obj', also registering this as a listener
 -- so this will get rerendered whenever the 'Obj' is 'mutate'd.
-unwatchObj :: MonadGadget s m => Obj t -> m ()
+unwatchObj :: MonadGadget m => Obj t -> m ()
 unwatchObj (Obj _ _ notifierRef _ _ _) = do
     plnWkRef <- askPlanWeakRef
     plnRef <- fromJustIO $ deRefWeak plnWkRef
@@ -239,7 +252,7 @@ unwatchObj (Obj _ _ notifierRef _ _ _) = do
 
 -- | Mutates the Model for the current widget.
 -- Doesn't automatically flags the widget as dirty
-noisyMutate :: MonadGadget s m => State s a -> m a
+noisyMutate :: (MonadModel s m, MonadGadget m) => State s a -> m a
 noisyMutate m = do
     a <- quietMutate m
     notifyDirty
@@ -247,7 +260,7 @@ noisyMutate m = do
 
 -- | Mutates the Model for the current widget.
 -- Doesn't automatically flags the widget as dirty
-quietMutate :: MonadGadget s m => State s a -> m a
+quietMutate :: (MonadModel s m, MonadGadget m) => State s a -> m a
 quietMutate m = do
     mdlWk <- askModelWeakVar
     delegatify $ \f -> exec' $ Mutate mdlWk (f <$> m)
@@ -255,7 +268,7 @@ quietMutate m = do
 -- | Notifys any watchers (from 'readWeakObj')
 -- that the model has changed so that the watchers can rerender.
 -- Any rerendering is batched and might be be done immediately
-notifyDirty :: MonadGadget s m => m ()
+notifyDirty :: MonadGadget m => m ()
 notifyDirty = do
     notifierWk <- askNotifierWeakRef
     exec' $ NotifyDirty notifierWk
@@ -264,7 +277,7 @@ notifyDirty = do
 -- Multiple preprocess must be run for the same event before any of the postprocess,
 -- due to the way ghcjs sync and async threads interact with React js.
 mkHandler ::
-    (NFData a, MonadGadget s m)
+    (NFData a, MonadGadget m)
     => (J.JSVal -> MaybeT IO a)
     -> (a -> GadgetT m ())
     -> m Handler -- (preprocess, postprocess)
@@ -274,7 +287,7 @@ mkHandler goStrict f = do
     delegatify $ exec' . MkHandler plnRef goStrict f'
 
 mkHandler' ::
-    (NFData a, MonadGadget s m)
+    (NFData a, MonadGadget m)
     => (SyntheticEvent -> MaybeT IO a)
     -> (a -> GadgetT m ())
     -> m Handler
@@ -285,7 +298,7 @@ handleSyntheticEvent g j = MaybeT (pure $ JE.fromJS j) >>= g
 
 -- | This convert 'Handler' into a ghcjs 'Callback'
 mkListener ::
-    (MonadGadget s m)
+    (MonadGadget m)
     => Handler
     -> m Listener
 mkListener f = do
@@ -294,8 +307,7 @@ mkListener f = do
 
 -- | Add a listener with an event target, and automatically removes it on widget destruction
 -- This only does something during initialization
-listenEventTarget
- :: (NFData a, MonadWidget s m, IEventTarget j)
+listenEventTarget :: (NFData a, MonadWidget m, IEventTarget j)
     => j -> J.JSString -> (J.JSVal -> MaybeT IO a) -> (a -> GadgetT m ()) -> m ()
 listenEventTarget j n goStrict goLazy =
     initConstructor $ do
@@ -332,17 +344,17 @@ listenEventTarget j n goStrict goLazy =
 --     runWidget (unliftWidget u m) o
 
 
-type Prop m a = GadgetT m (Maybe a)
+type Prop s m a = GadgetT (ModelT s m) (Maybe a)
 
 -- | Possibly write some text
-txt :: MonadWidget s m => Prop m J.JSString -> m ()
+txt :: MonadWidget m => Prop s m J.JSString -> ModelT s m ()
 txt m = do
     t <- runGadgetT m
     maybe (pure ()) textMarkup t
 
 -- | Creates a JSVal for "className" property from a list of (JSString, Bool)
 -- Idea from https://github.com/JedWatson/classnames
-classNames :: Monad m => [(J.JSString, Prop m Bool)] -> Prop m J.JSVal
+classNames :: Monad m => [(J.JSString, Prop s m Bool)] -> Prop s m J.JSVal
 classNames xs = do
     xs' <- filterM (fmap ok . snd) xs
     pure . Just . JE.toJS . J.unwords . fmap fst $ xs'
@@ -351,49 +363,57 @@ classNames xs = do
     ok _ = False
 
 runProps :: Monad m
-    => [(J.JSString, Prop m J.JSVal)]
-    -> m [(J.JSString, J.JSVal)]
+    => [(J.JSString, Prop s m J.JSVal)]
+    -> ModelT s m [(J.JSString, J.JSVal)]
 runProps props = do
     let f = fmap (fromMaybe J.nullRef) . runGadgetT
     traverse (traverse f) props
 
-runGads :: (MonadGadget s m)
-    => [(J.JSString, m Handler)]
+runGads :: (MonadGadget m)
+    => [(J.JSString, GadgetT m Handler)]
     -> m [(J.JSString, J.JSVal)]
 runGads gads = do
-    gads' <- traverse sequenceA gads -- :: m [(JString, Handler)]
+    gads' <- runGadgetT $ traverse sequenceA gads -- :: m [(JString, Handler)]
     let gads'' = M.toList $ M.fromListWith (<>) gads' -- combine same keys together
         f = fmap JE.toJS . mkListener -- convert to JS callback
     traverse (traverse f) gads''
 
-lf :: (Component j, MonadWidget s m)
+lf :: (Component j, MonadWidget m, MonadModel s m)
     => j -- ^ "input" or a @ReactComponent@
-    -> DL.DList (J.JSString, m Handler)
-    -> DL.DList (J.JSString, Prop m J.JSVal)
+    -> DL.DList (J.JSString, GadgetT (ModelT s m) Handler)
+    -> DL.DList (J.JSString, Prop s m J.JSVal)
     -> m ()
 lf j gads props = do
-    props' <- runProps (DL.toList props)
+    mdlWkVar <- askModelWeakVar
+    mdl <- askModel
     putNextReactPath (componentName j)
-    gads' <- runGads (DL.toList gads)
+    (props', gads') <- (`runModelT` (mdlWkVar, mdl)) $ do
+        props' <- runProps (DL.toList props)
+        gads' <- runGads (DL.toList gads)
+        pure (props', gads')
     leafMarkup (JE.toJS j) (DL.fromList (props' <> gads'))
 
-bh :: (Component j, MonadWidget s m)
+bh :: (Component j, MonadWidget m, MonadModel s m)
     => j-- ^ eg "div" or a @ReactComponent@
-    -> DL.DList (J.JSString, m Handler)
-    -> DL.DList (J.JSString, Prop m J.JSVal)
+    -> DL.DList (J.JSString, GadgetT (ModelT s m) Handler)
+    -> DL.DList (J.JSString, Prop s m J.JSVal)
     -> m a
     -> m a
 bh j gads props child = do
-    props' <- runProps (DL.toList props)
+    mdlWkVar <- askModelWeakVar
+    mdl <- askModel
     putNextReactPath (componentName j)
-    gads' <- runGads (DL.toList gads)
+    (props', gads') <- (`runModelT` (mdlWkVar, mdl)) $ do
+        props' <- runProps (DL.toList props)
+        gads' <- runGads (DL.toList gads)
+        pure (props', gads')
     putPushReactPath
     a <- branchMarkup (JE.toJS j) (DL.fromList (props' <> gads'))
         child
     putPopReactPath
     pure a
 
-displayObj :: MonadWidget s m => Obj t -> m ()
+displayObj :: MonadWidget m => Obj t -> m ()
 displayObj (Obj plnRef _ _ _ _ _) = do
     pln <- liftIO $ readIORef plnRef
     let cbs = widgetCallbacks pln

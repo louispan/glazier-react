@@ -14,8 +14,8 @@ import Control.Also
 import Control.Applicative
 import Control.Monad.Cont
 import Control.Monad.Delegate
+import Control.Monad.Environ
 import Control.Monad.Morph
-import Control.Monad.Reader
 import Data.String
 import Glazier.Command
 
@@ -35,10 +35,10 @@ newtype GadgetT m a = GadgetT { runGadgetT :: m a}
     , Alternative
     , MonadPlus
     , MonadCont
-    , MonadReader r
     , MonadDelegate
     , MonadProgram
     , MonadCodify
+    , MonadAsk p r
     )
 
 instance MonadTrans GadgetT where

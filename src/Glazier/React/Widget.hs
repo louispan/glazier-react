@@ -27,6 +27,7 @@ import Control.Lens
 import Control.Monad.Cont
 import Control.Monad.Delegate
 import Control.Monad.Environ
+import Control.Monad.Morph
 import Control.Monad.Observer
 import Control.Monad.Reader
 import Control.Monad.State.Strict
@@ -155,16 +156,50 @@ initRendered m = do
     c <- codify' m
     f c
 
--- | 'Widget' is a concrete transformer stack of 'Glazier.React.Reactor.MonadWidget' and 'Glazier.React.Reactor.MonadGadget'
--- It is a newtype to avoid conflicting 'Glazier.React.Reactor.ModelGadget' type instance with 'ReaderT'
-type instance Command (Widget s c) = c
+-- | Something that has access to a model from the environment, and also
+-- a ref to apply mutations to that model
+type MonadModel s m = (AskModelWeakVar s m, AskModel s m)
 
-type Widget' s c =
+type ModelT' s m = ReaderT (Tagged "ModelWeakVar" (Weak (MVar s))) -- 'AskModelWeakVar'
+        (ReaderT (Tagged "Model" s) m) -- 'AskModel'
+
+-- | 'ModelT' is transformer that add the 'MonadModel' instance.
+newtype ModelT s m a = ModelT { unModelT :: ModelT' s m a }
+    deriving
+    ( Functor
+    , Applicative
+    , Also r
+    , Monad
+    , MonadIO
+    , Alternative
+    , MonadPlus
+    , MonadCont
+    , MonadDelegate
+    , MonadProgram
+    , MonadCodify
+    , MonadAsk "ModelWeakVar" (Tagged "ModelWeakVar" (Weak (MVar s)))
+    , MonadAsk "Model" (Tagged "Model" s)
+    )
+
+runModelT :: ModelT s m a -> (Weak (MVar s), s) -> m a
+runModelT (ModelT m) (mdlWkVar, mdl) = (`runReaderT` (Tagged @"Model" mdl))
+    . (`runReaderT` (Tagged @"ModelWeakVar" mdlWkVar)) $ m
+
+type instance Command (ModelT s m) = Command m
+
+instance MonadTrans (ModelT s) where
+    lift = ModelT . lift . lift
+
+instance MFunctor (ModelT s) where
+    hoist nat (ModelT m) = ModelT (hoist (hoist nat) m)
+
+deriving via (IdentityT (ModelT' s m)) instance MonadAsk p r m => MonadAsk p r (ModelT s m)
+deriving via (IdentityT (ModelT' s m)) instance MonadPut p t m => MonadPut p t (ModelT s m)
+
+type Gizmo' c =
     ObserverT (Tagged "Rendered" c) -- 'AskRendered'
     (ObserverT (Tagged "Destructor" c) -- 'AskDestructor'
     (ObserverT (Tagged "Constructor" c) -- 'AskConstructor'
-    (ReaderT (Tagged "ModelWeakVar" (Weak (MVar s))) -- 'AskModelWeakVar'
-    (ReaderT (Tagged "Model" s) -- 'AskModel'
     (ReaderT (Tagged "Scratch" JE.Object) -- 'AskScratch'
     (ReaderT (Weak (IORef Notifier)) -- 'AskNotifierWeakRef'
     (ReaderT (Weak (IORef Plan)) -- 'AskPlanWeakRef', 'AskLogLevel', 'AskLogCallStackDepth', 'AskLogName'
@@ -174,9 +209,13 @@ type Widget' s c =
     (StateT ReactPath -- 'PutReactPath', 'AskReactPath'
     (StateT (DL.DList ReactMarkup) -- 'PutMarkup'
     (ProgramT c IO -- 'MonadComand', 'MonadIO'
-    ))))))))))))
+    ))))))))))
 
-newtype Widget s c a = Widget { runWidget :: Widget' s c a }
+type instance Command (Gizmo c) = c
+
+-- | Gizmo is a concreate transformer stack that is an instance of 'Glazier.React.Rector.Internal.MonadGadget'
+-- A newtype is required for the instance of 'Glazier.React.Rector.Internal.MonadGadget'
+newtype Gizmo c a = Gizmo { runGizmo :: Gizmo' c a }
     deriving
     ( Functor
     , Applicative
@@ -198,14 +237,16 @@ newtype Widget s c a = Widget { runWidget :: Widget' s c a }
     , AskPlanWeakRef
     , AskNotifierWeakRef
     , AskScratch
-    , AskModelWeakVar s
-    , AskModel s
     )
 
-deriving via (IdentityT (Widget' s c)) instance (Cmd' IO c, Cmd' [] c) => MonadCodify (Widget s c)
-deriving via (IdentityT (Widget' s c)) instance MonadObserver (Tagged "Constructor" c) (Tagged "Constructor" c) (Widget s c)
-deriving via (IdentityT (Widget' s c)) instance MonadObserver (Tagged "Destructor" c) (Tagged "Destructor" c) (Widget s c)
-deriving via (IdentityT (Widget' s c)) instance MonadObserver (Tagged "Rendered" c) (Tagged "Rendered" c) (Widget s c)
+deriving via (IdentityT (Gizmo' c)) instance (Cmd' IO c, Cmd' [] c) => MonadCodify (Gizmo c)
+deriving via (IdentityT (Gizmo' c)) instance MonadObserver (Tagged "Constructor" c) (Tagged "Constructor" c) (Gizmo c)
+deriving via (IdentityT (Gizmo' c)) instance MonadObserver (Tagged "Destructor" c) (Tagged "Destructor" c) (Gizmo c)
+deriving via (IdentityT (Gizmo' c)) instance MonadObserver (Tagged "Rendered" c) (Tagged "Rendered" c) (Gizmo c)
+
+-- | 'Widget' is a concrete transformer stack that is an instance of 'MonadModel'
+-- 'Glazier.React.Rector.Internal.MonadGadget' and 'Glazier.React.Rector.Internal.MonadWidget'
+type Widget s c = ModelT s (Gizmo c)
 
 -- | ALlow additional user ReaderT and IdentityT stack on top of @Widget s@
 -- Like 'Control.Monad.IO.Unlift.UnliftIO', this newtype wrapper prevents impredicative types.

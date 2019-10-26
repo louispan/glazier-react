@@ -341,20 +341,22 @@ mkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar) = d
             plnRef' <- fromJustIO $ deRefWeak plnWkRef
             o' <- liftIO $ scratch <$> readIORef plnRef'
             -- then get the latest markup using the state
-            liftIO $ execProgramT'
-                $ (`evalStateT` mempty) -- markup
-                $ (`evalStateT` (ReactPath (Nothing, [])))
-                $ evalContT
-                $ (`evalMaybeT` ())
-                $ (`runReaderT` plnWkRef)
-                $ (`runReaderT` notifierWkRef)
-                $ (`runReaderT` Tagged @"Scratch" o')
-                $ (`runReaderT` Tagged @"Model" mdl)
-                $ (`runReaderT` Tagged @"ModelWeakVar" mdlWkVar)
-                $ (`runObserverT` onConstruct')
-                $ (`runObserverT` onDestruct')
-                $ (`runObserverT` onRendrd')
-                $ runWidget wid'
+            liftIO . execProgramT'
+                . (`evalStateT` mempty) -- markup
+                . (`evalStateT` (ReactPath (Nothing, [])))
+                . evalContT
+                . (`evalMaybeT` ())
+                . (`runReaderT` plnWkRef)
+                . (`runReaderT` notifierWkRef)
+                . (`runReaderT` Tagged @"Scratch" o')
+                . (`runObserverT` onConstruct')
+                . (`runObserverT` onDestruct')
+                . (`runObserverT` onRendrd')
+                . runGizmo
+                . (`runReaderT` Tagged @"Model" mdl)
+                . (`runReaderT` Tagged @"ModelWeakVar" mdlWkVar)
+                . unModelT
+                $ wid'
         -- prerndr :: (c -> m ()) -> IO ()
         prerndr onRendrd' onDestruct' onConstruct' = do
             c <- (commands . DL.toList) <$> (mkRerenderCmds onRendrd' onDestruct' onConstruct')
