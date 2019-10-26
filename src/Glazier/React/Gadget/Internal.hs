@@ -19,10 +19,10 @@ import Control.Monad.Morph
 import Data.String
 import Glazier.Command
 
--- | A newtype wrapper to indicate that only 'Glazier.React.Reactor.MonadGadget'
+-- | A newtype wrapper to indicate that only 'Glazier.React.Reactant.MonadGadget'
 -- effect are allowed.
--- 'GadgetT' is an instance of 'Glazier.React.Reactor.MonadGadget'
--- 'GadgetT' is *not* an instance of 'Glazier.React.Reactor.MonadWidget'
+-- 'GadgetT' is an instance of 'Glazier.React.Reactant.MonadGadget'
+-- 'GadgetT' is *not* an instance of 'Glazier.React.Reactant.MonadWidget'
 type instance Command (GadgetT m) = Command m
 
 newtype GadgetT m a = GadgetT { runGadgetT :: m a}

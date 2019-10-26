@@ -24,8 +24,8 @@ newtype NativeEvent = NativeEvent J.JSVal
 -- So it is dangerous to keep a reference to a 'SyntheticEvent' since it may expire and contain
 -- other things without you knowing.
 -- All relevant data from the 'SyntheticEvent' must be consumed as soon you get one.
--- That is, 'SyntheticEvent' must only be used in the first strict part of 'Glazier.Reactor.React.mkHandler.
--- It is not an instance of NFData and so cannot be returned into the second lazy part of 'Glazier.Reactor.React.mkHandler'
+-- That is, 'SyntheticEvent' must only be used in the first strict part of 'Glazier.Reactant.React.mkHandler.
+-- It is not an instance of NFData and so cannot be returned into the second lazy part of 'Glazier.Reactant.React.mkHandler'
 newtype SyntheticEvent = SyntheticEvent J.JSVal
     deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString)
 

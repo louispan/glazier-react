@@ -93,6 +93,12 @@ runModelT :: ModelT s m a -> (Weak (MVar s), s) -> m a
 runModelT (ModelT m) (mdlWkVar, mdl) = (`runReaderT` (Tagged @"Model" mdl))
     . (`runReaderT` (Tagged @"ModelWeakVar" mdlWkVar)) $ m
 
+fromModelT :: MonadModel s m => ModelT s m a -> m a
+fromModelT m = do
+    mdlWkVar <- askModelWeakVar
+    mdl <- askModel
+    runModelT m (mdlWkVar, mdl)
+
 type instance Command (ModelT s m) = Command m
 
 instance MonadTrans (ModelT s) where

@@ -14,7 +14,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module Glazier.React.Reactor.Exec where
+module Glazier.React.Reactant.Exec where
 
 import Control.Also
 import Control.Concurrent.MVar
@@ -48,6 +48,8 @@ import Glazier.Command
 import Glazier.Logger
 import Glazier.React.Common
 import Glazier.React.Component
+import Glazier.React.Core
+import Glazier.React.Core.Internal
 import Glazier.React.Markup
 import Glazier.React.Model
 import Glazier.React.Obj.Internal
@@ -55,9 +57,7 @@ import Glazier.React.Plan.Internal
 import Glazier.React.ReactBatch
 import Glazier.React.ReactId.Internal
 import Glazier.React.Reactor
-import Glazier.React.Reactor.Internal
 import Glazier.React.ReactPath
-import Glazier.React.Widget
 import qualified JavaScript.Extras as JE
 import qualified JavaScript.Object as JO
 import System.IO
@@ -68,7 +68,7 @@ import System.Mem.Weak
 import Data.Semigroup
 #endif
 
--- data ReactorEnv = ReactorEnv
+-- data ReactantEnv = ReactantEnv
 -- nextReactId :: ReactId
 --     ,
 
@@ -201,24 +201,24 @@ markPlanDirty wk = do
 -- -- widget in order to initialize the widget object.
 -- startWidget ::
 --     ( MonadIO m
---     , Has ReactorEnv r
+--     , Has ReactantEnv r
 --     , MonadReader r m
---     , AsReactor c
+--     , AsReactant c
 --     , Typeable s
 --     )
 --     => (c -> m ()) -> Widget c s () -> NE.NonEmpty J.JSString -> s -> JE.JSRep -> m (J.Export (Obj s))
 -- startWidget executor wid logname s root = execMkObj executor wid logname s >>= startObj root
 
 -- -- | Returns commands that need to be processed last
--- execReactorCmd ::
+-- execReactantCmd ::
 --     ( MonadUnliftIO m
 --     , MonadBenignIO m
 --     , MonadReader r m
---     , AsReactor c
---     , Has ReactorEnv r
+--     , AsReactant c
+--     , Has ReactantEnv r
 --     )
---     => (c -> m ()) -> ReactorCmd c -> m [c]
--- execReactorCmd executor c = case c of
+--     => (c -> m ()) -> ReactantCmd c -> m [c]
+-- execReactantCmd executor c = case c of
 --     MkReactId n k -> done $ execMkReactId n >>= (executor . k)
 --     MkEventHandler goStrict goLazy k -> done $ execMkEventHandler executor goStrict goLazy >>= (executor . k)
 --     -- SetRender obj w -> done $ execSetRender obj w
@@ -269,7 +269,7 @@ mkObj ::
     , MonadUnliftIO m
     , AskLogConfigRef m
     , AskNextReactIdRef m
-    , CmdReactor c
+    , CmdReactant c
     )
     => (c -> m ())
     -> Widget s c ()
@@ -353,7 +353,7 @@ mkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar) = d
                 . (`runObserverT` onConstruct')
                 . (`runObserverT` onDestruct')
                 . (`runObserverT` onRendrd')
-                . runGizmo
+                . runReactor
                 . (`runReaderT` Tagged @"Model" mdl)
                 . (`runReaderT` Tagged @"ModelWeakVar" mdlWkVar)
                 . unModelT

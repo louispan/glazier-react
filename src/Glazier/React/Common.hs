@@ -19,7 +19,7 @@ type LogName = Tagged "LogName" J.JSString
 -- See http://hackage.haskell.org/package/ghcjs-base-0.2.0.0/docs/GHCJS-Concurrent.html
 -- Secondly, a function that is not guaranteed to be "GHCJS synchronous"
 -- and may continue work asynchronously.
--- The reason for this is detailed in 'Glazier.React.Reactor.Exec.execMkHandler'
+-- The reason for this is detailed in 'Glazier.React.Reactant.Exec.execMkHandler'
 type Handler = (J.JSVal -> IO (), IO ())
 
 -- A 'Listener' is a callable function from JS that accepts a JS value as in input.
