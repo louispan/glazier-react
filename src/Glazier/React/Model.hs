@@ -66,7 +66,12 @@ premodel l = (getFirst #. foldMapOf l (First #. Just)) <$> askModel
 
 -- | Something that has access to a model from the environment, and also
 -- a ref to apply mutations to that model
-type MonadModel s m = (AskModelWeakVar s m, AskModel s m)
+class (AskModelWeakVar s m, AskModel s m) => MonadModel s m
+
+-- | Any transformer on top of 'MonadModel' is also a 'MonadModel'
+instance {-# OVERLAPPABLE #-} (Monad (t m), MonadTrans t, MFunctor t, MonadModel s m) => MonadModel s (t m)
+
+instance Monad m => MonadModel s (ModelT s m)
 
 type ModelT' s m = ReaderT (Tagged "ModelWeakVar" (Weak (MVar s))) -- 'AskModelWeakVar'
         (ReaderT (Tagged "Model" s) m) -- 'AskModel'
