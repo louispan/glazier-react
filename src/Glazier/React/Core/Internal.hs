@@ -88,7 +88,7 @@ instance (MonadGadget' m) => MonadGadget' (ModelT s m) where
         -- unwrap the ReaderT layers of this instance's ModelT
         -- m :: ModelT t (ModelT s m)
         -- m' :: ModelT t m
-        let m' = hoist (& (`runModelT` mdlWkVar $ mdl)) m
+        let m' = hoist (`runModelT` (mdlWkVar, mdl)) m
             -- m'' :: m
             m'' = obj `shall` GadgetT m'
         lift m'' -- lift into ModelT
