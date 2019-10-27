@@ -40,6 +40,7 @@ import Glazier.Command
 -- | This newtype prevent impredicative polymorphism
 newtype ModifyModel s = ModifyModel { unModifyModel :: forall a. MaybeT (State s) a -> IO (Maybe a) }
 
+-- | @IO (Maybe s)@ allows for a 'ZoomModel' instance without exceptions.
 type AskModelEnviron s m = (MonadAsk "Model" (Maybe s, IO (Maybe s), ModifyModel s) m)
 instance {-# OVERLAPPING #-} Monad m => MonadAsk "Model" (Maybe s, IO (Maybe s), ModifyModel s) (ReaderT (Tagged "Model" (Maybe s, IO (Maybe s), ModifyModel s)) m) where
     askEnviron _ = (untag' @"Model") <$> ask

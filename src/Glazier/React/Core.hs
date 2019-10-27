@@ -130,6 +130,8 @@ mkLinkedObj wid logname (Obj _ _ notifierRef notifierWkRef mdlVar mdlWkVar) =
 
 -- | Reads from an 'Obj', also registering this as a listener
 -- so this will get rerendered whenever the 'Obj' is 'mutate'd.
+--
+-- EMPTY: This may 'empty' if this MonadGadget has been garbage collected
 readObj :: MonadGadget' m => Obj t -> m t
 readObj (Obj _ _ notifierRef notifierWkRef mdlVar _) = do
     plnWkRef <- askPlanWeakRef
@@ -140,6 +142,8 @@ readObj (Obj _ _ notifierRef notifierWkRef mdlVar _) = do
 
 -- | Reads from an 'Obj', also registering this as a listener
 -- so this will get rerendered whenever the 'Obj' is 'mutate'd.
+--
+-- FAILURES: This may 'empty if this MonadGadget has been garbage collected
 unwatchObj :: MonadGadget' m => Obj t -> m ()
 unwatchObj (Obj _ _ notifierRef _ _ _) = do
     plnWkRef <- askPlanWeakRef
@@ -149,32 +153,38 @@ unwatchObj (Obj _ _ notifierRef _ _ _) = do
 ----------------------------------------------------------------
 
 -- | This is like 'view' but for the cached value in 'AskModel', not 'MonadReader'
--- If the lens is a 'Traversal' then @a@ needs to be a Monoid
-model :: MonadGadget s m => Getting a s a -> m a
-model l = do
-    (ms, _, _) <- askModelEnviron
-    s <- guardJust ms
-    pure (getConst #. l Const $ s)
+-- It acutally uses 'premodel' under the hood and fails with  'empty' instead of
+-- returning 'Maybe'.
+--
+-- FAILURES: This may fail if the @s@ model cannot be obtained (eg. due to 'zoomModel')
+-- This may also fail if the @a@ cannot be obtained.
+model :: MonadGadget s m => Getting (First a) s a -> m a
+model l = guardJustM $ premodel l
 
 -- | This is like 'preview' but for the cached value in  'AskModel', not 'MonadReader'
 -- If the lens is a 'Traversal' then @a@ doesn't to be a Monoid,
--- but needs @Maybe a@
+-- but needs the return type to be @Maybe a@
+--
+-- FAILURES: This may 'empty' if the @s@ model cannot be obtained (eg. due to 'zoomModel')
 premodel :: MonadGadget s m => Getting (First a) s a -> m (Maybe a)
 premodel l = do
     (ms, _, _) <- askModelEnviron
     s <- guardJust ms
     pure (getFirst #. foldMapOf l (First #. Just) $ s)
 
+
 ----------------------------------------------------------------
 
--- | This is like 'view' but for the @IO (Maybe s)@ in 'AskModel', not 'MonadReader'
-readModel :: MonadGadget s m => Getting a s a -> m a
-readModel l = do
-    (_, ms, _) <- askModelEnviron
-    s <- guardJustIO ms
-    pure (getConst #. l Const $ s)
+-- | This is like 'model' but reads the latest value from the @IO (Maybe s)@ in 'AskModelEnviron'
+--
+-- FAILURES: This may 'empty' if the @s@ model cannot be obtained (eg. due to 'zoomModel')
+-- This may also 'empty' if the @a@ cannot be obtained.
+readModel :: MonadGadget s m => Getting (First a) s a -> m a
+readModel l =  guardJustM $ prereadModel l
 
--- | This is like 'preview' but for the @IO (Maybe s)@ in 'AskModel', not 'MonadReader'
+-- | This is like 'premodel' but reads the latest value from the @IO (Maybe s)@ in 'AskModelEnviron'
+--
+-- FAILURES: This may 'empty' if the @s@ model cannot be obtained (eg. due to 'zoomModel')
 prereadModel :: MonadGadget s m => Getting (First a) s a -> m (Maybe a)
 prereadModel l = do
     (_, ms, _) <- askModelEnviron
@@ -183,13 +193,19 @@ prereadModel l = do
 
 ----------------------------------------------------------------
 
+-- | Quietly mutate the model usin the given 'MaybeT' 'State' monad.
+-- Doesn't notify any interested widgets to be rerendered.
+--
+-- FAILURES: This may 'empty' if the MaybeT State monad fails.
 quietMutate :: MonadGadget s m => MaybeT (State s) a -> m a
 quietMutate m = do
     (_, _, ModifyModel f) <- askModelEnviron
     guardJustIO $ f m
 
--- | Mutates the Model for the current widget.
--- Doesn't automatically flags the widget as dirty
+-- | Noisly mutate the model usin the given 'MaybeT' 'State' monad.
+-- Notifies interested widgets to be rerendered.
+--
+-- FAILURES: This may 'empty' if the MaybeT State monad fails.
 noisyMutate :: MonadGadget s m => MaybeT (State s) a -> m a
 noisyMutate m = do
     a <- quietMutate m
