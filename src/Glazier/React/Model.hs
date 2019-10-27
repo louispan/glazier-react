@@ -17,6 +17,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Glazier.React.Model where
 
@@ -29,6 +30,7 @@ import Control.Monad.Delegate
 import Control.Monad.Environ
 import Control.Monad.Morph
 import Control.Monad.Reader
+import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Identity
 import Data.Monoid
 import Data.Profunctor.Unsafe
@@ -71,50 +73,57 @@ premodel l = (getFirst #. foldMapOf l (First #. Just)) <$> askModel
 
 ----------------------------------------------------------------
 
-type AskReadModel s = MonadAsk "ReadModel" (Tagged "ReadModel" (IO s))
-instance {-# OVERLAPPING #-} Monad m => MonadAsk "ReadModel" (Tagged "ReadModel" (IO s)) (ReaderT (Tagged "ReadModel" (IO s)) m) where
-    askEnviron _ = ask
-    localEnviron _ = local
+type AskModel2 s m = (AlternativeIO m, MonadAsk "Model2" (Maybe s, IO (Maybe s), (s -> s) -> IO ()) m)
+instance {-# OVERLAPPING #-} Monad m => MonadAsk "Model2" (Maybe s, IO (Maybe s), (s -> s) -> IO ()) (ReaderT (Tagged "Model2" (Maybe s, IO (Maybe s), (s -> s) -> IO ())) m) where
+    askEnviron _ = (untag' @"Model2") <$> ask
+    localEnviron _ f = local (Tagged @"Model2" . f . untag' @"Model2")
 
-askReadModel :: AskReadModel s m => m (IO s)
-askReadModel = (untag' @"ReadModel") <$> askEnviron @"ReadModel" Proxy
+askModel2 :: AskModel2 s m => m (Maybe s, IO (Maybe s), (s -> s) -> IO ())
+askModel2 = askEnviron @"Model2" Proxy
 
-localReadModel :: AskReadModel s m => (IO s -> IO s) -> m a -> m a
-localReadModel f = localEnviron @"ReadModel" Proxy (Tagged @"ReadModel" . f . untag' @"ReadModel")
+localModel2 :: AskModel2 s m => ((Maybe s, IO (Maybe s), (s -> s) -> IO ()) -> (Maybe s, IO (Maybe s), (s -> s) -> IO ())) -> m a -> m a
+localModel2 f = localEnviron @"Model2" Proxy f
 
--- | This is like 'view' but for the 'AskModel', not 'MonadReader'
-readModel :: (MonadIO m, AskReadModel s m) => Getting a s a -> m a
-readModel l = do
-    m <- askReadModel
-    (getConst #. l Const) <$> (liftIO m)
+-- | This is like 'view' but for the cached value in 'AskModel2', not 'MonadReader'
+model2 :: AskModel2 s m => Getting a s a -> m a
+model2 l = do
+    (ms, _, _) <- askModel2
+    s <- guardJust ms
+    pure (getConst #. l Const $ s)
 
--- | This is like 'preview' but for the 'AskReadModel', not 'MonadReader'
-prereadModel :: (MonadIO m, AskReadModel s m) => Getting (First a) s a -> m (Maybe a)
-prereadModel l = do
-    m <- askReadModel
-    (getFirst #. foldMapOf l (First #. Just)) <$> (liftIO m)
+-- | This is like 'preview' but for the cached value in  'AskModel2', not 'MonadReader'
+premodel2 :: AskModel2 s m => Getting (First a) s a -> m (Maybe a)
+premodel2 l = do
+    (ms, _, _) <- askModel2
+    s <- guardJust ms
+    pure (getFirst #. foldMapOf l (First #. Just) $ s)
 
 ----------------------------------------------------------------
 
-type AskOverModel s = MonadAsk "OverModel" (Tagged "OverModel" ((s -> s) -> IO ()))
-instance {-# OVERLAPPING #-} Monad m => MonadAsk "OverModel" (Tagged "OverModel" ((s -> s) -> IO ())) (ReaderT (Tagged "OverModel" ((s -> s) -> IO ())) m) where
-    askEnviron _ = ask
-    localEnviron _ = local
+-- | This is like 'view' but for the @IO (Maybe s)@ in 'AskModel2', not 'MonadReader'
+readModel2 :: (MonadIO m, AskModel2 s m) => Getting a s a -> m a
+readModel2 l = do
+    (_, ms, _) <- askModel2
+    s <- guardJustIO ms
+    pure (getConst #. l Const $ s)
 
-askOverModel :: AskOverModel s m => m ((s -> s) -> IO ())
-askOverModel = (untag' @"OverModel") <$> askEnviron @"OverModel" Proxy
+-- | This is like 'preview' but for the @IO (Maybe s)@ in 'AskModel2', not 'MonadReader'
+prereadModel2 :: (MonadIO m, AskModel2 s m) => Getting (First a) s a -> m (Maybe a)
+prereadModel2 l = do
+    (_, ms, _) <- askModel2
+    s <- guardJustIO ms
+    pure (getFirst #. foldMapOf l (First #. Just) $ s)
 
-localOverModel :: AskOverModel s m => (((s -> s) -> IO ()) -> ((s -> s) -> IO ())) -> m a -> m a
-localOverModel f = localEnviron @"OverModel" Proxy (Tagged @"OverModel" . f . untag' @"OverModel")
+----------------------------------------------------------------
 
-writeModel :: (MonadIO m, AskOverModel s m) => Setter' s a -> a -> m ()
+writeModel :: (MonadIO m, AskModel2 s m) => Setter' s a -> a -> m ()
 writeModel l a = do
-    f <- askOverModel
+    (_, _, f) <- askModel2
     liftIO . f $ set l a
 
-overModel :: (MonadIO m, AskOverModel s m) => Setter' s a -> (a -> a) -> m ()
+overModel :: (MonadIO m, AskModel2 s m) => Setter' s a -> (a -> a) -> m ()
 overModel l g = do
-    f <- askOverModel
+    (_, _, f) <- askModel2
     liftIO . f $ over l g
 
 ----------------------------------------------------------------
@@ -176,23 +185,35 @@ fromModelT m = do
 
 -- | Something that has access to a model, to ask an initial value, or read the latest value
 -- or write the latest value
-class (AskOverModel s m, AskReadModel s m, AskModel s m) => MonadModel2 s m
+class (AskModel2 s m) => MonadModel2 s m
 
 -- | Any transformer on top of 'MonadModel' is also a 'MonadModel'
-instance {-# OVERLAPPABLE #-} (Monad (t m), MonadTrans t, MFunctor t, MonadModel2 s m) => MonadModel2 s (t m)
+instance {-# OVERLAPPABLE #-} (Alternative (t m), MonadIO (t m), Monad (t m), MonadTrans t, MFunctor t, MonadModel2 s m) => MonadModel2 s (t m)
 
-instance Monad m => MonadModel2 s (ModelT2 s m)
-
--- type instance ZoomedModel (ReaderT b m) = Effect m
-
--- type family ZoomedModel (m :: * -> *) :: * -> * -> *
--- class (MonadModel2 s m, MonadModel2 t n) => ZoomModel m n s t | m -> s, n -> t, m t -> n, n s -> m where
---     zoomModel :: LensLike' (ZoomedModel m c) t s -> m c -> n c
+instance (AlternativeIO m) => MonadModel2 s (ModelT2 s m)
 
 
-type ModelT2' s m = ReaderT (Tagged "OverModel" ((s -> s) -> IO ())) -- 'AskOverModel'
-    (ReaderT (Tagged "ReadModel" (IO s)) -- 'AskReadModel'
-    (ReaderT (Tagged "Model" s) m)) -- 'AskModel'
+class (MonadModel2 s m, MonadModel2 t n) => ZoomModel m n s t | m -> s, n -> t, m t -> n, n s -> m where
+    zoomModel :: Traversal' t s -> m c -> n c
+
+instance AlternativeIO m => ZoomModel (ModelT2 s m) (ModelT2 t m) s t where
+    zoomModel l (ModelT2 m) = ModelT2 $ ReaderT $ \(untag' @"Model2" -> (x, y, z)) ->
+        let x' = x >>= r
+            y' = (>>= r) <$> y
+            -- z :: (t -> t) -> IO ()
+            -- z' :: (s -> s) -> IO ()
+            -- f :: (s -> s)
+            z' f = z (g f)
+            -- g :: (s -> s) -> t -> t
+            g f t = case r t of
+                        Nothing -> t -- will still cause a write to happen :(
+                        Just s -> w (f s) t
+        in runReaderT m $ Tagged @"Model2" (x', y', z')
+      where
+        r = preview l
+        w = set l
+
+type ModelT2' s m = ReaderT (Tagged "Model2" (Maybe s, IO (Maybe s), (s -> s) -> IO ())) m
 
 -- | 'ModelT' is transformer that add the 'MonadModel' instance.
 newtype ModelT2 s m a = ModelT2 { unModelT2 :: ModelT2' s m a }
@@ -208,19 +229,24 @@ newtype ModelT2 s m a = ModelT2 { unModelT2 :: ModelT2' s m a }
     , MonadDelegate
     , MonadProgram
     , MonadCodify
-    , MonadAsk "OverModel" (Tagged "OverModel" ((s -> s) -> IO ())) -- AskOverModel
-    , MonadAsk "ReadModel" (Tagged "ReadModel" (IO s)) -- AskReadModel
-    , MonadAsk "Model" (Tagged "Model" s) -- AskModel
+    , MonadAsk "Model2" (Maybe s, IO (Maybe s), (s -> s) -> IO ()) -- AskModel2
     )
 
 type instance Command (ModelT2 s m) = Command m
 
 instance MonadTrans (ModelT2 s) where
-    lift = ModelT2 . lift . lift . lift
+    lift = ModelT2 . lift
 
 instance MFunctor (ModelT2 s) where
-    hoist nat (ModelT2 m) = ModelT2 (f m)
-      where f = hoist (hoist (hoist nat))
-
+    hoist nat (ModelT2 m) = ModelT2 (hoist nat m)
 deriving via (IdentityT (ModelT2' s m)) instance MonadAsk p r m => MonadAsk p r (ModelT2 s m)
 deriving via (IdentityT (ModelT2' s m)) instance MonadPut p t m => MonadPut p t (ModelT2 s m)
+
+runModelT2 :: ModelT2 s m a -> (Maybe s, IO (Maybe s), (s -> s) -> IO ()) -> m a
+runModelT2 (ModelT2 m) t = runReaderT m $ Tagged @"Model2" t
+
+fromModelT2 :: MonadModel2 s m => ModelT2 s m a -> m a
+fromModelT2 m = askModel2 >>= runModelT2 m
+
+
+

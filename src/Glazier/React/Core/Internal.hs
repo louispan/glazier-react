@@ -151,7 +151,7 @@ mkModel s = do
   where
     unregisterFromNotifier :: ReactId -> Weak (IORef Plan) -> IO ()
     unregisterFromNotifier i plnWkRef = (`evalMaybeT` ()) $ do
-        plnRef <- fromJustIO $ deRefWeak plnWkRef
+        plnRef <- guardJustIO $ deRefWeak plnWkRef
         liftIO $ atomicModifyIORef_' plnRef (_notifiers.at i .~ Nothing)
 
 watchModel :: MonadIO m => (IORef Plan, Weak (IORef Plan)) -> (IORef Notifier, Weak (IORef Notifier)) -> m ()

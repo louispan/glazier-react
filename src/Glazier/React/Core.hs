@@ -126,7 +126,7 @@ mkLinkedObj wid logname (Obj _ _ notifierRef notifierWkRef mdlVar mdlWkVar) =
 readObj :: MonadGadget' m => Obj t -> m t
 readObj (Obj _ _ notifierRef notifierWkRef mdlVar _) = do
     plnWkRef <- askPlanWeakRef
-    plnRef <- fromJustIO $ deRefWeak plnWkRef
+    plnRef <- guardJustIO $ deRefWeak plnWkRef
     watchModel (plnRef, plnWkRef) (notifierRef, notifierWkRef)
     -- finally we can read the model
     liftIO $ readMVar mdlVar
@@ -136,7 +136,7 @@ readObj (Obj _ _ notifierRef notifierWkRef mdlVar _) = do
 unwatchObj :: MonadGadget' m => Obj t -> m ()
 unwatchObj (Obj _ _ notifierRef _ _ _) = do
     plnWkRef <- askPlanWeakRef
-    plnRef <- fromJustIO $ deRefWeak plnWkRef
+    plnRef <- guardJustIO $ deRefWeak plnWkRef
     unwatchModel plnRef notifierRef
 
 -- | Mutates the Model for the current widget.

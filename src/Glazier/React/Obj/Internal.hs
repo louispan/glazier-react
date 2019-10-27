@@ -35,9 +35,9 @@ _weakObj = to weakObj
 
 fromWeakObj :: AlternativeIO m => WeakObj s -> m (Obj s)
 fromWeakObj (WeakObj plnWkRef notifierWkRef mdlWkVar) = do
-    plnRef <- fromJustIO $ deRefWeak plnWkRef
-    notifierRef <- fromJustIO $ deRefWeak notifierWkRef
-    mdlVar <- fromJustIO $ deRefWeak mdlWkVar
+    plnRef <- guardJustIO $ deRefWeak plnWkRef
+    notifierRef <- guardJustIO $ deRefWeak notifierWkRef
+    mdlVar <- guardJustIO $ deRefWeak mdlWkVar
     pure $ Obj plnRef plnWkRef notifierRef notifierWkRef mdlVar mdlWkVar
 
 
