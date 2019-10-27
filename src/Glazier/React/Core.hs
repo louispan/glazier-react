@@ -20,6 +20,10 @@ module Glazier.React.Core
     , mkLinkedObj2
     , readObj
     , unwatchObj
+    , model
+    , premodel
+    , readModel
+    , prereadModel
     , noisyMutate
     , quietMutate
     , notifyDirty
@@ -38,6 +42,7 @@ module Glazier.React.Core
 
 import Control.Concurrent.MVar
 import Control.DeepSeq
+import Control.Lens
 import Control.Monad.Cont
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Extras
@@ -48,6 +53,8 @@ import qualified Data.JSString as J
 import qualified Data.List as L
 import qualified Data.Map.Strict as M
 import Data.Maybe
+import Data.Monoid
+import Data.Profunctor.Unsafe
 import Data.String
 import Data.Tagged.Extras
 import GHC.Stack
@@ -139,20 +146,52 @@ unwatchObj (Obj _ _ notifierRef _ _ _) = do
     plnRef <- guardJustIO $ deRefWeak plnWkRef
     unwatchModel plnRef notifierRef
 
+----------------------------------------------------------------
+
+-- | This is like 'view' but for the cached value in 'AskModel', not 'MonadReader'
+model :: MonadGadget s m => Getting a s a -> m a
+model l = do
+    (ms, _, _) <- askModel
+    s <- guardJust ms
+    pure (getConst #. l Const $ s)
+
+-- | This is like 'preview' but for the cached value in  'AskModel', not 'MonadReader'
+premodel :: MonadGadget s m => Getting (First a) s a -> m (Maybe a)
+premodel l = do
+    (ms, _, _) <- askModel
+    s <- guardJust ms
+    pure (getFirst #. foldMapOf l (First #. Just) $ s)
+
+----------------------------------------------------------------
+
+-- | This is like 'view' but for the @IO (Maybe s)@ in 'AskModel', not 'MonadReader'
+readModel :: MonadGadget s m => Getting a s a -> m a
+readModel l = do
+    (_, ms, _) <- askModel
+    s <- guardJustIO ms
+    pure (getConst #. l Const $ s)
+
+-- | This is like 'preview' but for the @IO (Maybe s)@ in 'AskModel', not 'MonadReader'
+prereadModel :: MonadGadget s m => Getting (First a) s a -> m (Maybe a)
+prereadModel l = do
+    (_, ms, _) <- askModel
+    s <- guardJustIO ms
+    pure (getFirst #. foldMapOf l (First #. Just) $ s)
+
+----------------------------------------------------------------
+
+quietMutate :: MonadGadget s m => MaybeT (State s) a -> m a
+quietMutate m = do
+    (_, _, ModelState f) <- askModel
+    guardJustIO $ f m
+
 -- | Mutates the Model for the current widget.
 -- Doesn't automatically flags the widget as dirty
-noisyMutate :: (MonadGadget s m) => State s a -> m a
+noisyMutate :: MonadGadget s m => MaybeT (State s) a -> m a
 noisyMutate m = do
     a <- quietMutate m
     notifyDirty
     pure a
-
--- | Mutates the Model for the current widget.
--- Doesn't automatically flags the widget as dirty
-quietMutate :: (MonadGadget s m) => State s a -> m a
-quietMutate m = do
-    mdlWk <- askModelWeakVar
-    delegatify $ \f -> exec' $ Mutate mdlWk (f <$> m)
 
 -- | Notifys any watchers (from 'readWeakObj')
 -- that the model has changed so that the watchers can rerender.

@@ -6,7 +6,6 @@ module Glazier.React.Reactant where
 
 import Control.Concurrent.MVar
 import Control.DeepSeq
-import Control.Monad.State.Strict
 import Control.Monad.Trans.Maybe
 import Data.IORef.Extras
 import qualified Data.JSString as J
@@ -60,9 +59,6 @@ data Reactant c where
     -- 'Reactant' is not a functor because of the @Widget@ in 'MkObj'
     -- which is in a positive agument position.
     MkObj :: Widget s c () -> LogName -> (IORef Notifier, Weak (IORef Notifier), MVar s, Weak (MVar s)) -> (Obj s -> c) -> Reactant c
-
-    -- Modifies the model
-    Mutate :: Weak (MVar s) -> State s c -> Reactant c
 
     -- Notifies any watchers (from 'readWeakObj')
     -- that the model has changed so that the watchers can rerender.

@@ -354,9 +354,7 @@ mkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar) = d
                 . (`runObserverT` onDestruct')
                 . (`runObserverT` onRendrd')
                 . runReactor
-                . (`runReaderT` Tagged @"Model" mdl)
-                . (`runReaderT` Tagged @"ModelWeakVar" mdlWkVar)
-                . unModelT
+                . (`runModelT` (Just mdl, readModelWith mdlWkVar, modelStateWith mdlWkVar))
                 $ wid'
         -- prerndr :: (c -> m ()) -> IO ()
         prerndr onRendrd' onDestruct' onConstruct' = do
@@ -427,17 +425,17 @@ mkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar) = d
         plnRef <- guardJustIO $ deRefWeak wk
         liftIO $ readIORef plnRef >>= rendered
 
-execMutate ::
-    (AlternativeIO m, AskDirtyPlan m)
-    => (c -> m ())
-    -> Weak (MVar s)
-    -> State s c
-    -> m ()
-execMutate executor mdlWk tick = do
-    liftIO $ putStrLn $ "LOUISDEBUG: execMutate"
-    mdlVar <- guardJustIO $ deRefWeak mdlWk
-    c <- liftIO $ modifyMVar mdlVar (pure . swap . runState tick)
-    executor c
+-- execMutate ::
+--     (AlternativeIO m, AskDirtyPlan m)
+--     => (c -> m ())
+--     -> Weak (MVar s)
+--     -> State s c
+--     -> m ()
+-- execMutate executor mdlWk tick = do
+--     liftIO $ putStrLn $ "LOUISDEBUG: execMutate"
+--     mdlVar <- guardJustIO $ deRefWeak mdlWk
+--     c <- liftIO $ modifyMVar mdlVar (pure . swap . runState tick)
+--     executor c
 
 execNotifyDirty ::
     (AlternativeIO m, AskDirtyPlan m)

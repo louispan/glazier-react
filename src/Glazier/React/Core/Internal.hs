@@ -14,7 +14,9 @@ import Control.Monad.Cont
 import Control.Monad.Identity
 import Control.Monad.Morph
 import Control.Monad.Reader
+import Control.Monad.State.Strict
 import Control.Monad.Trans.Extras
+import Control.Monad.Trans.Maybe
 import Data.IORef
 import Data.IORef.Extras
 import qualified Data.JSString as J
@@ -53,6 +55,28 @@ class (CmdReactant (Command m)
 
 infixl 2 `shall` -- lower than <|>
 
+readModelWith :: Weak (MVar s) -> IO (Maybe s)
+readModelWith mdlWkVar = do
+    mdlVar' <- deRefWeak mdlWkVar
+    case mdlVar' of
+        Nothing -> pure Nothing
+        Just mdlVar'' -> Just <$> readMVar mdlVar''
+
+modelStateWith :: Weak (MVar s) -> ModelState s
+modelStateWith mdlWkVar = ModelState $ \m -> do
+    mdlVar' <- deRefWeak mdlWkVar
+    case mdlVar' of
+        Nothing -> pure Nothing
+        Just mdlVar'' -> do
+            s <- takeMVar mdlVar''
+            case runState (runMaybeT m) s of
+                (Nothing, _) -> do
+                    putMVar mdlVar'' s
+                    pure Nothing
+                (Just a, s') -> do
+                    putMVar mdlVar'' s'
+                    pure (Just a)
+
 instance (CmdReactant c, c ~ Command (Reactor c)) => MonadGadget' (Reactor c) where
     shall (Obj plnRef plnWkRef _ notifierWkRef mdlVar mdlWkVar) (GadgetT m) = do
         mdl <- liftIO $ readMVar mdlVar
@@ -66,9 +90,7 @@ instance (CmdReactant c, c ~ Command (Reactor c)) => MonadGadget' (Reactor c) wh
                 . (`runReaderT` (const $ pure ()))
                 . (`runReaderT` (const $ pure ()))
                 . runReactor
-                . (`runReaderT` (Tagged @"Model" mdl))
-                . (`runReaderT` (Tagged @"ModelWeakVar" mdlWkVar))
-                . unModelT
+                . (`runModelT` (Just mdl, readModelWith mdlWkVar, modelStateWith mdlWkVar))
                 $ m
 
         -- lift them into this monad
@@ -83,12 +105,11 @@ instance (CmdReactant c, c ~ Command (Reactor c)) => MonadGadget' (Reactor c) wh
 
 instance (MonadGadget' m) => MonadGadget' (ModelT s m) where
     obj `shall` (GadgetT m) = do
-        mdlWkVar <- askModelWeakVar
-        mdl <- askModel
+        f <- askModel
         -- unwrap the ReaderT layers of this instance's ModelT
         -- m :: ModelT t (ModelT s m)
         -- m' :: ModelT t m
-        let m' = hoist (`runModelT` (mdlWkVar, mdl)) m
+        let m' = hoist (`runModelT` f) m
             -- m'' :: m
             m'' = obj `shall` GadgetT m'
         lift m'' -- lift into ModelT
