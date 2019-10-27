@@ -304,7 +304,7 @@ lf :: (Component j, MonadWidget s m)
     -> DL.DList (J.JSString, Gizmo s m (Maybe J.JSVal))
     -> m ()
 lf j gads props = do
-    putNextReactPath (componentName j)
+    modifyReactPath $ nextReactPath (componentName j)
     (props', gads') <- fromModelT $ do
         props' <- runProps (DL.toList props)
         gads' <- runGads (DL.toList gads)
@@ -318,16 +318,14 @@ bh :: (Component j, MonadWidget s m)
     -> m a
     -> m a
 bh j gads props child = do
-    putNextReactPath (componentName j)
+    modifyReactPath $ nextReactPath (componentName j)
     (props', gads') <- fromModelT $ do
         props' <- runProps (DL.toList props)
         gads' <- runGads (DL.toList gads)
         pure (props', gads')
-    putPushReactPath
-    a <- branchMarkup (JE.toJS j) (DL.fromList (props' <> gads'))
-        child
-    putPopReactPath
-    pure a
+    localReactPath pushReactPath $ do
+         branchMarkup (JE.toJS j) (DL.fromList (props' <> gads'))
+            child
 
 displayObj :: MonadWidget' m => Obj t -> m ()
 displayObj (Obj plnRef _ _ _ _ _) = do

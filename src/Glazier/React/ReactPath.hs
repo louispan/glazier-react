@@ -52,16 +52,16 @@ nextReactPath :: J.JSString -> ReactPath -> ReactPath
 nextReactPath n (ReactPath (Nothing, ns)) = ReactPath (Just (n, 0), ns)
 nextReactPath n (ReactPath (Just (_, i), ns)) = ReactPath (Just (n, i + 1), ns)
 
-putNextReactPath :: PutReactPath m => J.JSString -> m ()
-putNextReactPath n = modifyReactPath $ nextReactPath n
+-- putNextReactPath :: PutReactPath m => J.JSString -> m ()
+-- putNextReactPath n = modifyReactPath $ nextReactPath n
 
 -- | create a child 'ReactPath'
 pushReactPath :: ReactPath -> ReactPath
 pushReactPath (ReactPath (Nothing, xs)) = ReactPath (Nothing, xs)
 pushReactPath (ReactPath (Just x, xs)) = ReactPath (Nothing, x : xs)
 
-putPushReactPath :: PutReactPath m => m ()
-putPushReactPath = modifyReactPath pushReactPath
+-- putPushReactPath :: PutReactPath m => m ()
+-- putPushReactPath = modifyReactPath pushReactPath
 
 -- | finish this layer of 'ReactPath'
 popReactPath :: ReactPath -> ReactPath
@@ -69,6 +69,6 @@ popReactPath (ReactPath (Nothing, [])) = ReactPath (Nothing, [])
 popReactPath (ReactPath (Just _, [])) = ReactPath (Nothing, [])
 popReactPath (ReactPath (_, x : xs)) = ReactPath (Just x, xs)
 
-putPopReactPath :: PutReactPath m => m ()
-putPopReactPath = modifyReactPath popReactPath
+-- putPopReactPath :: PutReactPath m => m ()
+-- putPopReactPath = modifyReactPath popReactPath
 

@@ -148,12 +148,12 @@ newtype Reactor c a = Reactor { runReactor :: Reactor' c a }
     deriving
     ( Functor
     , Applicative
-    , Also ()
     , Monad
     , MonadIO
     , Alternative
     , MonadPlus
     , MonadCont
+    , Also r
     , MonadDelegate
     , MonadProgram
     , AskMarkup
