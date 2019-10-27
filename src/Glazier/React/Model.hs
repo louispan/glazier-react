@@ -71,12 +71,12 @@ newtype ModelT s m a = ModelT { unModelT :: ModelT' s m a }
     deriving
     ( Functor
     , Applicative
-    , Also r
     , Monad
     , MonadIO
     , Alternative
     , MonadPlus
     , MonadCont
+    , Also r
     , MonadDelegate
     , MonadProgram
     , MonadCodify

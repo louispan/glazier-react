@@ -25,21 +25,24 @@ import Glazier.Command
 -- 'GadgetT' is *not* an instance of 'Glazier.React.Reactant.MonadWidget'
 type instance Command (GadgetT m) = Command m
 
-newtype GadgetT m a = GadgetT { runGadgetT :: m a}
+newtype GadgetT m a = GadgetT (m a)
     deriving
     ( Functor
     , Applicative
-    , Also r
     , Monad
     , MonadIO
     , Alternative
     , MonadPlus
     , MonadCont
+    , Also r
     , MonadDelegate
     , MonadProgram
     , MonadCodify
     , MonadAsk p r
     )
+
+runGadgetT :: GadgetT m a -> m a
+runGadgetT (GadgetT m) = m
 
 instance MonadTrans GadgetT where
     lift = GadgetT

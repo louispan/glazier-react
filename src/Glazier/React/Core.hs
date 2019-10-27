@@ -40,6 +40,7 @@ module Glazier.React.Core
     , displayObj
     ) where
 
+import Control.Also
 import Control.Concurrent.MVar
 import Control.DeepSeq
 import Control.Lens
@@ -52,7 +53,6 @@ import Data.IORef
 import qualified Data.JSString as J
 import qualified Data.List as L
 import qualified Data.Map.Strict as M
-import Data.Maybe
 import Data.Monoid
 import Data.Profunctor.Unsafe
 import Data.String
@@ -66,7 +66,7 @@ import Glazier.Logger
 import Glazier.React.Common
 import Glazier.React.Component
 import Glazier.React.Core.Internal
-import Glazier.React.Gadget.Internal
+import Glazier.React.Gadget
 import Glazier.React.Markup
 import Glazier.React.Model
 import Glazier.React.Obj.Internal
@@ -149,6 +149,7 @@ unwatchObj (Obj _ _ notifierRef _ _ _) = do
 ----------------------------------------------------------------
 
 -- | This is like 'view' but for the cached value in 'AskModel', not 'MonadReader'
+-- If the lens is a 'Traversal' then @a@ needs to be a Monoid
 model :: MonadGadget s m => Getting a s a -> m a
 model l = do
     (ms, _, _) <- askModelEnviron
@@ -156,6 +157,8 @@ model l = do
     pure (getConst #. l Const $ s)
 
 -- | This is like 'preview' but for the cached value in  'AskModel', not 'MonadReader'
+-- If the lens is a 'Traversal' then @a@ doesn't to be a Monoid,
+-- but needs @Maybe a@
 premodel :: MonadGadget s m => Getting (First a) s a -> m (Maybe a)
 premodel l = do
     (ms, _, _) <- askModelEnviron
@@ -261,47 +264,53 @@ listenEventTarget j n goStrict goLazy =
 
 ----------------------------------------------------------------------------------
 
+-- | A 'MonadModel' and 'MonadGadget' (but not 'MonadWidget') that may
+-- possible fail with 'Alternative'.
 type Gizmo s m a = GadgetT (ModelT s m) a
 
--- | Possibly write some text
-txt :: MonadWidget s m => Gizmo s m (Maybe J.JSString) -> m ()
-txt m = do
-    t <- fromModelT . runGadgetT $ m
-    maybe (pure ()) textMarkup t
+-- | Possibly write some text, otherwise do nothing
+txt :: MonadWidget s m => Gizmo s m J.JSString -> m ()
+txt m = (`also` pure ()) $ do -- catch failure with `also` so we can continue
+            t <- fromModelT . runGadgetT $ m
+            textMarkup t
 
 -- | Creates a JSVal for "className" property from a list of (JSString, Bool)
 -- Idea from https://github.com/JedWatson/classnames
-classNames :: Monad m => [(J.JSString, Gizmo s m (Maybe Bool))] -> Gizmo s m (Maybe J.JSVal)
+-- Any 'Alternative' failures to produce 'Bool' is dropped, and does not affect
+-- the rest of the list.
+classNames :: MonadGadget' m => [(J.JSString, Gizmo s m Bool)] -> Gizmo s m J.JSVal
 classNames xs = do
-    xs' <- filterM (fmap ok . snd) xs
-    pure . Just . JE.toJS . J.unwords . fmap fst $ xs'
+    xs' <- filterM (go . snd) xs
+    pure . JE.toJS . J.unwords . fmap fst $ xs'
   where
-    ok (Just True) = True
-    ok _ = False
+    go m = m `also` pure False
 
-runProps :: Monad m
-    => [(J.JSString, Gizmo s m (Maybe J.JSVal))]
+runProps :: MonadGadget' m
+    => [(J.JSString, Gizmo s m J.JSVal)]
     -> ModelT s m [(J.JSString, J.JSVal)]
-runProps props = catMaybes <$> traverse f props
+runProps props = concat <$> traverse f props
   where
-    f :: Monad m => (J.JSString, Gizmo s m (Maybe J.JSVal)) -> ModelT s m (Maybe (J.JSString, J.JSVal))
-    f = runMaybeT . traverse g
-    g :: Monad m => Gizmo s m (Maybe J.JSVal) -> MaybeT (ModelT s m) J.JSVal
-    g = MaybeT . runGadgetT
+    -- emit empty list of a prop fails
+    f :: MonadGadget' m => (J.JSString, Gizmo s m J.JSVal) -> ModelT s m [(J.JSString, J.JSVal)]
+    f (n, m) = (`also` pure []) $ (\v -> [(n, v)]) <$> runGadgetT m
 
-runGads :: (MonadGadget' m)
+runGads :: MonadGadget' m
     => [(J.JSString, GadgetT m Handler)]
     -> m [(J.JSString, J.JSVal)]
 runGads gads = do
-    gads' <- runGadgetT $ traverse sequenceA gads -- :: m [(JString, Handler)]
+    gads' <- concat <$> traverse f gads -- :: m [(JString, Handler)]
     let gads'' = M.toList $ M.fromListWith (<>) gads' -- combine same keys together
-        f = fmap JE.toJS . mkListener -- convert to JS callback
-    traverse (traverse f) gads''
+        g = fmap JE.toJS . mkListener -- convert to JS callback
+    traverse (traverse g) gads''
+  where
+    -- emit empty list of a prop fails
+    f :: MonadGadget' m => (J.JSString, GadgetT m Handler) -> m [(J.JSString, Handler)]
+    f (n, m) = (`also` pure []) $ (\v -> [(n, v)]) <$> runGadgetT m
 
 lf :: (Component j, MonadWidget s m)
     => j -- ^ "input" or a @ReactComponent@
     -> DL.DList (J.JSString, Gizmo s m Handler)
-    -> DL.DList (J.JSString, Gizmo s m (Maybe J.JSVal))
+    -> DL.DList (J.JSString, Gizmo s m J.JSVal)
     -> m ()
 lf j gads props = do
     modifyReactPath $ nextReactPath (componentName j)
@@ -314,7 +323,7 @@ lf j gads props = do
 bh :: (Component j, MonadWidget s m)
     => j-- ^ eg "div" or a @ReactComponent@
     -> DL.DList (J.JSString, Gizmo s m Handler)
-    -> DL.DList (J.JSString, Gizmo s m (Maybe J.JSVal))
+    -> DL.DList (J.JSString, Gizmo s m J.JSVal)
     -> m a
     -> m a
 bh j gads props child = do

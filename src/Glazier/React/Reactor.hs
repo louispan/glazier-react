@@ -205,3 +205,6 @@ instance (Functor m, MonadUnliftWidget s m) => MonadUnliftWidget s (IdentityT m)
     askUnliftWidget = IdentityT $
         (\u -> UnliftWidget (unliftWidget u . runIdentityT)) <$> askUnliftWidget
 
+-- FIXME: Make MonadWidget also require MonadUnliftWidget?
+
+

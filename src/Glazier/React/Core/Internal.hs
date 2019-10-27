@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Glazier.React.Core.Internal where
@@ -42,7 +43,7 @@ import System.Mem.Weak
 -- It can be safely turned into a 'Handler' and used in event handling code.
 -- It is an instance of 'Alternative'. It is an instance of 'Also' so it can be combined.
 class (CmdReactant (Command m)
-        , AlternativeIO m, Also () m
+        , AlternativeIO m, forall r. Also r m
         , MonadCont m
         , MonadLogger J.JSString m, AskLogName m, AskReactPath m
         , AskScratch m, AskPlanWeakRef m
