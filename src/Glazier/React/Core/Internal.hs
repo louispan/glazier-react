@@ -62,8 +62,8 @@ readModelWith mdlWkVar = do
         Nothing -> pure Nothing
         Just mdlVar'' -> Just <$> readMVar mdlVar''
 
-modelStateWith :: Weak (MVar s) -> ModelState s
-modelStateWith mdlWkVar = ModelState $ \m -> do
+modelStateWith :: Weak (MVar s) -> ModifyModel s
+modelStateWith mdlWkVar = ModifyModel $ \m -> do
     mdlVar' <- deRefWeak mdlWkVar
     case mdlVar' of
         Nothing -> pure Nothing
@@ -105,7 +105,7 @@ instance (CmdReactant c, c ~ Command (Reactor c)) => MonadGadget' (Reactor c) wh
 
 instance (MonadGadget' m) => MonadGadget' (ModelT s m) where
     obj `shall` (GadgetT m) = do
-        f <- askModel
+        f <- askModelEnviron
         -- unwrap the ReaderT layers of this instance's ModelT
         -- m :: ModelT t (ModelT s m)
         -- m' :: ModelT t m

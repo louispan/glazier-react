@@ -151,14 +151,14 @@ unwatchObj (Obj _ _ notifierRef _ _ _) = do
 -- | This is like 'view' but for the cached value in 'AskModel', not 'MonadReader'
 model :: MonadGadget s m => Getting a s a -> m a
 model l = do
-    (ms, _, _) <- askModel
+    (ms, _, _) <- askModelEnviron
     s <- guardJust ms
     pure (getConst #. l Const $ s)
 
 -- | This is like 'preview' but for the cached value in  'AskModel', not 'MonadReader'
 premodel :: MonadGadget s m => Getting (First a) s a -> m (Maybe a)
 premodel l = do
-    (ms, _, _) <- askModel
+    (ms, _, _) <- askModelEnviron
     s <- guardJust ms
     pure (getFirst #. foldMapOf l (First #. Just) $ s)
 
@@ -167,14 +167,14 @@ premodel l = do
 -- | This is like 'view' but for the @IO (Maybe s)@ in 'AskModel', not 'MonadReader'
 readModel :: MonadGadget s m => Getting a s a -> m a
 readModel l = do
-    (_, ms, _) <- askModel
+    (_, ms, _) <- askModelEnviron
     s <- guardJustIO ms
     pure (getConst #. l Const $ s)
 
 -- | This is like 'preview' but for the @IO (Maybe s)@ in 'AskModel', not 'MonadReader'
 prereadModel :: MonadGadget s m => Getting (First a) s a -> m (Maybe a)
 prereadModel l = do
-    (_, ms, _) <- askModel
+    (_, ms, _) <- askModelEnviron
     s <- guardJustIO ms
     pure (getFirst #. foldMapOf l (First #. Just) $ s)
 
@@ -182,7 +182,7 @@ prereadModel l = do
 
 quietMutate :: MonadGadget s m => MaybeT (State s) a -> m a
 quietMutate m = do
-    (_, _, ModelState f) <- askModel
+    (_, _, ModifyModel f) <- askModelEnviron
     guardJustIO $ f m
 
 -- | Mutates the Model for the current widget.
