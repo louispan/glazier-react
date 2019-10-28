@@ -43,14 +43,14 @@ newtype ModifyModel s = ModifyModel { unModifyModel :: forall a. MaybeT (State s
 -- | @IO (Maybe s)@ allows for a 'ZoomModel' instance without exceptions.
 type AskModelEnviron s m = (MonadAsk "Model" (Maybe s, IO (Maybe s), ModifyModel s) m)
 instance {-# OVERLAPPING #-} Monad m => MonadAsk "Model" (Maybe s, IO (Maybe s), ModifyModel s) (ReaderT (Tagged "Model" (Maybe s, IO (Maybe s), ModifyModel s)) m) where
-    askEnviron _ = (untag' @"Model") <$> ask
-    localEnviron _ f = local (Tagged @"Model" . f . untag' @"Model")
+    askEnvironP _ = (untag' @"Model") <$> ask
+    localEnvironP _ f = local (Tagged @"Model" . f . untag' @"Model")
 
 askModelEnviron :: AskModelEnviron s m => m (Maybe s, IO (Maybe s), ModifyModel s)
-askModelEnviron = askEnviron @"Model" Proxy
+askModelEnviron = askEnvironP @"Model" Proxy
 
 localModelEnviron :: AskModelEnviron s m => ((Maybe s, IO (Maybe s), ModifyModel s) -> (Maybe s, IO (Maybe s), ModifyModel s)) -> m b -> m b
-localModelEnviron f = localEnviron @"Model" Proxy f
+localModelEnviron f = localEnvironP @"Model" Proxy f
 
 ---------------------------------------------------------------------------
 

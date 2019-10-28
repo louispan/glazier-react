@@ -38,6 +38,7 @@ import Data.Tagged.Extras
 import qualified GHCJS.Types as J
 import Glazier.Command
 import Glazier.Logger
+import Glazier.React.Common
 import Glazier.React.Markup
 import Glazier.React.Model
 import Glazier.React.Plan
@@ -47,42 +48,38 @@ import qualified JavaScript.Extras as JE
 import System.Mem.Weak
 
 type AskScratch = MonadAsk' (Tagged "Scratch" JE.Object)
-instance {-# OVERLAPPING #-} Monad m => MonadAsk (Tagged "Scratch" JE.Object) (Tagged "Scratch" JE.Object) (ReaderT (Tagged "Scratch" JE.Object) m) where
-    askEnviron _ = ask
-    localEnviron _ = local
-
 askScratch :: AskScratch m => m JE.Object
-askScratch = (untag' @"Scratch") <$> askEnviron @(Tagged "Scratch" JE.Object) Proxy
+askScratch = askEnvironTag @"Scratch" @JE.Object
 localScratch :: AskScratch m => (JE.Object -> JE.Object) -> m a -> m a
-localScratch f = localEnviron @(Tagged "Scratch" JE.Object) Proxy (Tagged @"Scratch" . f . untag' @"Scratch")
+localScratch = localEnvironTag @"Scratch" @JE.Object
 
-scratchAccessor :: ReactId -> J.JSString -> J.JSString
-scratchAccessor i n = "$" <> (fromString $ show $ unReactId i) <> "_" <> n
+scratchAccessor :: J.JSString -> J.JSString
+scratchAccessor n = "$" <> (fromString $ show $ unReactId i) <> "_" <> n
 
-deleteScratch :: (MonadIO m, AskScratch m) => ReactId -> J.JSString -> m ()
-deleteScratch i n = do
+deleteScratch :: (MonadIO m, AskScratch m) => J.JSString -> m ()
+deleteScratch n = do
     d <- askScratch
-    liftIO $ d `JE.deleteProperty` (scratchAccessor i n)
+    liftIO $ d `JE.deleteProperty` (scratchAccessor n)
 
-setScratch :: (MonadIO m, AskScratch m, JE.ToJS a) => ReactId -> J.JSString -> a -> m ()
-setScratch i n v = do
+setScratch :: (MonadIO m, AskScratch m, JE.ToJS a) => J.JSString -> a -> m ()
+setScratch n v = do
     d <- askScratch
-    liftIO $ d `JE.setProperty` (scratchAccessor i n, JE.toJS v)
+    liftIO $ d `JE.setProperty` (scratchAccessor n, JE.toJS v)
 
-getScratch :: (MonadIO m, AskScratch m) => ReactId -> J.JSString -> m J.JSVal
-getScratch i n = do
+getScratch :: (MonadIO m, AskScratch m) => J.JSString -> m J.JSVal
+getScratch n = do
     d <- askScratch
-    liftIO $ d `JE.getProperty` (scratchAccessor i n)
+    liftIO $ d `JE.getProperty` (scratchAccessor n)
 
-scratchXTimes :: (MonadIO m, AskScratch m) => Int -> ReactId -> J.JSString -> m () -> m ()
-scratchXTimes maxTimes i n m = do
-    d <- JE.fromJS @Int <$> getScratch i n
+scratchXTimes :: (MonadIO m, AskScratch m) => Int -> J.JSString -> m () -> m ()
+scratchXTimes maxTimes n m = do
+    d <- JE.fromJS @Int <$> getScratch n
     let (x', m') = case (d, maxTimes) of
             (_, x) | x <= 0         -> (0, pure ())
             (Nothing, _)            -> (1, m)
             (Just y, x) | y < x     -> (y + 1, m)
             _                       -> (maxTimes, pure ())
-    setScratch i n x'
+    setScratch n x'
     m'
 
 type AskConstructor m = MonadObserver' (Tagged "Constructor" (Command m)) m
@@ -158,11 +155,11 @@ newtype Reactor c a = Reactor { runReactor :: Reactor' c a }
     , MonadProgram
     , AskMarkup
     , PutMarkup
-    , AskReactPath
-    , PutReactPath
     , AskLogLevel
-    , AskLogName
     , AskLogCallStackDepth
+    , MonadAsk' LogName
+    , MonadAsk' ReactPath
+    , MonadPut' ReactPath
     , AskPlanWeakRef
     , AskNotifierWeakRef
     , AskScratch
@@ -204,7 +201,3 @@ instance (Functor m, MonadUnliftWidget s m) => MonadUnliftWidget s (ReaderT r m)
 instance (Functor m, MonadUnliftWidget s m) => MonadUnliftWidget s (IdentityT m) where
     askUnliftWidget = IdentityT $
         (\u -> UnliftWidget (unliftWidget u . runIdentityT)) <$> askUnliftWidget
-
--- FIXME: Make MonadWidget also require MonadUnliftWidget?
-
-

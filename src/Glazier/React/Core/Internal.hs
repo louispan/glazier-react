@@ -12,6 +12,7 @@ import Control.Also
 import Control.Concurrent.MVar
 import Control.Lens
 import Control.Monad.Cont
+import Control.Monad.Environ
 import Control.Monad.Identity
 import Control.Monad.Morph
 import Control.Monad.Reader
@@ -24,6 +25,7 @@ import qualified Data.JSString as J
 import Data.Tagged
 import Glazier.Command
 import Glazier.Logger
+import Glazier.React.Common
 import Glazier.React.Gadget.Internal
 import Glazier.React.Markup
 import Glazier.React.Model
@@ -45,8 +47,11 @@ import System.Mem.Weak
 class (CmdReactant (Command m)
         , AlternativeIO m, forall r. Also r m
         , MonadCont m
-        , MonadLogger J.JSString m, AskLogName m, AskReactPath m
-        , AskScratch m, AskPlanWeakRef m
+        , MonadLogger J.JSString m
+        , MonadAsk' LogName m
+        , MonadAsk' ReactPath m
+        , AskScratch m
+        , AskPlanWeakRef m
         , AskNotifierWeakRef m
         -- , AskModel s m, AskModelWeakVar s m
         ) => MonadGadget' m where
@@ -134,14 +139,18 @@ type MonadGadget s m = (MonadGadget' m, MonadModel s m)
 -- MonadWidget
 ------------------------------------------------------
 
--- A 'MonadWidget' is a 'MonadGadget' that additionally have access to
+-- | A 'MonadWidget'' is a 'MonadGadget'' that additionally have access to
 -- 'initConstructor', 'initDestructor', 'initRendered',
 -- can generate 'Markup' and so should not be be for event handling, sice those
 -- additional effects are ignored inside event handling.
 -- 'GadgetT' is *not* an instance of 'MonadWidget'
 class (CmdReactant (Command m)
-    , MonadGadget' m, PutMarkup m, PutReactPath m
-    , AskConstructor m, AskDestructor m, AskRendered m) => MonadWidget' m
+    , MonadGadget' m
+    , PutMarkup m
+    , MonadPut' ReactPath m
+    , AskConstructor m
+    , AskDestructor m
+    , AskRendered m) => MonadWidget' m
 
 instance {-# OVERLAPPABLE #-} (CmdReactant c) => MonadWidget' (Reactor c)
 
@@ -151,7 +160,8 @@ instance {-# OVERLAPPABLE #-} (MonadWidget' m) => MonadWidget' (IdentityT m)
 
 instance {-# OVERLAPPABLE #-} (MonadWidget' m) => MonadWidget' (ReaderT r m)
 
-type MonadWidget s m = (MonadWidget' m, MonadModel s m)
+-- | A 'MonadWidget' is  acces to the 'ModelModel' and ability to 'askUnliftWidget'
+type MonadWidget s m = (MonadWidget' m, MonadModel s m, MonadUnliftWidget s m)
 
 ------------------------------------------------------
 -- Internal functions

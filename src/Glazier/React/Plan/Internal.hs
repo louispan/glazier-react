@@ -123,19 +123,19 @@ instance Show Plan where
 
 type AskPlanWeakRef = MonadAsk' (Weak (IORef Plan))
 askPlanWeakRef :: AskPlanWeakRef m => m (Weak (IORef Plan))
-askPlanWeakRef = askEnviron @(Weak (IORef Plan)) Proxy
+askPlanWeakRef = askEnviron' @(Weak (IORef Plan))
 localPlanWeakRef :: AskPlanWeakRef m => (Weak (IORef Plan) -> Weak (IORef Plan)) -> m a -> m a
-localPlanWeakRef = localEnviron @(Weak (IORef Plan)) Proxy
+localPlanWeakRef = localEnviron' @(Weak (IORef Plan))
 
 type AskNotifierWeakRef = MonadAsk' (Weak (IORef Notifier))
 askNotifierWeakRef :: AskNotifierWeakRef m => m (Weak (IORef Notifier))
-askNotifierWeakRef = askEnviron @(Weak (IORef Notifier)) Proxy
+askNotifierWeakRef = askEnviron' @(Weak (IORef Notifier))
 localNotifierWeakRef :: AskNotifierWeakRef m => (Weak (IORef Notifier) -> Weak (IORef Notifier)) -> m a -> m a
-localNotifierWeakRef = localEnviron @(Weak (IORef Notifier)) Proxy
+localNotifierWeakRef = localEnviron' @(Weak (IORef Notifier))
 
 -- | Get the 'LogLevel' from a 'WeakRef' 'Plan'
 instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Maybe LogLevel) (Maybe LogLevel) (ReaderT (Weak (IORef Plan)) m) where
-    askEnviron _ = do
+    askEnvironP _ = do
         ref <- askPlanWeakRef
         liftIO $ go ref
       where
@@ -146,14 +146,11 @@ instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Maybe LogLevel) (Maybe LogLe
 
     -- | lie and don't actually use the given function to modify the environment
     -- Use 'localPlanWeakRef' instead
-    localEnviron _ _ = id
+    localEnvironP _ _ = id
 
 -- | Get the 'LogName' from a 'WeakRef' 'Plan'
-type AskLogName = MonadAsk' LogName
-askLogName :: AskLogName m => m LogName
-askLogName = askEnviron @LogName Proxy
 instance {-# OVERLAPPING #-} MonadIO m => MonadAsk LogName LogName (ReaderT (Weak (IORef Plan)) m) where
-    askEnviron _ = do
+    askEnvironP _ = do
         ref <- askPlanWeakRef
         n <- liftIO $ go ref
         pure $ fromMaybe mempty n
@@ -165,11 +162,11 @@ instance {-# OVERLAPPING #-} MonadIO m => MonadAsk LogName LogName (ReaderT (Wea
 
     -- | lie and don't actually use the given function to modify the environment
     -- Use 'localPlanWeakRef' instead
-    localEnviron _ _ = id
+    localEnvironP _ _ = id
 
 -- | Get the 'LogCallStackDepth' from a 'WeakRef' 'Plan'
 instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Maybe (Maybe LogCallStackDepth)) (Maybe (Maybe LogCallStackDepth)) (ReaderT (Weak (IORef Plan)) m) where
-    askEnviron _ = do
+    askEnvironP _ = do
         ref <- askPlanWeakRef
         liftIO $ go ref
       where
@@ -180,4 +177,4 @@ instance {-# OVERLAPPING #-} MonadIO m => MonadAsk (Maybe (Maybe LogCallStackDep
 
     -- | lie and don't actually use the given function to modify the environment
     -- Use 'localPlanWeakRef' instead
-    localEnviron _ _ = id
+    localEnvironP _ _ = id

@@ -45,6 +45,7 @@ import Control.Concurrent.MVar
 import Control.DeepSeq
 import Control.Lens
 import Control.Monad.Cont
+import Control.Monad.Environ
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
@@ -83,7 +84,7 @@ import System.Mem.Weak
 
 logPrefix :: MonadGadget' m => m J.JSString
 logPrefix = do
-    ps <- getReactPath <$> askReactPath
+    ps <- getReactPath <$> askEnviron' @ReactPath
     let xs = L.intersperse "." $ (\(n, i) -> n <> (fromString $ show i)) <$> ps
     pure (foldr (<>) "" xs)
 
@@ -92,7 +93,7 @@ logJS :: (HasCallStack, MonadGadget' m)
     -> m ()
 logJS lvl msg = withFrozenCallStack $ do
     p <- logPrefix
-    n <- untag' @"LogName" <$> askLogName
+    n <- untag' @"LogName" <$> askEnviron' @LogName
     logLine basicLogCallStackDepth lvl $ (\x -> n <> "<" <> p <> "> " <> x) <$> msg
 
 ------------------------------------------------------
@@ -329,7 +330,7 @@ lf :: (Component j, MonadWidget s m)
     -> DL.DList (J.JSString, Gizmo s m J.JSVal)
     -> m ()
 lf j gads props = do
-    modifyReactPath $ nextReactPath (componentName j)
+    modifyEnviron' $ nextReactPath (componentName j)
     (props', gads') <- fromModelT $ do
         props' <- runProps (DL.toList props)
         gads' <- runGads (DL.toList gads)
@@ -343,12 +344,12 @@ bh :: (Component j, MonadWidget s m)
     -> m a
     -> m a
 bh j gads props child = do
-    modifyReactPath $ nextReactPath (componentName j)
+    modifyEnviron' $ nextReactPath (componentName j)
     (props', gads') <- fromModelT $ do
         props' <- runProps (DL.toList props)
         gads' <- runGads (DL.toList gads)
         pure (props', gads')
-    localReactPath pushReactPath $ do
+    localEnviron' pushReactPath $ do
          branchMarkup (JE.toJS j) (DL.fromList (props' <> gads'))
             child
 

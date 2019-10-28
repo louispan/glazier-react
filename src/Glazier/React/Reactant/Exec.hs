@@ -94,7 +94,7 @@ makeLenses_ ''LogConfig
 
 type AskLogConfigRef = MonadAsk' (IORef LogConfig)
 askLogConfigRef :: AskLogConfigRef m => m (IORef LogConfig)
-askLogConfigRef = askEnviron @(IORef LogConfig) Proxy
+askLogConfigRef = askEnviron' @(IORef LogConfig)
 
 -- | returns io actions that will always have latest log state for the logname
 getLogConfig :: (MonadIO m, AskLogConfigRef m)=> LogName -> m (IO (Maybe LogLevel), IO (Maybe (Maybe LogCallStackDepth)))
@@ -124,7 +124,7 @@ getLogConfig logname = do
 
 type AskNextReactIdRef = MonadAsk' (IORef (Tagged "NextReactId" ReactId))
 askNextReactIdRef :: AskNextReactIdRef m => m (IORef (Tagged "NextReactId" ReactId))
-askNextReactIdRef = askEnviron @(IORef (Tagged "NextReactId" ReactId)) Proxy
+askNextReactIdRef = askEnviron' @(IORef (Tagged "NextReactId" ReactId))
 
 execMkReactId :: (MonadIO m, AskNextReactIdRef m) => m ReactId
 execMkReactId = do
@@ -137,20 +137,16 @@ execMkReactId = do
 
 type AskDirtyPlan = MonadAsk' (Tagged "DirtyPlan" (IORef (M.Map ReactId (Weak (IORef Plan)))))
 askDirtyPlan :: AskDirtyPlan m => m (Tagged "DirtyPlan" (IORef (M.Map ReactId (Weak (IORef Plan)))))
-askDirtyPlan = askEnviron @(Tagged "DirtyPlan" (IORef (M.Map ReactId (Weak (IORef Plan))))) Proxy
+askDirtyPlan = askEnviron' @(Tagged "DirtyPlan" (IORef (M.Map ReactId (Weak (IORef Plan)))))
 
-type AskReactBatch = MonadAsk' ReactBatch
-askReactBatch :: AskReactBatch m => m ReactBatch
-askReactBatch = askEnviron @ReactBatch Proxy
-
-rerenderDirtyPlans :: (AskReactBatch m, AskDirtyPlan m, AlternativeIO m) => m ()
+rerenderDirtyPlans :: (MonadAsk' ReactBatch m, AskDirtyPlan m, AlternativeIO m) => m ()
 rerenderDirtyPlans = do
     ref <- untag' @"DirtyPlan" <$> askDirtyPlan
     ds <- liftIO $ atomicModifyIORef' ref $ \ds -> (mempty, ds)
     liftIO $ foldMap prerndr ds >>= liftIO -- possibly async GHCJS
     -- by this time, there is a possibilty that shms were removed,
     -- only only batch shms that are still valid
-    btch <- askReactBatch
+    btch <- askEnviron' @ReactBatch
     liftIO $ foldMap (batchWid btch) ds >>= liftIO -- possibly async GHCJS
     -- now run the batch tell react to use the prerendered frames
     liftIO $ runReactBatch btch
