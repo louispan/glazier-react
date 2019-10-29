@@ -1,17 +1,22 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralisedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
 module Glazier.React.ReactPath where
 
 import qualified Data.JSString as J
+import Data.String
 import qualified GHC.Generics as G
 import JavaScript.Extras.Aeson.Instances ()
+
+default (J.JSString)
 
 -- data ReactPathFocus = NewReactPath | CurrentReactPath
 --     deriving (G.Generic, Read, Show, Eq, Ord)
@@ -33,7 +38,7 @@ reactPathStr :: ReactPath -> J.JSString
 reactPathStr rp =
     let xs = getReactPath rp
         xs' = (\(n, i) -> n <> "-" <> fromString (show i)) <$> xs
-    in fold $ intersperse "." xs
+    in J.intercalate "." xs'
 
 getReactPath :: ReactPath -> [(J.JSString, Int)]
 getReactPath (ReactPath (Nothing, xs)) = xs

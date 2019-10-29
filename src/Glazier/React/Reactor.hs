@@ -49,38 +49,35 @@ import System.Mem.Weak
 
 type AskScratch = MonadAsk' (Tagged "Scratch" JE.Object)
 askScratch :: AskScratch m => m JE.Object
-askScratch = askEnvironTag @"Scratch" @JE.Object
+askScratch = askEnvironTagged @"Scratch" @JE.Object
 localScratch :: AskScratch m => (JE.Object -> JE.Object) -> m a -> m a
-localScratch = localEnvironTag @"Scratch" @JE.Object
+localScratch = localEnvironTagged @"Scratch" @JE.Object
 
-scratchAccessor :: J.JSString -> J.JSString
-scratchAccessor n = "$" <> (fromString $ show $ unReactId i) <> "_" <> n
+-- deleteScratch :: (MonadIO m, AskScratch m) => J.JSString -> m ()
+-- deleteScratch n = do
+--     d <- askScratch
+--     liftIO $ d `JE.deleteProperty` n
 
-deleteScratch :: (MonadIO m, AskScratch m) => J.JSString -> m ()
-deleteScratch n = do
-    d <- askScratch
-    liftIO $ d `JE.deleteProperty` (scratchAccessor n)
+-- setScratch :: (MonadIO m, AskScratch m, JE.ToJS a) => J.JSString -> a -> m ()
+-- setScratch n v = do
+--     d <- askScratch
+--     liftIO $ d `JE.setProperty` (n, JE.toJS v)
 
-setScratch :: (MonadIO m, AskScratch m, JE.ToJS a) => J.JSString -> a -> m ()
-setScratch n v = do
-    d <- askScratch
-    liftIO $ d `JE.setProperty` (scratchAccessor n, JE.toJS v)
+-- getScratch :: (MonadIO m, AskScratch m) => J.JSString -> m J.JSVal
+-- getScratch n = do
+--     d <- askScratch
+--     liftIO $ d `JE.getProperty` n
 
-getScratch :: (MonadIO m, AskScratch m) => J.JSString -> m J.JSVal
-getScratch n = do
-    d <- askScratch
-    liftIO $ d `JE.getProperty` (scratchAccessor n)
-
-scratchXTimes :: (MonadIO m, AskScratch m) => Int -> J.JSString -> m () -> m ()
-scratchXTimes maxTimes n m = do
-    d <- JE.fromJS @Int <$> getScratch n
-    let (x', m') = case (d, maxTimes) of
-            (_, x) | x <= 0         -> (0, pure ())
-            (Nothing, _)            -> (1, m)
-            (Just y, x) | y < x     -> (y + 1, m)
-            _                       -> (maxTimes, pure ())
-    setScratch n x'
-    m'
+-- scratchXTimes :: (MonadIO m, AskScratch m) => Int -> J.JSString -> m () -> m ()
+-- scratchXTimes maxTimes n m = do
+--     d <- JE.fromJS @Int <$> getScratch n
+--     let (x', m') = case (d, maxTimes) of
+--             (_, x) | x <= 0         -> (0, pure ())
+--             (Nothing, _)            -> (1, m)
+--             (Just y, x) | y < x     -> (y + 1, m)
+--             _                       -> (maxTimes, pure ())
+--     setScratch n x'
+--     m'
 
 type AskConstructor m = MonadObserver' (Tagged "Constructor" (Command m)) m
 askConstructor :: forall m. AskConstructor m => m (Command m -> m ())
