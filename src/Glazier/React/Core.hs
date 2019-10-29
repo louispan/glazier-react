@@ -260,12 +260,10 @@ mkListener f = do
     plnWkRef <- askPlanWeakRef
     delegatify $ exec' . MkListener plnWkRef f
 
--- | Make a handler that should be registered with "onMount" so it only get called once.
--- When called, it will add a listener with an event target,
--- and automatically removes it on widget destruction
+-- | Add a listener with an event target, and automatically removes it on widget destruction
 listenEventTarget :: (NFData a, MonadWidget' m, IEventTarget j)
-    => j -> J.JSString -> (J.JSVal -> MaybeT IO a) -> (a -> m ()) -> m Handler
-listenEventTarget j n goStrict goLazy = mkHandler (const $ pure ()) $ const $ do
+    => j -> J.JSString -> (J.JSVal -> MaybeT IO a) -> (a -> m ()) -> m ()
+listenEventTarget j n goStrict goLazy = do
     hdl <- mkHandler goStrict goLazy
     cb <- mkListener hdl
     liftIO $ addEventListener j n cb
