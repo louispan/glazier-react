@@ -33,6 +33,7 @@ import Control.Monad.State.Strict
 import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Identity
 import Control.Monad.Trans.Maybe
+import Data.String
 import Data.Tagged.Extras
 import Glazier.Command
 
@@ -137,3 +138,10 @@ instance AlternativeIO m => ZoomModel (ModelT s m) (ModelT t m) s t where
                             put $ w s' t
                             pure a
 
+-- | This instance allows using "plain string" in 'txt', and in props for 'lf', and 'bh'
+-- when using @OverloadedString@ with @ExtendedDefaultRules@
+instance {-# OVERLAPPABLE #-} (Applicative m, IsString a) => IsString (ModelT s m a) where
+    fromString = pure . fromString
+
+-- instance {-# OVERLAPPABLE #-} (Applicative m, IsString a) => IsString (GadgetT m (Maybe a)) where
+--     fromString = pure . Just . fromString
