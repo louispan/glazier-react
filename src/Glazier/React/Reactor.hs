@@ -45,9 +45,9 @@ import System.Mem.Weak
 
 type AskScratch = MonadAsk' (Tagged "Scratch" JE.Object)
 askScratch :: AskScratch m => m JE.Object
-askScratch = askEnvironTagged @"Scratch" @JE.Object
+askScratch = askTagged @"Scratch" @JE.Object
 localScratch :: AskScratch m => (JE.Object -> JE.Object) -> m a -> m a
-localScratch = localEnvironTagged @"Scratch" @JE.Object
+localScratch = localTagged @"Scratch" @JE.Object
 
 type Reactor' c =
     ReaderT (Tagged "Scratch" JE.Object) -- 'AskScratch'

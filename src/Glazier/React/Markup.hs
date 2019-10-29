@@ -34,14 +34,14 @@ import qualified Glazier.React.ReactElement as Z
 
 type AskMarkup = MonadAsk' (DL.DList ReactMarkup)
 askMarkup :: AskMarkup m => m (DL.DList ReactMarkup)
-askMarkup = askEnviron' @(DL.DList ReactMarkup)
+askMarkup = askEnv' @(DL.DList ReactMarkup)
 
 type PutMarkup = MonadPut' (DL.DList ReactMarkup)
 putMarkup :: PutMarkup m => DL.DList ReactMarkup -> m ()
-putMarkup = putEnviron' @(DL.DList ReactMarkup)
+putMarkup = putEnv' @(DL.DList ReactMarkup)
 
 modifyMarkup :: PutMarkup m => (DL.DList ReactMarkup -> DL.DList ReactMarkup) -> m ()
-modifyMarkup = modifyEnviron' @(DL.DList ReactMarkup)
+modifyMarkup = modifyEnv' @(DL.DList ReactMarkup)
 
 appendMarkup :: PutMarkup m => DL.DList ReactMarkup -> m ()
 appendMarkup a = modifyMarkup (*> a)

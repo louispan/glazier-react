@@ -36,14 +36,14 @@ function hgr$objectWithoutProperties(obj, keys) {
 var hgr$ShimComponent_ = null;
 // ShimComponent_ hides all React lifecycle and expose them as simple properties
 // "onRendered" is called with the ref to the real DOM element whenever react rerenders (even the initial rerender)
-// "onConstructor" is called with the ref to the real DOM element on the initial rerender, before the "rendered" callback.
-// "onDestructor" is called with the ref to the real DOM element on the initial rerender, before the "rendered" callback.
+// "onConstruct" is called with the ref to the real DOM element on the initial rerender, before the "rendered" callback.
+// "onDestruct" is called with the ref to the real DOM element on the initial rerender, before the "rendered" callback.
 function hgr$ShimComponent() {
     if (!hgr$ShimComponent_) {
         const ReactPureComponent = hgr$React()["PureComponent"];
         class ShimComponent extends ReactPureComponent {
             static CustomProperties() {
-                return ["onRendered", "onConstructor", "onDestructor"];
+                return ["onRendered", "onConstruct", "onDestruct"];
             }
 
             getRef() {
@@ -63,8 +63,8 @@ function hgr$ShimComponent() {
                 // ref is called before componentDidMount
                 // if and only if component got rendered
                 // so this.ref may be null
-                if (this.props['onConstructor'])
-                    this.props['onConstructor'](this.getRef());
+                if (this.props['onConstruct'])
+                    this.props['onConstruct'](this.getRef());
             }
 
             componentDidUpdate(prevProps, prevState) {
@@ -75,8 +75,8 @@ function hgr$ShimComponent() {
             }
 
             componentWillUnmount() {
-                if (this.props['onDestructor'])
-                    this.props['onDestructor'](this.getRef());
+                if (this.props['onDestruct'])
+                    this.props['onDestruct'](this.getRef());
             }
         }
         hgr$ShimComponent_ = ShimComponent;

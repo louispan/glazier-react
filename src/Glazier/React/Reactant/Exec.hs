@@ -93,7 +93,7 @@ makeLenses_ ''LogConfig
 
 type AskLogConfigRef = MonadAsk' (IORef LogConfig)
 askLogConfigRef :: AskLogConfigRef m => m (IORef LogConfig)
-askLogConfigRef = askEnviron' @(IORef LogConfig)
+askLogConfigRef = askEnv' @(IORef LogConfig)
 
 -- | returns io actions that will always have latest log state for the logname
 getLogConfig :: (MonadIO m, AskLogConfigRef m)=> LogName -> m (IO (Maybe LogLevel), IO (Maybe (Maybe LogCallStackDepth)))
@@ -123,7 +123,7 @@ getLogConfig logname = do
 
 type AskNextReactIdRef = MonadAsk' (IORef (Tagged "NextReactId" ReactId))
 askNextReactIdRef :: AskNextReactIdRef m => m (IORef (Tagged "NextReactId" ReactId))
-askNextReactIdRef = askEnviron' @(IORef (Tagged "NextReactId" ReactId))
+askNextReactIdRef = askEnv' @(IORef (Tagged "NextReactId" ReactId))
 
 execMkReactId :: (MonadIO m, AskNextReactIdRef m) => m ReactId
 execMkReactId = do
@@ -136,7 +136,7 @@ execMkReactId = do
 
 type AskDirtyPlan = MonadAsk' (Tagged "DirtyPlan" (IORef (M.Map ReactId (Weak (IORef Plan)))))
 askDirtyPlan :: AskDirtyPlan m => m (Tagged "DirtyPlan" (IORef (M.Map ReactId (Weak (IORef Plan)))))
-askDirtyPlan = askEnviron' @(Tagged "DirtyPlan" (IORef (M.Map ReactId (Weak (IORef Plan)))))
+askDirtyPlan = askEnv' @(Tagged "DirtyPlan" (IORef (M.Map ReactId (Weak (IORef Plan)))))
 
 rerenderDirtyPlans :: (MonadAsk' ReactBatch m, AskDirtyPlan m, AlternativeIO m) => m ()
 rerenderDirtyPlans = do
@@ -145,7 +145,7 @@ rerenderDirtyPlans = do
     liftIO $ foldMap prerndr ds >>= liftIO -- possibly async GHCJS
     -- by this time, there is a possibilty that shms were removed,
     -- only only batch shms that are still valid
-    btch <- askEnviron' @ReactBatch
+    btch <- askEnv' @ReactBatch
     liftIO $ foldMap (batchWid btch) ds >>= liftIO -- possibly async GHCJS
     -- now run the batch tell react to use the prerendered frames
     liftIO $ runReactBatch btch

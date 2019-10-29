@@ -84,7 +84,7 @@ import System.Mem.Weak
 
 logPrefix :: MonadGadget' m => m J.JSString
 logPrefix = do
-    ps <- getReactPath <$> askEnviron' @ReactPath
+    ps <- getReactPath <$> askEnv' @ReactPath
     let xs = L.intersperse "." $ (\(n, i) -> n <> (fromString $ show i)) <$> ps
     pure (foldr (<>) "" xs)
 
@@ -93,7 +93,7 @@ logJS :: (HasCallStack, MonadGadget' m)
     -> m ()
 logJS lvl msg = withFrozenCallStack $ do
     p <- logPrefix
-    n <- untag' @"LogName" <$> askEnviron' @LogName
+    n <- untag' @"LogName" <$> askEnv' @LogName
     logLine basicLogCallStackDepth lvl $ (\x -> n <> "<" <> p <> "> " <> x) <$> msg
 
 ------------------------------------------------------
@@ -260,12 +260,12 @@ listenEventTarget :: (NFData a, MonadGadget' m, IEventTarget j)
 listenEventTarget j n goStrict goLazy = do
         hdl <- mkHandler goStrict goLazy
         cb <- mkListener hdl
-        pure [("constructor", onConstructor cb ), ("destructor", onDestructor cb)]
+        pure [("onConstruct", onConstruct cb ), ("onDestruct", onDestruct cb)]
   where
-    onConstructor cb = mkHandler (const $ pure ()) $ const $ do
+    onConstruct cb = mkHandler (const $ pure ()) $ const $ do
         liftIO $ addEventListener j n cb
 
-    onDestructor cb = mkHandler (const $ pure ()) $ const $ do
+    onDestruct cb = mkHandler (const $ pure ()) $ const $ do
         liftIO $ removeEventListener j n cb
 
 -- | Orphan instance because it requires AsReactant
@@ -338,7 +338,7 @@ lf :: (Component j, MonadWidget s m)
     -> DL.DList (J.JSString, Gizmo s m J.JSVal)
     -> m ()
 lf j gads props = do
-    modifyEnviron' $ nextReactPath (componentName j)
+    modifyEnv' $ nextReactPath (componentName j)
     (props', gads') <- fromModelT $ do
         props' <- runProps (DL.toList props)
         gads' <- runGads (DL.toList gads)
@@ -359,12 +359,12 @@ bh :: (Component j, MonadWidget s m)
     -> m a
     -> m a
 bh j gads props child = do
-    modifyEnviron' $ nextReactPath (componentName j)
+    modifyEnv' $ nextReactPath (componentName j)
     (props', gads') <- fromModelT $ do
         props' <- runProps (DL.toList props)
         gads' <- runGads (DL.toList gads)
         pure (props', gads')
-    localEnviron' pushReactPath $ do
+    localEnv' pushReactPath $ do
         let elemMarkup = branchMarkup (JE.toJS j) (DL.fromList (props' <> gads')) child
             basicMarkup = branchMarkup (JE.toJS elementComponent)
                 (DL.fromList (("elementName", JE.toJS $ componentName j) : props')) child
