@@ -33,7 +33,6 @@ module Glazier.React.Core
     , handleSyntheticEvent
     , mkListener
     , listenEventTarget
-    , Gizmo
     , txt
     , classNames
     , lf
@@ -68,7 +67,6 @@ import Glazier.Logger
 import Glazier.React.Common
 import Glazier.React.Component
 import Glazier.React.Core.Internal
-import Glazier.React.Gadget
 import Glazier.React.Markup
 import Glazier.React.Model
 import Glazier.React.Obj.Internal
@@ -236,17 +234,17 @@ notifyDirty = do
 mkHandler ::
     (NFData a, MonadGadget' m)
     => (J.JSVal -> MaybeT IO a)
-    -> (a -> GadgetT m ())
+    -> (a -> m ())
     -> m Handler -- (preprocess, postprocess)
 mkHandler goStrict f = do
     plnWkRef <- askPlanWeakRef
-    f' <- codify (runGadgetT . f)
+    f' <- codify f
     delegatify $ exec' . MkHandler plnWkRef goStrict f'
 
 mkHandler' ::
     (NFData a, MonadGadget' m)
     => (SyntheticEvent -> MaybeT IO a)
-    -> (a -> GadgetT m ())
+    -> (a -> m ())
     -> m Handler
 mkHandler' goStrict goLazy = mkHandler (handleSyntheticEvent goStrict) goLazy
 
@@ -266,9 +264,9 @@ mkListener f = do
 -- When called, it will add a listener with an event target,
 -- and automatically removes it on widget destruction
 listenEventTarget :: (NFData a, MonadWidget' m, IEventTarget j)
-    => j -> J.JSString -> (J.JSVal -> MaybeT IO a) -> (a -> GadgetT m ()) -> m Handler
+    => j -> J.JSString -> (J.JSVal -> MaybeT IO a) -> (a -> m ()) -> m Handler
 listenEventTarget j n goStrict goLazy = mkHandler (const $ pure ()) $ const $ do
-    hdl <- mkHandler goStrict (lift . goLazy)
+    hdl <- mkHandler goStrict goLazy
     cb <- mkListener hdl
     liftIO $ addEventListener j n cb
     onDestruct $ liftIO $ removeEventListener j n cb
@@ -290,21 +288,17 @@ listenEventTarget j n goStrict goLazy = mkHandler (const $ pure ()) $ const $ do
 
 ----------------------------------------------------------------------------------
 
--- | A 'MonadModel' and 'MonadGadget' (but not 'MonadWidget') that may
--- possible fail with 'Alternative'.
-type Gizmo s m a = GadgetT (ModelT s m) a
-
 -- | Possibly write some text, otherwise do nothing
-txt :: MonadWidget s m => Gizmo s m J.JSString -> m ()
+txt :: MonadWidget s m => ModelT s m J.JSString -> m ()
 txt m = (`also` pure ()) $ do -- catch failure with `also` so we can continue
-            t <- fromModelT . runGadgetT $ m
+            t <- fromModelT m
             textMarkup t
 
 -- | Creates a JSVal for "className" property from a list of (JSString, Bool)
 -- Idea from https://github.com/JedWatson/classnames
 -- Any 'Alternative' failures to produce 'Bool' is dropped, and does not affect
 -- the rest of the list.
-classNames :: MonadGadget' m => [(J.JSString, Gizmo s m Bool)] -> Gizmo s m J.JSVal
+classNames :: MonadGadget' m => [(J.JSString, ModelT s m Bool)] -> ModelT s m J.JSVal
 classNames xs = do
     xs' <- filterM (go . snd) xs
     pure . JE.toJS . J.unwords . fmap fst $ xs'
@@ -312,16 +306,16 @@ classNames xs = do
     go m = m `also` pure False
 
 runProps :: MonadGadget' m
-    => [(J.JSString, Gizmo s m J.JSVal)]
+    => [(J.JSString, ModelT s m J.JSVal)]
     -> ModelT s m [(J.JSString, J.JSVal)]
 runProps props = concat <$> traverse f props
   where
     -- emit empty list of a prop fails
-    f :: MonadGadget' m => (J.JSString, Gizmo s m J.JSVal) -> ModelT s m [(J.JSString, J.JSVal)]
-    f (n, m) = (`also` pure []) $ (\v -> [(n, v)]) <$> runGadgetT m
+    f :: MonadGadget' m => (J.JSString, ModelT s m J.JSVal) -> ModelT s m [(J.JSString, J.JSVal)]
+    f (n, m) = (`also` pure []) $ (\v -> [(n, v)]) <$> m
 
 runGads :: MonadGadget' m
-    => [(J.JSString, GadgetT m Handler)]
+    => [(J.JSString, m Handler)]
     -> m [(J.JSString, J.JSVal)]
 runGads gads = do
     gads' <- concat <$> traverse f gads -- :: m [(JString, Handler)]
@@ -334,13 +328,13 @@ runGads gads = do
     traverse (traverse g) (M.toList gads''')
   where
     -- emit empty list of a prop fails
-    f :: MonadGadget' m => (J.JSString, GadgetT m Handler) -> m [(J.JSString, Handler)]
-    f (n, m) = (`also` pure []) $ (\v -> [(n, v)]) <$> runGadgetT m
+    f :: MonadGadget' m => (J.JSString, m Handler) -> m [(J.JSString, Handler)]
+    f (n, m) = (`also` pure []) $ (\v -> [(n, v)]) <$> m
 
 lf :: (Component j, MonadWidget s m)
     => j -- ^ "input" or a @ReactComponent@
-    -> DL.DList (J.JSString, Gizmo s m Handler)
-    -> DL.DList (J.JSString, Gizmo s m J.JSVal)
+    -> DL.DList (J.JSString, ModelT s m Handler)
+    -> DL.DList (J.JSString, ModelT s m J.JSVal)
     -> m ()
 lf j gads props = do
     modifyEnv' $ nextReactPath (componentName j)
@@ -359,8 +353,8 @@ lf j gads props = do
 
 bh :: (Component j, MonadWidget s m)
     => j-- ^ eg "div" or a @ReactComponent@
-    -> DL.DList (J.JSString, Gizmo s m Handler)
-    -> DL.DList (J.JSString, Gizmo s m J.JSVal)
+    -> DL.DList (J.JSString, ModelT s m Handler)
+    -> DL.DList (J.JSString, ModelT s m J.JSVal)
     -> m a
     -> m a
 bh j gads props child = do

@@ -4,7 +4,6 @@ module Glazier.React
     , module Glazier.React.Component
     , module Glazier.React.ReactDOM
     , module Glazier.React.Model
-    , module Glazier.React.Gadget
     , module Glazier.React.Obj
     , module Glazier.React.Common
     , module Glazier.React.ReactId
@@ -57,7 +56,6 @@ import Glazier.Logger
 import Glazier.React.Common
 import Glazier.React.Component
 import Glazier.React.Core
-import Glazier.React.Gadget
 import Glazier.React.Model
 import Glazier.React.Obj
 import Glazier.React.Plan

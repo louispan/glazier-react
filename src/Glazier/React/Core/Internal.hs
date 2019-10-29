@@ -26,7 +26,6 @@ import Data.Tagged.Extras
 import Glazier.Command
 import Glazier.Logger
 import Glazier.React.Common
-import Glazier.React.Gadget.Internal
 import Glazier.React.Markup
 import Glazier.React.Model
 import Glazier.React.Obj.Internal
@@ -56,7 +55,7 @@ class (CmdReactant (Command m)
         ) => MonadGadget' m where
 
     -- | Run a gadget action on an @Obj t@
-    shall :: Obj s -> GadgetT (ModelT s m) a -> m a
+    shall :: Obj s -> ModelT s m a -> m a
 
 infixl 2 `shall` -- lower than <|>
 
@@ -83,7 +82,7 @@ modelStateWith mdlWkVar = ModifyModel $ \m -> do
                     pure (Just a)
 
 instance (CmdReactant c, c ~ Command (Reactor c)) => MonadGadget' (Reactor c) where
-    shall (Obj plnRef plnWkRef _ notifierWkRef mdlVar mdlWkVar) (GadgetT m) = do
+    shall (Obj plnRef plnWkRef _ notifierWkRef mdlVar mdlWkVar) m = do
         mdl <- liftIO $ readMVar mdlVar
         sch <- liftIO $ scratch <$> readIORef plnRef
 
@@ -103,28 +102,25 @@ instance (CmdReactant c, c ~ Command (Reactor c)) => MonadGadget' (Reactor c) wh
          $ m'
 
 instance (MonadGadget' m) => MonadGadget' (ModelT s m) where
-    obj `shall` (GadgetT m) = do
+    obj `shall` m = do
         f <- askModelEnviron
         -- unwrap the ReaderT layers of this instance's ModelT
         -- m :: ModelT t (ModelT s m)
         -- m' :: ModelT t m
         let m' = hoist (`runModelT` f) m
             -- m'' :: m
-            m'' = obj `shall` GadgetT m'
+            m'' = obj `shall` m'
         lift m'' -- lift into ModelT
 
 instance (MonadGadget' m) => MonadGadget' (IdentityT m) where
-    obj `shall` (GadgetT m) = IdentityT $ obj `shall` GadgetT (hoist runIdentityT m)
+    obj `shall` m = IdentityT $ obj `shall` (hoist runIdentityT m)
 
 
 instance (MonadGadget' m) => MonadGadget' (ReaderT r m) where
-    obj `shall` (GadgetT m) = do
+    obj `shall` m = do
         r <- ask
-        lift $ obj `shall` GadgetT (hoist (`runReaderT` r) m)
+        lift $ obj `shall` (hoist (`runReaderT` r) m)
 
-
-instance (MonadGadget' m) => MonadGadget' (GadgetT m) where
-    obj `shall` (GadgetT m) = GadgetT $ obj `shall` GadgetT (hoist runGadgetT m)
 
 type MonadGadget s m = (MonadGadget' m, MonadModel s m)
 
@@ -134,8 +130,6 @@ type MonadGadget s m = (MonadGadget' m, MonadModel s m)
 
 -- | A 'MonadWidget'' is a 'MonadGadget'' that additionally can generate 'Markup'
 -- and so should not be be for event handling.
--- Use 'GadgetT' (which is *not* an instance of 'MonadWidget')in function arguments to
--- prevent accidental use of 'MonadWidget'
 class (CmdReactant (Command m)
     , MonadGadget' m
     , PutMarkup m
