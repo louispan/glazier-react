@@ -16,6 +16,7 @@ import Control.Monad.Cont
 import Control.Monad.Delegate
 import Control.Monad.Environ
 import Control.Monad.Morph
+import Control.Monad.Observer
 import Data.String
 import Glazier.Command
 
@@ -41,9 +42,13 @@ newtype GadgetT m a = GadgetT (m a)
     , MonadAsk p r
     )
 
+instance (Monad m, MonadObserver p a m) => MonadObserver p a (GadgetT m) where
+    askObserver p = GadgetT $ (GadgetT .) <$> askObserver p
+
 runGadgetT :: GadgetT m a -> m a
 runGadgetT (GadgetT m) = m
 
+-- FIXME: Remove this for safety!
 instance MonadTrans GadgetT where
     lift = GadgetT
 

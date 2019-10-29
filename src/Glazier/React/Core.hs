@@ -14,6 +14,7 @@ module Glazier.React.Core
     , logPrefix
     , logJS
     , mkReactId
+    , onDestruct
     , mkObj
     , mkObj2
     , mkLinkedObj
@@ -99,6 +100,14 @@ logJS lvl msg = withFrozenCallStack $ do
 ------------------------------------------------------
 -- Basic
 ------------------------------------------------------
+
+-- | Register the given monad to be evaluated at destruction time of the PlanRef of this widget.
+-- This action is done every time, so if want to register something once, only call this once
+onDestruct :: MonadGadget' m => m () -> m ()
+onDestruct m = do
+    plnWkRef <- askPlanWeakRef
+    c <- codify' m
+    exec' $ RegisterDestructor plnWkRef c
 
 -- | 'mkObj'' that also handles the @a@ for 'Widget's that return an @a@
 mkObj2 :: MonadGadget' m => Widget t (Command m) a -> LogName -> t -> m (Either a (Obj t))
@@ -230,9 +239,9 @@ mkHandler ::
     -> (a -> GadgetT m ())
     -> m Handler -- (preprocess, postprocess)
 mkHandler goStrict f = do
-    plnRef <- askPlanWeakRef
+    plnWkRef <- askPlanWeakRef
     f' <- codify (runGadgetT . f)
-    delegatify $ exec' . MkHandler plnRef goStrict f'
+    delegatify $ exec' . MkHandler plnWkRef goStrict f'
 
 mkHandler' ::
     (NFData a, MonadGadget' m)
@@ -250,23 +259,19 @@ mkListener ::
     => Handler
     -> m Listener
 mkListener f = do
-    plnRef <- askPlanWeakRef
-    delegatify $ exec' . MkListener plnRef f
+    plnWkRef <- askPlanWeakRef
+    delegatify $ exec' . MkListener plnWkRef f
 
--- | Add a listener with an event target, and automatically removes it on widget destruction
--- This only does something during initialization
-listenEventTarget :: (NFData a, MonadGadget' m, IEventTarget j)
-    => j -> J.JSString -> (J.JSVal -> MaybeT IO a) -> (a -> GadgetT m ()) -> m (DL.DList (J.JSString, m Handler))
-listenEventTarget j n goStrict goLazy = do
-        hdl <- mkHandler goStrict goLazy
-        cb <- mkListener hdl
-        pure [("onConstruct", onConstruct cb ), ("onDestruct", onDestruct cb)]
-  where
-    onConstruct cb = mkHandler (const $ pure ()) $ const $ do
-        liftIO $ addEventListener j n cb
-
-    onDestruct cb = mkHandler (const $ pure ()) $ const $ do
-        liftIO $ removeEventListener j n cb
+-- | Make a handler that should be registered with "onMount" so it only get called once.
+-- When called, it will add a listener with an event target,
+-- and automatically removes it on widget destruction
+listenEventTarget :: (NFData a, MonadWidget' m, IEventTarget j)
+    => j -> J.JSString -> (J.JSVal -> MaybeT IO a) -> (a -> GadgetT m ()) -> m Handler
+listenEventTarget j n goStrict goLazy = mkHandler (const $ pure ()) $ const $ do
+    hdl <- mkHandler goStrict (lift . goLazy)
+    cb <- mkListener hdl
+    liftIO $ addEventListener j n cb
+    onDestruct $ liftIO $ removeEventListener j n cb
 
 -- | Orphan instance because it requires AsReactant
 -- LOUISFIXME: Think about this, use ReaderT (s -> Either e Obj s)?

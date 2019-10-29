@@ -27,6 +27,7 @@ import Control.Monad.Cont
 import Control.Monad.Delegate
 import Control.Monad.Environ
 import Control.Monad.Morph
+import Control.Monad.Observer
 import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Extras
@@ -91,8 +92,12 @@ instance MonadTrans (ModelT s) where
 
 instance MFunctor (ModelT s) where
     hoist nat (ModelT m) = ModelT (hoist nat m)
+
 deriving via (IdentityT (ModelT' s m)) instance MonadAsk p r m => MonadAsk p r (ModelT s m)
 deriving via (IdentityT (ModelT' s m)) instance MonadPut p t m => MonadPut p t (ModelT s m)
+
+instance (Monad m, MonadObserver p a m) => MonadObserver p a (ModelT s m) where
+    askObserver p = lift $ (lift .) <$> askObserver p
 
 runModelT :: ModelT s m a -> (Maybe s, IO (Maybe s), ModifyModel s) -> m a
 runModelT (ModelT m) t = runReaderT m $ Tagged @"Model" t

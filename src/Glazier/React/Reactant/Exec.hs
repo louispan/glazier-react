@@ -284,6 +284,7 @@ mkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar) = d
         logDepth'
         o
         Nothing -- widgetRef
+        mempty -- destructor
         J.nullRef -- prerendered, null for now
         mempty -- prerender
         RerenderRequired -- prerendered is null
@@ -303,6 +304,7 @@ mkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar) = d
         (`evalMaybeT` ()) $ do
             notifierRef <- guardJustIO $ deRefWeak notifierWkRef
             liftIO $ atomicModifyIORef_' notifierRef (_watchers.at i .~ Nothing)
+        destructor pln
         releasePlanCallbacks pln
 
     -- Now we have enough to run the widget
@@ -325,7 +327,6 @@ mkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar) = d
                     ml <- askMarkup
                     setPrerendered plnWkRef ml
 
-        -- mkRerenderCmds :: (c -> m ()) -> IO (DL.DList c)
         mkRerenderCmds = (`evalMaybeT` mempty) $ do
             -- get the latest state from the weak ref
             mdlVar' <- guardJustIO $ deRefWeak mdlWkVar
@@ -344,7 +345,7 @@ mkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar) = d
                 . runReactor
                 . (`runModelT` (Just mdl, readModelWith mdlWkVar, modelStateWith mdlWkVar))
                 $ wid'
-        -- prerndr :: (c -> m ()) -> IO ()
+
         prerndr = do
             c <- (commands . DL.toList) <$> mkRerenderCmds
             u $ executor c
@@ -406,6 +407,15 @@ mkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar) = d
 --     mdlVar <- guardJustIO $ deRefWeak mdlWk
 --     c <- liftIO $ modifyMVar mdlVar (pure . swap . runState tick)
 --     executor c
+
+execRegisterDestructor :: (MonadIO m, MonadUnliftIO m) => (c -> m ()) -> Weak (IORef Plan) -> c -> m ()
+execRegisterDestructor executor plnWkRef c = do
+    plnRef <- liftIO $ deRefWeak plnWkRef
+    case plnRef of
+        Nothing -> pure ()
+        Just plnRef' -> do
+            UnliftIO u <- askUnliftIO
+            liftIO $ atomicModifyIORef_' plnRef' $ _destructor %~ (<> (u $ executor c))
 
 execNotifyDirty ::
     (AlternativeIO m, AskDirtyPlan m)

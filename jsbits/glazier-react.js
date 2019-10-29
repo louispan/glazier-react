@@ -35,15 +35,19 @@ function hgr$objectWithoutProperties(obj, keys) {
 
 var hgr$ShimComponent_ = null;
 // ShimComponent_ hides all React lifecycle and expose them as simple properties
-// "onRendered" is called with the ref to the real DOM element whenever react rerenders (even the initial rerender)
-// "onConstruct" is called with the ref to the real DOM element on the initial rerender, before the "rendered" callback.
-// "onDestruct" is called with the ref to the real DOM element on the initial rerender, before the "rendered" callback.
+// "onMount" is called with the ref to the real DOM element during
+// the React componentDidMount callback
+// "onRendered" is called with the ref to the real DOM element whenever
+// during thre React componentDidUpdate callback,
+// and also just after "onMount" callback.
+// "onUnmount" is called with the ref to the real DOM element during
+// the React componentWillUnmount callback.
 function hgr$ShimComponent() {
     if (!hgr$ShimComponent_) {
         const ReactPureComponent = hgr$React()["PureComponent"];
         class ShimComponent extends ReactPureComponent {
             static CustomProperties() {
-                return ["onRendered", "onConstruct", "onDestruct"];
+                return ["onRendered", "onMount", "onUnmount"];
             }
 
             getRef() {
@@ -63,8 +67,10 @@ function hgr$ShimComponent() {
                 // ref is called before componentDidMount
                 // if and only if component got rendered
                 // so this.ref may be null
-                if (this.props['onConstruct'])
-                    this.props['onConstruct'](this.getRef());
+                if (this.props['onMount'])
+                    this.props['onMount'](this.getRef());
+                if (this.props['onRendered'])
+                    this.props['onRendered'](this.getRef());
             }
 
             componentDidUpdate(prevProps, prevState) {
@@ -75,8 +81,8 @@ function hgr$ShimComponent() {
             }
 
             componentWillUnmount() {
-                if (this.props['onDestruct'])
-                    this.props['onDestruct'](this.getRef());
+                if (this.props['onUnmount'])
+                    this.props['onUnmount'](this.getRef());
             }
         }
         hgr$ShimComponent_ = ShimComponent;

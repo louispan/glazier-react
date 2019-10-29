@@ -22,7 +22,7 @@ import Control.Monad.Trans.Maybe
 import Data.IORef
 import Data.IORef.Extras
 import qualified Data.JSString as J
-import Data.Tagged
+import Data.Tagged.Extras
 import Glazier.Command
 import Glazier.Logger
 import Glazier.React.Common
@@ -53,7 +53,6 @@ class (CmdReactant (Command m)
         , AskScratch m
         , AskPlanWeakRef m
         , AskNotifierWeakRef m
-        -- , AskModel s m, AskModelWeakVar s m
         ) => MonadGadget' m where
 
     -- | Run a gadget action on an @Obj t@

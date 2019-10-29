@@ -63,6 +63,9 @@ data Plan = Plan
     -- so that react "componentRef.setState()" can be called.
     , widgetRef :: Maybe WidgetRef
 
+    -- | cleanup to call DOM eventTarget.removeEventListener()
+    , destructor :: IO ()
+
     -- The prerendered back buffer
     , prerendered :: J.JSVal
 

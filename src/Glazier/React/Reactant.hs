@@ -60,6 +60,9 @@ data Reactant c where
     -- which is in a positive agument position.
     MkObj :: Widget s c () -> LogName -> (IORef Notifier, Weak (IORef Notifier), MVar s, Weak (MVar s)) -> (Obj s -> c) -> Reactant c
 
+    -- Register an action to be performed at destruction time
+    RegisterDestructor :: Weak (IORef Plan) -> c -> Reactant c
+
     -- Notifies any watchers (from 'readWeakObj')
     -- that the model has changed so that the watchers can rerender.
     -- Any rerendering is batched and might be be done immediately

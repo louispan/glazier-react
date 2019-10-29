@@ -33,6 +33,7 @@ import Control.Monad.Trans.Maybe
 import qualified Data.DList as DL
 import Data.IORef
 import Data.Tagged.Extras
+import qualified GHCJS.Types as J
 import Glazier.Command
 import Glazier.Logger
 import Glazier.React.Common
@@ -48,6 +49,32 @@ askScratch :: AskScratch m => m JE.Object
 askScratch = askTagged @"Scratch" @JE.Object
 localScratch :: AskScratch m => (JE.Object -> JE.Object) -> m a -> m a
 localScratch = localTagged @"Scratch" @JE.Object
+
+deleteScratch :: (MonadIO m, AskScratch m) => J.JSString -> m ()
+deleteScratch n = do
+    d <- askScratch
+    liftIO $ d `JE.deleteProperty` n
+
+setScratch :: (MonadIO m, AskScratch m, JE.ToJS a) => J.JSString -> a -> m ()
+setScratch n v = do
+    d <- askScratch
+    liftIO $ d `JE.setProperty` (n, JE.toJS v)
+
+getScratch :: (MonadIO m, AskScratch m) => J.JSString -> m J.JSVal
+getScratch n = do
+    d <- askScratch
+    liftIO $ d `JE.getProperty` n
+
+scratchTimes :: (MonadIO m, AskScratch m) => Int -> J.JSString -> m () -> m ()
+scratchTimes maxTimes n m = do
+    d <- JE.fromJS @Int <$> getScratch n
+    let (x', m') = case (d, maxTimes) of
+            (_, x) | x <= 0         -> (0, pure ())
+            (Nothing, _)            -> (1, m)
+            (Just y, x) | y < x     -> (y + 1, m)
+            _                       -> (maxTimes, pure ())
+    setScratch n x'
+    m'
 
 type Reactor' c =
     ReaderT (Tagged "Scratch" JE.Object) -- 'AskScratch'
