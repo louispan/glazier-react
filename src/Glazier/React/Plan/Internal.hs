@@ -38,18 +38,14 @@ data WidgetCallbacks = WidgetCallbacks
     { widgetOnRender :: J.Callback (IO J.JSVal)
     -- updates the shimRef
     , widgetOnRef :: Listener
-    -- Run the renderedListener in the plan
-    , widgetOnRendered :: J.Callback (IO ())
-
     } deriving (G.Generic)
 
 makeLenses_ ''WidgetCallbacks
 
 releaseWidgetCallbacks :: WidgetCallbacks -> IO ()
-releaseWidgetCallbacks (WidgetCallbacks a b c) = do
+releaseWidgetCallbacks (WidgetCallbacks a b) = do
     J.releaseCallback a
     J.releaseCallback b
-    J.releaseCallback c
 
 ----------------------------------------------------------------------------------
 
@@ -59,14 +55,17 @@ data Plan = Plan
     , logName :: LogName
     , logLevel :: IO (Maybe LogLevel)
     , logDepth :: IO (Maybe (Maybe LogCallStackDepth))
+
     -- a javascript object to store/set miscellaneous data
     , scratch :: JE.Object
+
     -- a react "ref" to the javascript instance of ReactComponent
     -- so that react "componentRef.setState()" can be called.
     , widgetRef :: Maybe WidgetRef
 
     -- The prerendered back buffer
     , prerendered :: J.JSVal
+
     -- An IO action that will update 'prerendered' with the latest markup using the associated 'Obj s'
     , prerender :: IO ()
 
@@ -75,12 +74,6 @@ data Plan = Plan
 
     -- | notifiers that need to be unsubscribed from, when this is destroyed
     , notifiers :: M.Map ReactId (Weak (IORef Notifier))
-
-    -- Called after every rendered call fromReact
-    , rendered :: IO ()
-
-    -- | cleanup to call DOM eventTarget.removeEventListener()
-    , destructor :: IO ()
 
     , handlers :: [(AnyStableName, Handler)]
 

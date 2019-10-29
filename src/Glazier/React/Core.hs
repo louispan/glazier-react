@@ -255,14 +255,18 @@ mkListener f = do
 
 -- | Add a listener with an event target, and automatically removes it on widget destruction
 -- This only does something during initialization
-listenEventTarget :: (NFData a, MonadWidget' m, IEventTarget j)
-    => j -> J.JSString -> (J.JSVal -> MaybeT IO a) -> (a -> GadgetT m ()) -> m ()
-listenEventTarget j n goStrict goLazy =
-    initConstructor $ do
+listenEventTarget :: (NFData a, MonadGadget' m, IEventTarget j)
+    => j -> J.JSString -> (J.JSVal -> MaybeT IO a) -> (a -> GadgetT m ()) -> m (DL.DList (J.JSString, m Handler))
+listenEventTarget j n goStrict goLazy = do
         hdl <- mkHandler goStrict goLazy
         cb <- mkListener hdl
+        pure [("constructor", onConstructor cb ), ("destructor", onDestructor cb)]
+  where
+    onConstructor cb = mkHandler (const $ pure ()) $ const $ do
         liftIO $ addEventListener j n cb
-        initDestructor $ liftIO $ removeEventListener j n cb
+
+    onDestructor cb = mkHandler (const $ pure ()) $ const $ do
+        liftIO $ removeEventListener j n cb
 
 -- | Orphan instance because it requires AsReactant
 -- LOUISFIXME: Think about this, use ReaderT (s -> Either e Obj s)?
@@ -316,9 +320,13 @@ runGads :: MonadGadget' m
     -> m [(J.JSString, J.JSVal)]
 runGads gads = do
     gads' <- concat <$> traverse f gads -- :: m [(JString, Handler)]
-    let gads'' = M.toList $ M.fromListWith (<>) gads' -- combine same keys together
+    let gads'' = M.fromListWith (<>) gads' -- combine same keys together
+        -- ElementComponent's ref callback is actuall elementRef, so rename ref to elementRef
+        gads''' = case M.lookup "ref" gads'' of
+                    Nothing -> gads''
+                    Just v -> M.insertWith (<>) "elementRef" v gads''
         g = fmap JE.toJS . mkListener -- convert to JS callback
-    traverse (traverse g) gads''
+    traverse (traverse g) (M.toList gads''')
   where
     -- emit empty list of a prop fails
     f :: MonadGadget' m => (J.JSString, GadgetT m Handler) -> m [(J.JSString, Handler)]
@@ -335,6 +343,13 @@ lf j gads props = do
         props' <- runProps (DL.toList props)
         gads' <- runGads (DL.toList gads)
         pure (props', gads')
+    let elemMarkup = leafMarkup (JE.toJS j) (DL.fromList (props' <> gads'))
+        basicMarkup = leafMarkup (JE.toJS elementComponent)
+            (DL.fromList (("elementName", JE.toJS $ componentName j) : props'))
+    case (isStringComponent j, gads') of
+        (True, []) -> basicMarkup
+        _ -> elemMarkup
+
     leafMarkup (JE.toJS j) (DL.fromList (props' <> gads'))
 
 bh :: (Component j, MonadWidget s m)
@@ -350,8 +365,12 @@ bh j gads props child = do
         gads' <- runGads (DL.toList gads)
         pure (props', gads')
     localEnviron' pushReactPath $ do
-         branchMarkup (JE.toJS j) (DL.fromList (props' <> gads'))
-            child
+        let elemMarkup = branchMarkup (JE.toJS j) (DL.fromList (props' <> gads')) child
+            basicMarkup = branchMarkup (JE.toJS elementComponent)
+                (DL.fromList (("elementName", JE.toJS $ componentName j) : props')) child
+        case (isStringComponent j, gads') of
+            (True, []) -> basicMarkup
+            _ -> elemMarkup
 
 displayObj :: MonadWidget' m => Obj t -> m ()
 displayObj (Obj plnRef _ _ _ _ _) = do
@@ -359,7 +378,6 @@ displayObj (Obj plnRef _ _ _ _ _) = do
     let cbs = widgetCallbacks pln
         renderCb = widgetOnRender cbs
         refCb = widgetOnRef cbs
-        renderedCb = widgetOnRendered cbs
         n = logName pln
     -- These are the callbacks on the 'WidgetComponent'
     -- See jsbits/glazier_react.js
@@ -367,7 +385,6 @@ displayObj (Obj plnRef _ _ _ _ _) = do
         [ ("key", JE.toJS $ untag' @"LogName" n)
         , ("render", JE.toJS renderCb)
         , ("ref", JE.toJS refCb)
-        , ("rendered", JE.toJS renderedCb)
         ]
 
 

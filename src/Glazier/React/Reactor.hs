@@ -26,23 +26,19 @@ import Control.Applicative
 import Control.Monad.Cont
 import Control.Monad.Delegate
 import Control.Monad.Environ
-import Control.Monad.Observer
 import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Identity
 import Control.Monad.Trans.Maybe
 import qualified Data.DList as DL
 import Data.IORef
-import Data.String
 import Data.Tagged.Extras
-import qualified GHCJS.Types as J
 import Glazier.Command
 import Glazier.Logger
 import Glazier.React.Common
 import Glazier.React.Markup
 import Glazier.React.Model
 import Glazier.React.Plan
-import Glazier.React.ReactId
 import Glazier.React.ReactPath
 import qualified JavaScript.Extras as JE
 import System.Mem.Weak
@@ -53,77 +49,8 @@ askScratch = askEnvironTagged @"Scratch" @JE.Object
 localScratch :: AskScratch m => (JE.Object -> JE.Object) -> m a -> m a
 localScratch = localEnvironTagged @"Scratch" @JE.Object
 
--- deleteScratch :: (MonadIO m, AskScratch m) => J.JSString -> m ()
--- deleteScratch n = do
---     d <- askScratch
---     liftIO $ d `JE.deleteProperty` n
-
--- setScratch :: (MonadIO m, AskScratch m, JE.ToJS a) => J.JSString -> a -> m ()
--- setScratch n v = do
---     d <- askScratch
---     liftIO $ d `JE.setProperty` (n, JE.toJS v)
-
--- getScratch :: (MonadIO m, AskScratch m) => J.JSString -> m J.JSVal
--- getScratch n = do
---     d <- askScratch
---     liftIO $ d `JE.getProperty` n
-
--- scratchXTimes :: (MonadIO m, AskScratch m) => Int -> J.JSString -> m () -> m ()
--- scratchXTimes maxTimes n m = do
---     d <- JE.fromJS @Int <$> getScratch n
---     let (x', m') = case (d, maxTimes) of
---             (_, x) | x <= 0         -> (0, pure ())
---             (Nothing, _)            -> (1, m)
---             (Just y, x) | y < x     -> (y + 1, m)
---             _                       -> (maxTimes, pure ())
---     setScratch n x'
---     m'
-
-type AskConstructor m = MonadObserver' (Tagged "Constructor" (Command m)) m
-askConstructor :: forall m. AskConstructor m => m (Command m -> m ())
-askConstructor = (. Tagged @"Constructor") <$> askObserver @(Tagged "Constructor" (Command m)) Proxy
-
-type AskDestructor m = MonadObserver' (Tagged "Destructor" (Command m)) m
-askDestructor :: forall m. AskDestructor m => m (Command m -> m ())
-askDestructor = (. Tagged @"Destructor") <$> askObserver @(Tagged "Destructor" (Command m)) Proxy
-
-type AskRendered m = MonadObserver' (Tagged "Rendered" (Command m)) m
-askRendered :: forall m. AskRendered m => m (Command m -> m ())
-askRendered = (. Tagged @"Rendered") <$> askObserver @(Tagged "Rendered" (Command m)) Proxy
-
--- | Register and execute the given monad at construction time.
--- At construction, 'initDestructor' and 'initRendered' may be used.
--- The given monad is only performed at construction of the widget.
--- That is, on subsequent rerendesrs, @initConstructor = const $ pure ()@
--- Do not expect this function to do anything on subsequent rerenders
--- so don't use the function conditionally or inside event handling code.
-initConstructor :: forall m. (AskConstructor m, MonadCodify m) => m () -> m ()
-initConstructor m = do
-    f <- askConstructor
-    c <- codify' m
-    f c
-
--- | Register the given monad to be evaluated at destruction time.
--- The same "construction time only registration caveats" apply as in 'initConstructor'.
-initDestructor :: forall m. (AskDestructor m, MonadCodify m) => m () -> m ()
-initDestructor m = do
-    f <- askDestructor
-    c <- codify' m
-    f c
-
--- | Register the given monad to be evaluated after every rerender, including the first rerender.
--- The same "construction time only registration caveats" apply as in 'initConstructor'.
-initRendered :: forall m. (AskRendered m, MonadCodify m) => m () -> m ()
-initRendered m = do
-    f <- askRendered
-    c <- codify' m
-    f c
-
 type Reactor' c =
-    ObserverT (Tagged "Rendered" c) -- 'AskRendered'
-    (ObserverT (Tagged "Destructor" c) -- 'AskDestructor'
-    (ObserverT (Tagged "Constructor" c) -- 'AskConstructor'
-    (ReaderT (Tagged "Scratch" JE.Object) -- 'AskScratch'
+    ReaderT (Tagged "Scratch" JE.Object) -- 'AskScratch'
     (ReaderT (Weak (IORef Notifier)) -- 'AskNotifierWeakRef'
     (ReaderT (Weak (IORef Plan)) -- 'AskPlanWeakRef', 'AskLogLevel', 'AskLogCallStackDepth', 'AskLogName'
     (MaybeT -- 'Alternative'
@@ -132,7 +59,7 @@ type Reactor' c =
     (StateT ReactPath -- 'PutReactPath', 'AskReactPath'
     (StateT (DL.DList ReactMarkup) -- 'PutMarkup'
     (ProgramT c IO -- 'MonadComand', 'MonadIO'
-    ))))))))))
+    )))))))
 
 type instance Command (Reactor c) = c
 
@@ -163,9 +90,6 @@ newtype Reactor c a = Reactor { runReactor :: Reactor' c a }
     )
 
 deriving via (IdentityT (Reactor' c)) instance (Cmd' IO c, Cmd' [] c) => MonadCodify (Reactor c)
-deriving via (IdentityT (Reactor' c)) instance MonadObserver (Tagged "Constructor" c) (Tagged "Constructor" c) (Reactor c)
-deriving via (IdentityT (Reactor' c)) instance MonadObserver (Tagged "Destructor" c) (Tagged "Destructor" c) (Reactor c)
-deriving via (IdentityT (Reactor' c)) instance MonadObserver (Tagged "Rendered" c) (Tagged "Rendered" c) (Reactor c)
 
 -- | 'Widget' is a concrete transformer stack that is an instance of 'MonadModel'
 -- 'Glazier.React.Rector.Internal.MonadGadget' and 'Glazier.React.Rector.Internal.MonadWidget'

@@ -5,6 +5,8 @@
 
 module Glazier.React.Component.Internal
     ( Component(..)
+    , ElementComponent(..)
+    , elementComponent
     , WidgetComponent(..)
     , widgetComponent
     , WidgetRef(..)
@@ -23,13 +25,25 @@ import qualified JavaScript.Extras as JE
 
 class JE.ToJS j => Component j where
   componentName :: j -> J.JSString
+  isStringComponent :: j -> Bool
 
 -- The componentName is used for making the ReactPath for logging
 instance Component J.JSString where
   componentName = id
+  isStringComponent _ = True
 
-instance Component WidgetComponent where
-  componentName _ = "widget"
+instance Component ElementComponent where
+  componentName _ = "element"
+  isStringComponent _ = False
+
+-- | Returns a reference to the javascript *class* definition of the react component
+newtype ElementComponent = ElementComponent J.JSVal
+    deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
+
+-- | This returns the javascript class definition of WidgetComponent.
+-- There is ever only one WidgetComponent class, so it is purely available
+elementComponent :: ElementComponent
+elementComponent = ElementComponent js_elementComponent
 
 -- | Returns a reference to the javascript *class* definition of the react component
 newtype WidgetComponent = WidgetComponent J.JSVal
@@ -59,6 +73,10 @@ instance JE.FromJS WidgetRef where
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
+  "$r = hgr$ElementComponent();"
+  js_elementComponent :: J.JSVal
+
+foreign import javascript unsafe
   "$r = hgr$WidgetComponent();"
   js_widgetComponent :: J.JSVal
 
@@ -82,6 +100,9 @@ foreign import javascript unsafe
     js_batchWidgetRerender :: ReactBatch -> WidgetRef -> IO ()
 
 #else
+
+js_elementComponent :: J.JSVal
+js_elementComponent = J.nullRef
 
 js_widgetComponent :: J.JSVal
 js_widgetComponent = J.nullRef

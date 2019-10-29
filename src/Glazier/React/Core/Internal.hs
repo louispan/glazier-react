@@ -92,18 +92,12 @@ instance (CmdReactant c, c ~ Command (Reactor c)) => MonadGadget' (Reactor c) wh
         let m' = (`runReaderT` plnWkRef)
                 . (`runReaderT` notifierWkRef)
                 . (`runReaderT` (Tagged @"Scratch" sch))
-                . (`runReaderT` (const $ pure ()))
-                . (`runReaderT` (const $ pure ()))
-                . (`runReaderT` (const $ pure ()))
                 . runReactor
                 . (`runModelT` (Just mdl, readModelWith mdlWkVar, modelStateWith mdlWkVar))
                 $ m
 
         -- lift them into this monad
         Reactor
-         . lift -- AskRendered
-         . lift -- AskDestructor
-         . lift -- AskConstructor
          . lift -- AskScratch
          . lift -- AskNotifierWeakRef
          . lift -- AskPlanWeakRef
@@ -139,18 +133,15 @@ type MonadGadget s m = (MonadGadget' m, MonadModel s m)
 -- MonadWidget
 ------------------------------------------------------
 
--- | A 'MonadWidget'' is a 'MonadGadget'' that additionally have access to
--- 'initConstructor', 'initDestructor', 'initRendered',
--- can generate 'Markup' and so should not be be for event handling, sice those
--- additional effects are ignored inside event handling.
--- 'GadgetT' is *not* an instance of 'MonadWidget'
+-- | A 'MonadWidget'' is a 'MonadGadget'' that additionally can generate 'Markup'
+-- and so should not be be for event handling.
+-- Use 'GadgetT' (which is *not* an instance of 'MonadWidget')in function arguments to
+-- prevent accidental use of 'MonadWidget'
 class (CmdReactant (Command m)
     , MonadGadget' m
     , PutMarkup m
     , MonadPut' ReactPath m
-    , AskConstructor m
-    , AskDestructor m
-    , AskRendered m) => MonadWidget' m
+    ) => MonadWidget' m
 
 instance {-# OVERLAPPABLE #-} (CmdReactant c) => MonadWidget' (Reactor c)
 

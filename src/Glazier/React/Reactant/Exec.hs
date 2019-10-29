@@ -24,7 +24,6 @@ import Control.Lens
 import Control.Lens.Misc
 import Control.Monad.Environ
 import Control.Monad.IO.Unlift
-import Control.Monad.Observer
 import Control.Monad.Reader
 import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Extras
@@ -289,12 +288,9 @@ mkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar) = d
         mempty -- prerender
         RerenderRequired -- prerendered is null
         mempty -- notifiers
-        mempty -- rendered
-        mempty -- destructor
         mempty -- createdHandlers
         mempty -- createdCallbacks
         (WidgetCallbacks
-            (J.Callback J.nullRef)
             (J.Callback J.nullRef)
             (J.Callback J.nullRef))
 
@@ -307,7 +303,6 @@ mkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar) = d
         (`evalMaybeT` ()) $ do
             notifierRef <- guardJustIO $ deRefWeak notifierWkRef
             liftIO $ atomicModifyIORef_' notifierRef (_watchers.at i .~ Nothing)
-        destructor pln
         releasePlanCallbacks pln
 
     -- Now we have enough to run the widget
@@ -331,7 +326,7 @@ mkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar) = d
                     setPrerendered plnWkRef ml
 
         -- mkRerenderCmds :: (c -> m ()) -> IO (DL.DList c)
-        mkRerenderCmds onRendrd' onDestruct' onConstruct' = (`evalMaybeT` mempty) $ do
+        mkRerenderCmds = (`evalMaybeT` mempty) $ do
             -- get the latest state from the weak ref
             mdlVar' <- guardJustIO $ deRefWeak mdlWkVar
             mdl <- liftIO $ readMVar mdlVar'
@@ -346,46 +341,30 @@ mkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar) = d
                 . (`runReaderT` plnWkRef)
                 . (`runReaderT` notifierWkRef)
                 . (`runReaderT` Tagged @"Scratch" o')
-                . (`runObserverT` onConstruct')
-                . (`runObserverT` onDestruct')
-                . (`runObserverT` onRendrd')
                 . runReactor
                 . (`runModelT` (Just mdl, readModelWith mdlWkVar, modelStateWith mdlWkVar))
                 $ wid'
         -- prerndr :: (c -> m ()) -> IO ()
-        prerndr onRendrd' onDestruct' onConstruct' = do
-            c <- (commands . DL.toList) <$> (mkRerenderCmds onRendrd' onDestruct' onConstruct')
+        prerndr = do
+            c <- (commands . DL.toList) <$> mkRerenderCmds
             u $ executor c
-
-        -- onXXXX :: MonadIO m => c -> m ()
-        onConstruct = instruct . untag' @"Constructor"
-        onDestruct c = do
-            plnRef <- guardJustIO $ deRefWeak plnWkRef
-            liftIO $ atomicModifyIORef_' plnRef
-                $ _destructor %~ (<> (u $ executor $ untag' @"Destructor" c))
-        onRendrd c = do
-            plnRef <- guardJustIO $ deRefWeak plnWkRef
-            liftIO $ atomicModifyIORef_' plnRef
-                $ _rendered %~ (<> (u $ executor $ untag' @"Rendered" c))
 
     renderCb <- liftIO . J.syncCallback' $ onRenderCb plnWkRef
     refCb <- liftIO . J.syncCallback1 J.ContinueAsync $ onRefCb plnWkRef
-    renderedCb <- liftIO . J.syncCallback J.ContinueAsync $ onRenderedCb plnWkRef
 
     -- update the plan to include the real WidgetCallbacks and prerender functon
     liftIO $ atomicModifyIORef_' plnRef_ $ \pln ->
         (pln
-            { widgetCallbacks = WidgetCallbacks renderCb refCb renderedCb
-            -- when rerendering, don't do anything during onConstruction calls
-            , prerender = prerndr (const $ pure ()) (const $ pure ()) (const $ pure ())
+            { widgetCallbacks = WidgetCallbacks renderCb refCb
+            , prerender = prerndr
             })
 
     -- link the plan ot the model so it gets notified of mutations
     watchModel (plnRef_, plnWkRef) (notifierRef_, notifierWkRef)
 
-    -- run the prerender function for the first time, allowing onConstruction calls.
+    -- run the prerender function for the first time
     -- This will also initialize the widget, and set the rendered frame in the Plan
-    liftIO $ prerndr onRendrd onDestruct onConstruct
+    liftIO prerndr
 
     -- We do not want explicitly tell React to show the prendered frame right now.
     -- This is the responsiblity of the caller of MkObj
@@ -415,11 +394,6 @@ mkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar) = d
     onRefCb wk j = (`evalMaybeT` ()) $ do
         plnRef <- guardJustIO $ deRefWeak wk
         liftIO $ atomicModifyIORef_' plnRef (_widgetRef .~ JE.fromJS j)
-
-    onRenderedCb :: Weak (IORef Plan) -> IO ()
-    onRenderedCb wk = (`evalMaybeT` ()) $ do
-        plnRef <- guardJustIO $ deRefWeak wk
-        liftIO $ readIORef plnRef >>= rendered
 
 -- execMutate ::
 --     (AlternativeIO m, AskDirtyPlan m)

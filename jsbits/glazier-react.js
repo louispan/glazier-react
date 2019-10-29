@@ -33,17 +33,22 @@ function hgr$objectWithoutProperties(obj, keys) {
     return target;
 }
 
-var hgr$WidgetComponent_ = null;
-function hgr$WidgetComponent() {
-    if (!hgr$WidgetComponent_) {
+var hgr$ShimComponent_ = null;
+// ShimComponent_ hides all React lifecycle and expose them as simple properties
+// "rendered" is called with the ref to the real DOM element whenever react rerenders (even the initial rerender)
+// "constructor" is called with the ref to the real DOM element on the initial rerender, before the "rendered" callback.
+// "destructor" is called with the ref to the real DOM element on the initial rerender, before the "rendered" callback.
+function hgr$ShimComponent() {
+    if (!hgr$ShimComponent_) {
         const ReactPureComponent = hgr$React()["PureComponent"];
+        class ShimComponent extends ReactPureComponent {
+            static CustomProperties() {
+                return ["rendered", "constructor", "destructor"];
+            }
 
-        // The state in the Shim contains
-        //   frame :: A GHCJS.Foreign.Export of the haskell state to render.
-        // Inheriting from Component means every call to this.setState will result in a render.
-        // Inheriting from PureComponet means a shallow comparison will be made.
-        // Protect "PureComponent" from closure compiler because it's not in the official externs.
-        class WidgetComponent extends ReactPureComponent {
+            getRef() {
+                return null;
+            }
 
             constructor(props) {
                 super(props);
@@ -54,14 +59,99 @@ function hgr$WidgetComponent() {
                 this.forceUpdate();
             }
 
+            componentDidMount() {
+                // ref is called before componentDidMount
+                // if and only if component got rendered
+                // so this.ref may be null
+                if (this.props['constructor'])
+                    this.props['constructor'](this.getRef());
+            }
+
             componentDidUpdate(prevProps, prevState) {
                 // componentDidUpdate is not called on initial render.
                 // ignore prevProps, prevState and forward to a custom callback
                 if (this.props['rendered'])
-                    this.props['rendered']();
+                    this.props['rendered'](this.getRef());
+            }
+
+            componentWillUnmount() {
+                if (this.props['destructor'])
+                    this.props['destructor'](this.getRef());
+            }
+        }
+        hgr$ShimComponent_ = ShimComponent;
+    }
+    return hgr$ShimComponent_;
+}
+
+var hgr$ElementComponent_ = null;
+// ElementComponent is ShimComponent, with additional properties
+// "elementName" is the name of the DOM element to actually render
+// "elementRef" the ref to the DOM element
+function hgr$ElementComponent() {
+    if (!hgr$ElementComponent_) {
+        const ShimComponent = hgr$ShimComponent();
+        class ElementComponent extends ShimComponent {
+            static CustomProperties() {
+                return ShimComponent.CustomProperties().concat(["elementName", "elementRef"]);
+            }
+
+            constructor(props) {
+                super(props);
+                this.ref = null;
+                this.onRef= this.onRef.bind(this);
+            }
+
+            onRef(ref) {
+                this.ref = ref;
+                // also forward to elementRef prop if set
+                if (this.props.elementRef)
+                    this.props.elementRef(ref);
+            }
+
+            getRef() {
+                return this.ref;
+            }
+
+            rerender() {
+                this.forceUpdate();
             }
 
             render() {
+                // hide ref from ReactElement because we want to pass our handler instead onRef instead
+                // hide our custom properties
+                props = hgr$objectWithoutProperties(this.props, ElementComponent.CustomProperties());
+                props.ref = this.onRef;
+                return React.createElement(this.props.elementName, props, props.children);
+            }
+        }
+        hgr$ElementComponent_ = ElementComponent;
+    }
+    return hgr$ElementComponent_;
+}
+
+// WidgetComponent is ShimComponent, with one additional property
+// "render" is a custom rendering function.
+var hgr$WidgetComponent_ = null;
+function hgr$WidgetComponent() {
+    if (!hgr$WidgetComponent_) {
+        const ShimComponent = hgr$ShimComponent();
+        class WidgetComponent extends ShimComponent {
+            static CustomProperties() {
+                return ElementComponent.CustomProperties().concat(["render"]);
+            }
+
+            constructor(props) {
+                super(props);
+            }
+
+            getRef() {
+                return this;
+            }
+
+            render() {
+                // hide our custom properties
+                props = hgr$objectWithoutProperties(this.props, WidgetComponent.CustomProperties());
                 if (this.props['render'])
                     return this.props['render']();
                 return null;
