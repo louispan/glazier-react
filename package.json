@@ -7,6 +7,7 @@
   "files": [],
   "repository": "github:louispan/glazier-react",
   "dependencies": {
-    "javascript-extras": "louispan/javascript-extras"
+    "javascript-extras": "louispan/javascript-extras",
+    "diff": "^4.0.1"
   }
 }
