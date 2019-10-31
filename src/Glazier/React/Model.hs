@@ -43,22 +43,22 @@ import Glazier.Command
 newtype ModifyModel s = ModifyModel { unModifyModel :: forall a. MaybeT (State s) a -> IO (Maybe a) }
 
 -- | @IO (Maybe s)@ allows for a 'ZoomModel' instance without exceptions.
-type AskModelEnviron s m = (MonadAsk "Model" (Maybe s, IO (Maybe s), ModifyModel s) m)
+type AskModelEnv s m = (MonadAsk "Model" (Maybe s, IO (Maybe s), ModifyModel s) m)
 instance {-# OVERLAPPING #-} Monad m => MonadAsk "Model" (Maybe s, IO (Maybe s), ModifyModel s) (ReaderT (Tagged "Model" (Maybe s, IO (Maybe s), ModifyModel s)) m) where
     askEnvP _ = (untag' @"Model") <$> ask
     localEnvP _ f = local (Tagged @"Model" . f . untag' @"Model")
 
-askModelEnviron :: AskModelEnviron s m => m (Maybe s, IO (Maybe s), ModifyModel s)
-askModelEnviron = askEnvP @"Model" Proxy
+askModelEnv :: AskModelEnv s m => m (Maybe s, IO (Maybe s), ModifyModel s)
+askModelEnv = askEnvP @"Model" Proxy
 
-localModelEnviron :: AskModelEnviron s m => ((Maybe s, IO (Maybe s), ModifyModel s) -> (Maybe s, IO (Maybe s), ModifyModel s)) -> m b -> m b
-localModelEnviron f = localEnvP @"Model" Proxy f
+localModelEnv :: AskModelEnv s m => ((Maybe s, IO (Maybe s), ModifyModel s) -> (Maybe s, IO (Maybe s), ModifyModel s)) -> m b -> m b
+localModelEnv f = localEnvP @"Model" Proxy f
 
 ---------------------------------------------------------------------------
 
 -- | Something that has access to a model, to ask an initial value, or read the latest value
 -- or write the latest value
-class (AlternativeIO m, AskModelEnviron s m) => MonadModel s m
+class (AlternativeIO m, AskModelEnv s m) => MonadModel s m
 
 -- | Any transformer on top of 'MonadModel' is also a 'MonadModel'
 instance {-# OVERLAPPABLE #-} (Alternative (t m), MonadIO (t m), Monad (t m), MonadTrans t, MFunctor t, MonadModel s m) => MonadModel s (t m)
@@ -82,8 +82,7 @@ newtype ModelT s m a = ModelT { unModelT :: ModelT' s m a }
     , Also r
     , MonadDelegate
     , MonadProgram
-    , MonadCodify
-    , MonadAsk "Model" (Maybe s, IO (Maybe s), ModifyModel s) -- AskModelEnviron
+    , MonadAsk "Model" (Maybe s, IO (Maybe s), ModifyModel s) -- AskModelEnv
     )
 
 type instance Command (ModelT s m) = Command m
@@ -97,6 +96,16 @@ instance MFunctor (ModelT s) where
 deriving via (IdentityT (ModelT' s m)) instance MonadAsk p r m => MonadAsk p r (ModelT s m)
 deriving via (IdentityT (ModelT' s m)) instance MonadPut p t m => MonadPut p t (ModelT s m)
 
+-- | This instance of MonadCodify makes sure that the cached state
+-- the updated with the latest state from the ref.
+-- This also has the effect of allowing GHC to make the same 'StableName'
+-- for a codified monad irregardless of the value of cached state.
+instance (MonadIO m, MonadCodify m) => MonadCodify (ModelT s m) where
+        codify f = do
+            (_, y, z) <- askModelEnv
+            x <- liftIO y
+            lift $ codify $ \a -> (`runModelT` (x, y, z)) $ f a
+
 instance (Monad m, MonadObserver p a m) => MonadObserver p a (ModelT s m) where
     askObserver p = lift $ (lift .) <$> askObserver p
 
@@ -104,7 +113,7 @@ runModelT :: ModelT s m a -> (Maybe s, IO (Maybe s), ModifyModel s) -> m a
 runModelT (ModelT m) t = runReaderT m $ Tagged @"Model" t
 
 fromModelT :: MonadModel s m => ModelT s m a -> m a
-fromModelT m = askModelEnviron >>= runModelT m
+fromModelT m = askModelEnv >>= runModelT m
 
 ---------------------------------------------------------------------------
 
@@ -118,7 +127,7 @@ instance AlternativeIO m => ZoomModel (ModelT s m) (ModelT t m) s t where
             -- z :: (MaybeT (State t) a -> IO (Maybe a)
             -- z' :: (MaybeT (State s) a -> IO (Maybe a)
             -- f :: MaybeT (State s) a
-            -- z' zz f = (unModifyModel zz) (g f)
+            -- z' zz f = (unModelEnv zz) (g f)
             -- g :: MaybeT (State s) a -> MaybeT (State t) a
 
         in runReaderT m $ Tagged @"Model" (x', y', h z)

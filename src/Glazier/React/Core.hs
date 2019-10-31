@@ -38,6 +38,7 @@ module Glazier.React.Core
     , lf
     , bh
     , displayObj
+    , mkModelRef
     ) where
 
 import Control.Also
@@ -53,7 +54,6 @@ import qualified Data.DList as DL
 import Data.IORef
 import qualified Data.JSString as J
 import qualified Data.List as L
-import qualified Data.Map.Strict as M
 import Data.Monoid
 import Data.Profunctor.Unsafe
 import Data.String
@@ -108,7 +108,7 @@ onDestruct m = do
     exec' $ RegisterDestructor plnWkRef c
 
 -- | 'mkObj'' that also handles the @a@ for 'Widget's that return an @a@
-mkObj2 :: MonadGadget' m => Widget t (Command m) a -> LogName -> t -> m (Either a (Obj t))
+mkObj2 :: (MonadIO m, MonadCommand m, CmdReactant (Command m)) => Widget t (Command m) a -> LogName -> t -> m (Either a (Obj t))
 mkObj2 wid logname s = do
     x <- devolve wid
     case x of
@@ -117,13 +117,13 @@ mkObj2 wid logname s = do
 
 -- | Make an initialized 'Obj' using the given 'Widget' and @s@
 -- Unlike 'unliftMkObj', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
-mkObj :: MonadGadget' m => Widget t (Command m) () -> LogName -> t -> m (Obj t)
+mkObj :: MonadReactant m => Widget t (Command m) () -> LogName -> t -> m (Obj t)
 mkObj wid logname s = do
-    s' <- mkModel s
+    s' <- mkModelRef s
     delegatify $ exec' . MkObj wid logname s'
 
 -- | 'mkLinkedObj'' that also handles the @a@ for 'Widget's that return an @a@
-mkLinkedObj2 :: MonadGadget' m => Widget t (Command m) a -> LogName -> Obj t -> m (Either a (Obj t))
+mkLinkedObj2 :: MonadReactant m => Widget t (Command m) a -> LogName -> Obj t -> m (Either a (Obj t))
 mkLinkedObj2 wid logname obj = do
     x <- devolve wid
     case x of
@@ -132,7 +132,7 @@ mkLinkedObj2 wid logname obj = do
 
 -- | Make an initialized 'Obj' using the given 'Widget' linked to the data in another 'Obj'
 -- Unlike 'unliftMkObj', this version doesn't required 'MonadUnliftWidget' so @m@ can be any transformer stack.
-mkLinkedObj :: MonadGadget' m => Widget t (Command m) () -> LogName -> Obj t -> m (Obj t)
+mkLinkedObj :: MonadReactant m => Widget t (Command m) () -> LogName -> Obj t -> m (Obj t)
 mkLinkedObj wid logname (Obj _ _ notifierRef notifierWkRef mdlVar mdlWkVar) =
     delegatify $ exec' . MkObj wid logname (notifierRef, notifierWkRef, mdlVar, mdlWkVar)
 
@@ -144,7 +144,7 @@ readObj :: MonadGadget' m => Obj t -> m t
 readObj (Obj _ _ notifierRef notifierWkRef mdlVar _) = do
     plnWkRef <- askPlanWeakRef
     plnRef <- guardJustIO $ deRefWeak plnWkRef
-    watchModel (plnRef, plnWkRef) (notifierRef, notifierWkRef)
+    watchModelRef (plnRef, plnWkRef) (notifierRef, notifierWkRef)
     -- finally we can read the model
     liftIO $ readMVar mdlVar
 
@@ -156,7 +156,7 @@ unwatchObj :: MonadGadget' m => Obj t -> m ()
 unwatchObj (Obj _ _ notifierRef _ _ _) = do
     plnWkRef <- askPlanWeakRef
     plnRef <- guardJustIO $ deRefWeak plnWkRef
-    unwatchModel plnRef notifierRef
+    unwatchModelRef plnRef notifierRef
 
 ----------------------------------------------------------------
 
@@ -176,7 +176,7 @@ model l = guardJustM $ premodel l
 -- FAILURES: This may 'empty' if the @s@ model cannot be obtained (eg. due to 'zoomModel')
 premodel :: MonadGadget s m => Getting (First a) s a -> m (Maybe a)
 premodel l = do
-    (ms, _, _) <- askModelEnviron
+    (ms, _, _) <- askModelEnv
     s <- guardJust ms
     pure (getFirst #. foldMapOf l (First #. Just) $ s)
 
@@ -195,7 +195,7 @@ readModel l =  guardJustM $ prereadModel l
 -- FAILURES: This may 'empty' if the @s@ model cannot be obtained (eg. due to 'zoomModel')
 prereadModel :: MonadGadget s m => Getting (First a) s a -> m (Maybe a)
 prereadModel l = do
-    (_, ms, _) <- askModelEnviron
+    (_, ms, _) <- askModelEnv
     s <- guardJustIO ms
     pure (getFirst #. foldMapOf l (First #. Just) $ s)
 
@@ -207,7 +207,7 @@ prereadModel l = do
 -- FAILURES: This may 'empty' if the MaybeT State monad fails.
 quietMutate :: MonadGadget s m => MaybeT (State s) a -> m a
 quietMutate m = do
-    (_, _, ModifyModel f) <- askModelEnviron
+    (_, _, ModifyModel f) <- askModelEnv
     guardJustIO $ f m
 
 -- | Noisly mutate the model usin the given 'MaybeT' 'State' monad.
@@ -250,15 +250,6 @@ mkHandler' goStrict goLazy = mkHandler (handleSyntheticEvent goStrict) goLazy
 
 handleSyntheticEvent :: Monad m => (SyntheticEvent -> MaybeT m a) -> (J.JSVal -> MaybeT m a)
 handleSyntheticEvent g j = MaybeT (pure $ JE.fromJS j) >>= g
-
--- | This convert 'Handler' into a ghcjs 'Callback'
-mkListener ::
-    (MonadGadget' m)
-    => Handler
-    -> m Listener
-mkListener f = do
-    plnWkRef <- askPlanWeakRef
-    delegatify $ exec' . MkListener plnWkRef f
 
 -- | Add a listener with an event target, and automatically removes it on widget destruction
 listenEventTarget :: (NFData a, MonadWidget' m, IEventTarget j)
@@ -303,32 +294,11 @@ classNames xs = do
   where
     go m = m `also` pure False
 
-runProps :: MonadGadget' m
-    => [(J.JSString, ModelT s m J.JSVal)]
-    -> ModelT s m [(J.JSString, J.JSVal)]
-runProps props = concat <$> traverse f props
-  where
-    -- emit empty list of a prop fails
-    f :: MonadGadget' m => (J.JSString, ModelT s m J.JSVal) -> ModelT s m [(J.JSString, J.JSVal)]
-    f (n, m) = (`also` pure []) $ (\v -> [(n, v)]) <$> m
-
-runGads :: MonadGadget' m
-    => [(J.JSString, m Handler)]
-    -> m [(J.JSString, J.JSVal)]
-runGads gads = do
-    gads' <- concat <$> traverse f gads -- :: m [(JString, Handler)]
-    let gads'' = M.fromListWith (<>) gads' -- combine same keys together
-        -- ElementComponent's ref callback is actuall elementRef, so rename ref to elementRef
-        gads''' = case M.lookup "ref" gads'' of
-                    Nothing -> gads''
-                    Just v -> M.insertWith (<>) "elementRef" v gads''
-        g = fmap JE.toJS . mkListener -- convert to JS callback
-    traverse (traverse g) (M.toList gads''')
-  where
-    -- emit empty list of a prop fails
-    f :: MonadGadget' m => (J.JSString, m Handler) -> m [(J.JSString, Handler)]
-    f (n, m) = (`also` pure []) $ (\v -> [(n, v)]) <$> m
-
+-- | markup a leaf html element, given a DList of @m@ that produces Handlers
+-- and property values.
+-- If a given @m@ makes multiple Handler/JSVal, only the first one is used.
+-- If a given @m@ fails to make anything, then it is safely skipped and the
+-- following @m@ in the 'DList' evaluated.
 lf :: (Component j, MonadWidget s m)
     => j -- ^ "input" or a @ReactComponent@
     -> DL.DList (J.JSString, ModelT s m Handler)
@@ -337,8 +307,8 @@ lf :: (Component j, MonadWidget s m)
 lf j gads props = do
     modifyEnv' $ nextReactPath (componentName j)
     (props', gads') <- fromModelT $ do
-        props' <- runProps (DL.toList props)
-        gads' <- runGads (DL.toList gads)
+        props' <- sequenceProps (DL.toList props)
+        gads' <- sequenceGadgets (DL.toList gads)
         pure (props', gads')
     let elemMarkup = leafMarkup (JE.toJS j) (DL.fromList (props' <> gads'))
         basicMarkup = leafMarkup (JE.toJS elementComponent)
@@ -349,6 +319,11 @@ lf j gads props = do
 
     leafMarkup (JE.toJS j) (DL.fromList (props' <> gads'))
 
+-- | markup a branch html element, given a DList of @m@ that produces Handlers
+-- and property values, and the @m@ child node.
+-- If a given @m@ makes multiple Handler/JSVal, only the first one is used.
+-- If a given @m@ fails to make anything, then it is safely skipped and the
+-- following @m@ in the 'DList' evaluated.
 bh :: (Component j, MonadWidget s m)
     => j-- ^ eg "div" or a @ReactComponent@
     -> DL.DList (J.JSString, ModelT s m Handler)
@@ -358,8 +333,8 @@ bh :: (Component j, MonadWidget s m)
 bh j gads props child = do
     modifyEnv' $ nextReactPath (componentName j)
     (props', gads') <- fromModelT $ do
-        props' <- runProps (DL.toList props)
-        gads' <- runGads (DL.toList gads)
+        props' <- sequenceProps (DL.toList props)
+        gads' <- sequenceGadgets (DL.toList gads)
         pure (props', gads')
     localEnv' pushReactPath $ do
         let elemMarkup = branchMarkup (JE.toJS j) (DL.fromList (props' <> gads')) child
@@ -369,7 +344,7 @@ bh j gads props child = do
             (True, []) -> basicMarkup
             _ -> elemMarkup
 
-displayObj :: MonadWidget' m => Obj t -> m ()
+displayObj :: (MonadIO m, PutMarkup m) => Obj t -> m ()
 displayObj (Obj plnRef _ _ _ _ _) = do
     pln <- liftIO $ readIORef plnRef
     let cbs = widgetCallbacks pln

@@ -2,6 +2,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -19,10 +20,12 @@ import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
+import qualified Data.Map.Strict as M
 import Data.IORef
 import Data.IORef.Extras
 import qualified Data.JSString as J
 import Data.Tagged.Extras
+import qualified GHCJS.Types as J
 import Glazier.Command
 import Glazier.Logger
 import Glazier.React.Common
@@ -34,11 +37,14 @@ import Glazier.React.Reactant
 import Glazier.React.ReactId
 import Glazier.React.Reactor
 import Glazier.React.ReactPath
+import qualified JavaScript.Extras as JE
 import System.Mem.Weak
 
 ------------------------------------------------------
 -- MonadGadget
 ------------------------------------------------------
+
+type MonadReactant m = (MonadIO m, MonadCommand m, CmdReactant (Command m))
 
 -- | A 'MonadGadget'' is can log, 'instruct' 'Reactant' effects.
 -- It can be safely turned into a 'Handler' and used in event handling code.
@@ -103,7 +109,7 @@ instance (CmdReactant c, c ~ Command (Reactor c)) => MonadGadget' (Reactor c) wh
 
 instance (MonadGadget' m) => MonadGadget' (ModelT s m) where
     obj `shall` m = do
-        f <- askModelEnviron
+        f <- askModelEnv
         -- unwrap the ReaderT layers of this instance's ModelT
         -- m :: ModelT t (ModelT s m)
         -- m' :: ModelT t m
@@ -151,11 +157,11 @@ type MonadWidget s m = (MonadWidget' m, MonadModel s m, MonadUnliftWidget s m)
 -- Internal functions
 ------------------------------------------------------
 
-mkReactId :: (MonadGadget' m) => m ReactId
+mkReactId :: (MonadCommand m, CmdReactant (Command m)) => m ReactId
 mkReactId = delegatify $ exec' . MkReactId
 
-mkModel :: (MonadGadget' m) => s -> m (IORef Notifier, Weak (IORef Notifier), MVar s, Weak (MVar s))
-mkModel s = do
+mkModelRef :: (MonadReactant m) => s -> m (IORef Notifier, Weak (IORef Notifier), MVar s, Weak (MVar s))
+mkModelRef s = do
     i <- mkReactId
     notifierRef <- liftIO $ newIORef $ Notifier i mempty
     notifierWkRef <- liftIO $ mkWeakIORef notifierRef $ do
@@ -170,16 +176,51 @@ mkModel s = do
         plnRef <- guardJustIO $ deRefWeak plnWkRef
         liftIO $ atomicModifyIORef_' plnRef (_notifiers.at i .~ Nothing)
 
-watchModel :: MonadIO m => (IORef Plan, Weak (IORef Plan)) -> (IORef Notifier, Weak (IORef Notifier)) -> m ()
-watchModel (plnRef, plnWkRef) (notifierRef, notifierWkRef) = do
+watchModelRef :: MonadIO m => (IORef Plan, Weak (IORef Plan)) -> (IORef Notifier, Weak (IORef Notifier)) -> m ()
+watchModelRef (plnRef, plnWkRef) (notifierRef, notifierWkRef) = do
     notiId <- liftIO $ notifierId <$> readIORef notifierRef
     watcherId <- liftIO $ planId <$> readIORef plnRef
     liftIO $ atomicModifyIORef_' notifierRef (_watchers.at watcherId .~ Just plnWkRef)
     liftIO $ atomicModifyIORef_' plnRef (_notifiers.at notiId .~ Just notifierWkRef)
 
-unwatchModel :: MonadIO m => IORef Plan -> IORef Notifier -> m ()
-unwatchModel plnRef notifierRef = do
+unwatchModelRef :: MonadIO m => IORef Plan -> IORef Notifier -> m ()
+unwatchModelRef plnRef notifierRef = do
     notiId <- liftIO $ notifierId <$> readIORef notifierRef
     watcherId <- liftIO $ planId <$> readIORef plnRef
     liftIO $ atomicModifyIORef_' notifierRef (_watchers.at watcherId .~ Nothing)
     liftIO $ atomicModifyIORef_' plnRef (_notifiers.at notiId .~ Nothing)
+
+-- | This convert 'Handler' into a ghcjs 'Callback'
+mkListener ::
+    (MonadGadget' m)
+    => Handler
+    -> m Listener
+mkListener f = do
+    plnWkRef <- askPlanWeakRef
+    delegatify $ exec' . MkListener plnWkRef f
+
+sequenceProps :: MonadGadget' m
+    => [(J.JSString, ModelT s m J.JSVal)]
+    -> ModelT s m [(J.JSString, J.JSVal)]
+sequenceProps props = concat <$> traverse f props
+  where
+    -- emit empty list if it fails, otherwise use the first one emitted
+    f :: MonadGadget' m => (J.JSString, ModelT s m J.JSVal) -> ModelT s m [(J.JSString, J.JSVal)]
+    f (n, m) = (`also` pure []) $ (\v -> [(n, v)]) <$> m
+
+sequenceGadgets :: MonadGadget' m
+    => [(J.JSString, m Handler)]
+    -> m [(J.JSString, J.JSVal)]
+sequenceGadgets gads = do
+    gads' <- concat <$> traverse f gads -- :: m [(JString, Handler)]
+    let gads'' = M.fromListWith (<>) gads' -- combine same keys together
+        -- ElementComponent's ref callback is actuall elementRef, so rename ref to elementRef
+        gads''' = case M.lookup "ref" gads'' of
+                    Nothing -> gads''
+                    Just v -> M.insertWith (<>) "elementRef" v gads''
+        g = fmap JE.toJS . mkListener -- convert to JS callback
+    traverse (traverse g) (M.toList gads''')
+  where
+    -- emit empty list if it fails, otherwise use the first one emitted
+    f :: MonadGadget' m => (J.JSString, m Handler) -> m [(J.JSString, Handler)]
+    f (n, m) = (`also` pure []) $ (\v -> [(n, v)]) <$> m
