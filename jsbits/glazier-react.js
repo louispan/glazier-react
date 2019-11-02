@@ -136,7 +136,7 @@ function hgr$ElementComponent() {
             // common data: lockstep - we want to decrement old start and increment new start
             // as long as original start is above zero
             else {
-                if (old > 0)diff.value.length
+                if (old > 0)
                     return [old - diff.value.length, n + diff.value.length]
                 else
                     return [0, n]
@@ -273,28 +273,35 @@ function hgr$WidgetComponent() {
     return hgr$WidgetComponent_;
 }
 
-class hgr$ReactBatcher {
-    constructor() {
-        this.batch = [];
-    }
+var hgr$ReactBatcher_ = null;
+function hgr$ReactBatcher() {
+    if (!hgr$ReactBatcher_) {
+        hgr$ReactBatcher_ = class hgr$ReactBatcher {
+            constructor() {
+                this.batch = [];
+            }
 
-    batch(f) {
-        this.batch.push(f);
-    }
+            batch(f) {
+                this.batch.push(f);
+            }
 
-    runBatch() {
-      const btch = this.batch;
-      this.batch = []
-      hgr$ReactDOM().unstable_batchedUpdates(() => {
-        for (const f of btch){
-            f();
+            runBatch() {
+              const btch = this.batch;
+              this.batch = []
+              hgr$ReactDOM().unstable_batchedUpdates(() => {
+                for (const f of btch){
+                    f();
+                }
+              })
+            }
         }
-      });
     }
+    return hgr$ReactBatcher_;
 }
 
 function hgr$mkReactBatcher() {
-    return new hgr$ReactBatcher();
+    const ReactBatcher = hgr$ReactBatcher();
+    return new ReactBatcher();
 }
 
 // Convert a list of ReactElements into a single ReactElement
