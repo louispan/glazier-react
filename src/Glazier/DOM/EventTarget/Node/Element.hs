@@ -6,6 +6,7 @@ module Glazier.DOM.EventTarget.Node.Element
     , IElement(..)
     ) where
 
+import Control.Monad.IO.Class
 import qualified GHCJS.Types as J
 import Glazier.DOM.EventTarget.Node
 import Glazier.DOM.EventTarget.Node.Element.Internal
@@ -14,11 +15,11 @@ import Prelude hiding (id)
 
 -- | https://developer.mozilla.org/en-US/docs/Web/API/Element
 class INode j => IElement j where
-    className :: j -> J.JSString
-    className = js_className . JE.toJS
+    className :: MonadIO m => j -> m J.JSString
+    className = liftIO . js_className . JE.toJS
 
-    id :: j -> J.JSString
-    id = js_id . JE.toJS
+    id :: MonadIO m => j -> m J.JSString
+    id = liftIO . js_id . JE.toJS
 
 instance IElement Element
 
@@ -26,18 +27,18 @@ instance IElement Element
 
 foreign import javascript unsafe
     "$r = $1['className']"
-    js_className :: J.JSVal -> J.JSString
+    js_className :: J.JSVal -> IO J.JSString
 
 foreign import javascript unsafe
     "$r = $1['id']"
-    js_id :: J.JSVal -> J.JSString
+    js_id :: J.JSVal -> IO J.JSString
 
 #else
 
-js_className :: J.JSVal -> J.JSString
-js_className _ = mempty
+js_className :: J.JSVal -> IO J.JSString
+js_className _ = pure mempty
 
-js_id :: J.JSVal -> J.JSString
-js_id _ = mempty
+js_id :: J.JSVal -> IO J.JSString
+js_id _ = pure mempty
 
 #endif

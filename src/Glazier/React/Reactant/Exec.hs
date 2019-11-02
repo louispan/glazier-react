@@ -17,7 +17,7 @@
 module Glazier.React.Reactant.Exec where
 
 import Control.Also
-import Control.Concurrent.MVar
+import Control.Concurrent
 import Control.Concurrent.STM
 import Control.DeepSeq
 import Control.Lens
@@ -30,7 +30,6 @@ import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.State.Strict
 import qualified Data.DList as DL
-import Data.Foldable
 import Data.Function.Extras
 import qualified Data.HashMap.Strict as HM
 import Data.IORef.Extras
@@ -41,12 +40,12 @@ import Data.String
 import Data.Tagged.Extras
 import Data.Tuple
 import Data.Typeable
-import GHC.Stack
 import qualified GHCJS.Foreign.Callback as J
 import qualified GHCJS.Foreign.Callback.Internal as J
 import qualified GHCJS.Foreign.Export as J
 import qualified GHCJS.Types as J
 import Glazier.Command
+import qualified Glazier.DOM as DOM
 import Glazier.Logger
 import Glazier.React.Common
 import Glazier.React.Component
@@ -72,7 +71,6 @@ import System.Mem.Weak
 import Data.Semigroup
 #endif
 
-
 -----------------------------------------------
 
 data LogConfig = LogConfig
@@ -96,57 +94,25 @@ data LogConfig = LogConfig
 makeLenses_ ''LogConfig
 
 
------------------------------------------------
+-- | renders the given obj onto the given javascript dom
+-- and exports the obj to prevent it from being garbage collected
+-- which means the "main" haskell thread can exit.
+renderAndExportObj :: (MonadIO m, Typeable s) => DOM.Element -> Obj s -> m (J.Export (Obj s))
+renderAndExportObj root' obj = liftIO $ do
+    markup <- (`execStateT` mempty) $ displayObj obj
+    e <- toElement markup
+    renderDOM e root'
 
--- | An example of starting an app using the glazier-react framework
--- A different @Obj o@ will be create everytime this function is used
-startWidget ::
-    ( MonadIO m
-    , MonadUnliftIO m
-    , AskLogConfigRef m
-    , AskNextReactIdRef m
-    , Typeable s
-    , CmdReactant c
-    )
-    => (c -> m ()) -> Widget s c () -> LogName -> s -> J.JSVal -> m (Maybe (J.Export (Obj s)))
-startWidget executor wid logname s root = do
-    -- create an mvar to store the obj to be created
-    v <- liftIO $ newEmptyMVar
-
-    -- generate the commands that will create    the obj
-    cs <- liftIO . execProgramT' . evalContT $ mkObj wid logname s >>= void . liftIO . tryPutMVar v
-
-    -- run the commands to generate the obj
-    traverse_ executor cs
-
-    -- try render the obj
-    runMaybeT $ do
-        obj <- MaybeT $ liftIO $ tryTakeMVar v
-        renderObjToDOM root obj
-  where
-    -- | renders the given obj onto the given javascript dom
-    -- and exports the obj to prevent it from being garbage collected
-    -- which means the "main" haskell thread can exit.
-    renderObjToDOM :: (MonadIO m, Typeable s) => J.JSVal -> Obj s -> m (J.Export (Obj s))
-    renderObjToDOM root' obj = liftIO $ do
-        markup <- (`execStateT` mempty) $ displayObj obj
-        e <- toElement markup
-        renderDOM e root'
-
-        -- Export obj to prevent it from being garbage collected
-        J.export obj
-
+    -- Export obj to prevent it from being garbage collected
+    J.export obj
 
 -- | Returns commands that need to be processed last
 execReactant ::
     ( MonadUnliftIO m
-    , MonadReactant m
-    , MonadReader r m
     , Cmd' [] c
     , AskNextReactIdRef m
     , AskLogConfigRef m
-    , AskNextReactIdRef m
-    , AskDirtyPlan m
+    , AskDirtyPlans m
     )
     => (c -> m ()) -> Reactant c -> m ()
 execReactant executor c = case c of
@@ -191,27 +157,25 @@ getLogConfig logname = do
 
 -----------------------------------------------
 
-type AskNextReactIdRef = MonadAsk' (IORef (Tagged "NextReactId" ReactId))
-askNextReactIdRef :: AskNextReactIdRef m => m (IORef (Tagged "NextReactId" ReactId))
-askNextReactIdRef = askEnv' @(IORef (Tagged "NextReactId" ReactId))
+type AskNextReactIdRef = MonadAsk' (Tagged "NextReactId" (IORef Int))
+askNextReactIdRef :: AskNextReactIdRef m => m (IORef Int)
+askNextReactIdRef = askTagged @"NextReactId" @(IORef Int)
 
-execMkReactId
- :: (MonadIO m, AskNextReactIdRef m) => m ReactId
+execMkReactId :: (MonadIO m, AskNextReactIdRef m) => m ReactId
 execMkReactId = do
     ref <- askNextReactIdRef
-    liftIO $ atomicModifyIORef' ref $ \n ->
-        let ReactId i = untag' @"NextReactId" n
-        in ( Tagged @"NextReactId" . ReactId $ i + 1, ReactId i)
+    liftIO $ atomicModifyIORef' ref $ \i -> (i + 1, ReactId i)
 
 -----------------------------------------------
 
-type AskDirtyPlan = MonadAsk' (Tagged "DirtyPlan" (IORef (M.Map ReactId (Weak (IORef Plan)))))
-askDirtyPlan :: AskDirtyPlan m => m (Tagged "DirtyPlan" (IORef (M.Map ReactId (Weak (IORef Plan)))))
-askDirtyPlan = askEnv' @(Tagged "DirtyPlan" (IORef (M.Map ReactId (Weak (IORef Plan)))))
+type DirtyPlans = M.Map ReactId (Weak (IORef Plan))
+type AskDirtyPlans = MonadAsk' (Tagged "DirtyPlans" (IORef DirtyPlans))
+askDirtyPlans :: AskDirtyPlans m => m (Tagged "DirtyPlans" (IORef DirtyPlans))
+askDirtyPlans = askEnv' @(Tagged "DirtyPlans" (IORef DirtyPlans))
 
-rerenderDirtyPlans :: (MonadAsk' ReactBatch m, AskDirtyPlan m, AlternativeIO m) => m ()
+rerenderDirtyPlans :: (MonadAsk' ReactBatch m, AskDirtyPlans m, AlternativeIO m) => m ()
 rerenderDirtyPlans = do
-    ref <- untag' @"DirtyPlan" <$> askDirtyPlan
+    ref <- untag' @"DirtyPlans" <$> askDirtyPlans
     ds <- liftIO $ atomicModifyIORef' ref $ \ds -> (mempty, ds)
     liftIO $ foldMap prerndr ds >>= liftIO -- possibly async GHCJS
     -- by this time, there is a possibilty that shms were removed,
@@ -230,7 +194,7 @@ rerenderDirtyPlans = do
         pure $ batchWidgetRerender btch wid
 
 -- | Called after a mutation
-markPlanDirty :: (AlternativeIO m, AskDirtyPlan m) => Weak (IORef Plan) -> m ()
+markPlanDirty :: (AlternativeIO m, AskDirtyPlans m) => Weak (IORef Plan) -> m ()
 markPlanDirty wk = do
     fixme $ liftIO $ putStrLn "LOUISDEBUG: markDirty"
     plnRef <- guardJustIO $ deRefWeak wk
@@ -241,23 +205,23 @@ markPlanDirty wk = do
         RerenderRequired -> pure () -- we have scheduled already
         RerenderNotRequired -> do
             -- Add plan to pending list for worker thread
-            dirtRef <- untag' @"DirtyPlan" <$> askDirtyPlan
+            dirtRef <- untag' @"DirtyPlans" <$> askDirtyPlans
             liftIO $ atomicModifyIORef_' dirtRef $ M.insert i wk
 
 -----------------------------------------------------------------
 execLogLineJS ::
     MonadIO m
-    => LogLevel -> Tagged "LogName" J.JSString -> IO J.JSString -> [(String, SrcLoc)] -> m ()
-execLogLineJS lvl n msg cs = do
-    let f = case lvl of
-            TRACE -> js_logInfo
-            DEBUG -> js_logInfo
-            INFO_ -> js_logInfo
-            WARN_ -> js_logInfo
-            ERROR -> js_logError
-    liftIO $ msg >>= go f
+    => LogLine J.JSString -> m ()
+execLogLineJS (LogLine cs lvl msg) = do
+    liftIO $ msg >>= go
   where
-    go g a = g $ (fromString $ show lvl) <> " " <> (untag' @"LogName" n) <> " " <> a <> prettyCs
+    f = case lvl of
+        TRACE -> js_logInfo
+        DEBUG -> js_logInfo
+        INFO_ -> js_logInfo
+        WARN_ -> js_logInfo
+        ERROR -> js_logError
+    go a = f $ (fromString $ show lvl) <> "-" <> a <> "-" <> prettyCs
     prettyCs = case prettyCallStack' "; " cs of
         Nothing -> ""
         Just cs' -> " [" <> cs' <> "]"
@@ -410,7 +374,7 @@ execRegisterDestructor executor plnWkRef c = do
             liftIO $ atomicModifyIORef_' plnRef' $ _destructor %~ (<> (u $ executor c))
 
 execNotifyDirty ::
-    (MonadIO m, AskDirtyPlan m)
+    (MonadIO m, AskDirtyPlans m)
     => Weak (IORef Notifier)
     -> m ()
 execNotifyDirty notifierWkRef = do

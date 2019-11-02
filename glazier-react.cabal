@@ -23,6 +23,8 @@ library
                       Glazier.React.Component.Internal
                       Glazier.React.Core
                       Glazier.React.Core.Internal
+                      Glazier.React.Exec
+                      Glazier.React.Main
                       Glazier.React.Markup
                       Glazier.React.Model
                       Glazier.React.Obj

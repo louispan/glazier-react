@@ -28,8 +28,8 @@ class JE.ToJS j => IEvent j where
     currentTarget :: j -> EventTarget
     currentTarget = EventTarget . js_currentTarget . JE.toJS
 
-    defaultPrevented  :: j -> Bool
-    defaultPrevented = js_defaultPrevented . JE.toJS
+    defaultPrevented  :: MonadIO m => j -> m Bool
+    defaultPrevented = liftIO . js_defaultPrevented . JE.toJS
 
     eventPhase :: j -> Int
     eventPhase = js_eventPhase . JE.toJS
@@ -106,7 +106,7 @@ foreign import javascript unsafe
 
 foreign import javascript unsafe
     "$r = $1['defaultPrevented']"
-    js_defaultPrevented :: J.JSVal -> Bool
+    js_defaultPrevented :: J.JSVal -> IO Bool
 
 foreign import javascript unsafe
     "$1['stopPropagation']()"
@@ -131,8 +131,8 @@ js_cancelable _ = False
 js_currentTarget :: J.JSVal -> J.JSVal
 js_currentTarget _ = J.nullRef
 
-js_defaultPrevented :: J.JSVal -> Bool
-js_defaultPrevented _ = False
+js_defaultPrevented :: J.JSVal -> IO Bool
+js_defaultPrevented _ = pure False
 
 js_eventPhase :: J.JSVal -> Int
 js_eventPhase _ = 0

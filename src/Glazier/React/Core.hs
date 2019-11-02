@@ -7,6 +7,7 @@
 module Glazier.React.Core
     ( CmdReactant
     , Reactant
+    , MonadReactant
     , MonadGadget'(..)
     , MonadGadget
     , MonadWidget'
