@@ -42,29 +42,8 @@ library
                       Glazier.React.Reactant.Exec
                       Glazier.React.Reactor
                       Glazier.React.ReactPath
-                      Glazier.DOM
-                      Glazier.DOM.Event
-                      Glazier.DOM.Event.Internal
-                      Glazier.DOM.Event.UI
-                      Glazier.DOM.Event.UI.Internal
-                      Glazier.DOM.Event.UI.Keyboard
-                      Glazier.DOM.Event.UI.Keyboard.Internal
-                      Glazier.DOM.Event.UI.Mouse
-                      Glazier.DOM.Event.UI.Mouse.Internal
-                      Glazier.DOM.Event.HashChange
-                      Glazier.DOM.Event.HashChange.Internal
-                      Glazier.DOM.EventTarget
-                      Glazier.DOM.EventTarget.Internal
-                      Glazier.DOM.EventTarget.Node
-                      Glazier.DOM.EventTarget.Node.Internal
-                      Glazier.DOM.EventTarget.Node.Document
-                      Glazier.DOM.EventTarget.Node.Document.Internal
-                      Glazier.DOM.EventTarget.Node.Element
-                      Glazier.DOM.EventTarget.Node.Element.Internal
-                      Glazier.DOM.EventTarget.Node.Element.HTML
-                      Glazier.DOM.EventTarget.Node.Element.HTML.Internal
-                      Glazier.DOM.EventTarget.Window
-                      Glazier.DOM.EventTarget.Window.Internal
+                      Glazier.React.Synthetic
+                      Glazier.React.Synthetic.Internal
   build-depends:      base >= 4.9.0 && < 5
                     , aeson >= 1.4.2.0
                     , aeson-applicative >= 1.4
@@ -78,7 +57,7 @@ library
                     , ghcjs-base-stub >= 0.3.0.2
                     , glazier >= 2.0
                     , hashable >= 1.2
-                    , javascript-extras >= 0.6
+                    , javascript-extras >= 1.0
                     , lens >= 4
                     , lens-misc >= 0.0.3
                     , mmorph >= 1

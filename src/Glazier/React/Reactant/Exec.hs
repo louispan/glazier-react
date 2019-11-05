@@ -40,12 +40,10 @@ import Data.String
 import Data.Tagged.Extras
 import Data.Tuple
 import Data.Typeable
-import qualified GHCJS.Foreign.Callback as J
-import qualified GHCJS.Foreign.Callback.Internal as J
-import qualified GHCJS.Foreign.Export as J
-import qualified GHCJS.Types as J
+import GHCJS.Foreign.Callback
+import GHCJS.Foreign.Callback.Internal
+import GHCJS.Foreign.Export
 import Glazier.Command
-import qualified Glazier.DOM as DOM
 import Glazier.Logger
 import Glazier.React.Common
 import Glazier.React.Component
@@ -61,8 +59,8 @@ import Glazier.React.ReactDOM
 import Glazier.React.ReactId.Internal
 import Glazier.React.Reactor
 import Glazier.React.ReactPath
-import qualified JavaScript.Extras as JE
-import qualified JavaScript.Object as JO
+import JS.Data
+import qualified JS.DOM as DOM
 import System.IO
 import System.Mem.AnyStableName
 import System.Mem.Weak
@@ -97,14 +95,14 @@ makeLenses_ ''LogConfig
 -- | renders the given obj onto the given javascript dom
 -- and exports the obj to prevent it from being garbage collected
 -- which means the "main" haskell thread can exit.
-renderAndExportObj :: (MonadIO m, Typeable s) => DOM.Element -> Obj s -> m (J.Export (Obj s))
+renderAndExportObj :: (MonadIO m, Typeable s) => DOM.Element -> Obj s -> m (Export (Obj s))
 renderAndExportObj root' obj = liftIO $ do
     markup <- (`execStateT` mempty) $ displayObj obj
     e <- toElement markup
     renderDOM e root'
 
     -- Export obj to prevent it from being garbage collected
-    J.export obj
+    export obj
 
 -- | Returns commands that need to be processed last
 execReactant ::
@@ -243,7 +241,7 @@ execMkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar)
     fixme $ liftIO $ putStrLn "LOUISDEBUG: execMkObj"
     (logLevel', logDepth') <- getLogConfig logName'
     i <- execMkReactId
-    o <- liftIO $ JO.create
+    o <- mkObject
     plnRef_ <- liftIO $ newIORef $ Plan
         i
         logName'
@@ -252,15 +250,15 @@ execMkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar)
         o
         Nothing -- widgetRef
         mempty -- destructor
-        J.nullRef -- prerendered, null for now
+        nullRef -- prerendered, null for now
         mempty -- prerender
         RerenderRequired -- prerendered is null
         mempty -- notifiers
         mempty -- createdHandlers
         mempty -- createdCallbacks
         (WidgetCallbacks
-            (J.Callback J.nullRef)
-            (J.Callback J.nullRef))
+            (Callback nullRef)
+            (Callback nullRef))
 
     -- Create automatic garbage collection of the callbacks
     -- that will run when the Obj is garbage collected.
@@ -317,8 +315,8 @@ execMkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar)
             c <- (commands . DL.toList) <$> mkRerenderCmds
             u $ executor c
 
-    renderCb <- liftIO . J.syncCallback' $ onRenderCb plnWkRef
-    refCb <- liftIO . J.syncCallback1 J.ContinueAsync $ onRefCb plnWkRef
+    renderCb <- liftIO . syncCallback' $ onRenderCb plnWkRef
+    refCb <- liftIO . syncCallback1 ContinueAsync $ onRefCb plnWkRef
 
     -- update the plan to include the real WidgetCallbacks and prerender functon
     liftIO $ atomicModifyIORef_' plnRef_ $ \pln ->
@@ -343,14 +341,14 @@ execMkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar)
   where
     setPrerendered :: AlternativeIO m => Weak (IORef Plan) -> DL.DList ReactMarkup -> m ()
     setPrerendered plnWkRef mrkup = do
-        frame <- liftIO $ JE.toJS <$> toElement mrkup
+        frame <- liftIO $ toJS <$> toElement mrkup
         fixme $ liftIO $ putStrLn "LOUISDEBUG: execSetPrerendered"
         plnRef <- guardJustIO $ deRefWeak plnWkRef
         -- replace the prerendered frame
         liftIO $ atomicModifyIORef_' plnRef $ (_prerendered .~ frame)
 
-    onRenderCb :: Weak (IORef Plan) -> IO J.JSVal
-    onRenderCb wk = (`evalMaybeT` J.nullRef) $ do
+    onRenderCb :: Weak (IORef Plan) -> IO JSVal
+    onRenderCb wk = (`evalMaybeT` nullRef) $ do
         plnRef <- guardJustIO $ deRefWeak wk
         liftIO $ do
             pln <- readIORef plnRef
@@ -358,10 +356,10 @@ execMkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar)
             -- should have been initialized before being mounted
             pure $ prerendered pln
 
-    onRefCb :: Weak (IORef Plan) -> J.JSVal -> IO ()
+    onRefCb :: Weak (IORef Plan) -> JSVal -> IO ()
     onRefCb wk j = (`evalMaybeT` ()) $ do
         plnRef <- guardJustIO $ deRefWeak wk
-        liftIO $ atomicModifyIORef_' plnRef (_widgetRef .~ JE.fromJS j)
+        liftIO $ atomicModifyIORef_' plnRef (_widgetRef .~ fromJS j)
 
 execRegisterDestructor ::
     (MonadIO m, MonadUnliftIO m) => (c -> m ()) -> Weak (IORef Plan) -> c -> m ()
@@ -387,7 +385,7 @@ execNotifyDirty notifierWkRef = do
 execMkHandler :: (NFData a, MonadIO m, MonadUnliftIO m)
         => (c -> m ())
         -> Weak (IORef Plan)
-        -> (J.JSVal -> MaybeT IO a)
+        -> (JSVal -> MaybeT IO a)
         -> (a -> c)
         -- (preprocess, postprocess)
         -> MaybeT m Handler
@@ -451,7 +449,7 @@ mkEventProcessor goStrict = do
 execMkListener :: (MonadIO m)
         => Weak (IORef Plan)
         -> Handler
-        -> MaybeT m (J.Callback (J.JSVal -> IO ()))
+        -> MaybeT m (Callback (JSVal -> IO ()))
 execMkListener plnkWk (g, h) = do
     -- 'makeStableName' might return different names if unevaluated
     -- so use bang patterns to help prevent that.
@@ -466,7 +464,7 @@ execMkListener plnkWk (g, h) = do
     case L.find ((== k) . fst) cs of
         Just (_, v) -> pure v
         Nothing -> do
-            f <- liftIO $ J.asyncCallback1 (\j -> g' j *> h')
+            f <- liftIO $ asyncCallback1 (\j -> g' j *> h')
             liftIO $ atomicModifyIORef_ plnRef (_listeners %~ ((k, f) :))
             pure f
 

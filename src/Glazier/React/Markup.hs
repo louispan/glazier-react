@@ -29,8 +29,8 @@ module Glazier.React.Markup
 
 import Control.Monad.Environ
 import qualified Data.DList as DL
-import qualified GHCJS.Types as J
-import qualified Glazier.React.ReactElement as Z
+import Glazier.React.ReactElement
+import JS.Data
 
 type AskMarkup = MonadAsk' (DL.DList ReactMarkup)
 askMarkup :: AskMarkup m => m (DL.DList ReactMarkup)
@@ -48,54 +48,54 @@ appendMarkup a = modifyMarkup (*> a)
 
 -- | The parameters required to create a branch ReactElement with children
 data BranchParam = BranchParam
-    J.JSVal
-    (DL.DList (J.JSString, J.JSVal))
+    JSVal
+    (DL.DList (JSString, JSVal))
     (DL.DList ReactMarkup)
 
 -- | The parameters required to create a leaf ReactElement (no children)
 data LeafParam = LeafParam
-    J.JSVal
-    (DL.DList (J.JSString, J.JSVal))
+    JSVal
+    (DL.DList (JSString, JSVal))
 
 data ReactMarkup
-    = ElementMarkup Z.ReactElement
-    | TextMarkup J.JSString
+    = ElementMarkup ReactElement
+    | TextMarkup JSString
     | BranchMarkup BranchParam
     | LeafMarkup LeafParam
 
 -- | Create 'ReactElement's from a 'ReactMarkup'
-fromMarkup :: ReactMarkup -> IO Z.ReactElement
+fromMarkup :: ReactMarkup -> IO ReactElement
 fromMarkup (BranchMarkup (BranchParam n props xs)) = do
     xs' <- sequenceA $ fromMarkup <$> (DL.toList xs)
-    Z.mkBranchElement n (DL.toList props) xs'
+    mkBranchElement n (DL.toList props) xs'
 
 fromMarkup (LeafMarkup (LeafParam n props)) =
-    Z.mkLeafElement n (DL.toList props)
+    mkLeafElement n (DL.toList props)
 
-fromMarkup (TextMarkup str) = pure $ Z.rawTextElement str
+fromMarkup (TextMarkup str) = pure $ rawTextElement str
 
 fromMarkup (ElementMarkup e) = pure e
 
 -------------------------------------------------
 
 -- | To use an exisitng ReactElement
-fromElement :: PutMarkup m => Z.ReactElement -> m ()
+fromElement :: PutMarkup m => ReactElement -> m ()
 fromElement e = modifyMarkup (`DL.snoc` ElementMarkup e)
 
--- | Convert the ReactMlt to [Z.ReactElement]
-toElements :: DL.DList ReactMarkup -> IO [Z.ReactElement]
+-- | Convert the ReactMlt to [ReactElement]
+toElements :: DL.DList ReactMarkup -> IO [ReactElement]
 toElements xs = sequenceA $ fromMarkup <$> DL.toList xs
 
 -- | 'Glazier.React.ReactDOM.renderDOM' only allows a single top most element.
 -- Provide a handly function to wrap a list of ReactElements inside a 'div' if required.
 -- If there is only one element in the list, then nothing is changed.
-toElement :: DL.DList ReactMarkup -> IO Z.ReactElement
-toElement xs = toElements xs >>= Z.mkCombinedElements
+toElement :: DL.DList ReactMarkup -> IO ReactElement
+toElement xs = toElements xs >>= mkCombinedElements
 
 -------------------------------------------------
 
 -- | For raw text content
-textMarkup :: PutMarkup m => J.JSString -> m ()
+textMarkup :: PutMarkup m => JSString -> m ()
 textMarkup n = modifyMarkup (`DL.snoc` TextMarkup n)
 
 -- | For the contentless elements: eg 'br_'.
@@ -105,8 +105,8 @@ textMarkup n = modifyMarkup (`DL.snoc` TextMarkup n)
 -- "If an attribute/prop is duplicated the last one defined wins."
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
 leafMarkup :: PutMarkup m
-    => J.JSVal
-    -> (DL.DList (J.JSString, J.JSVal))
+    => JSVal
+    -> (DL.DList (JSString, JSVal))
     -> m ()
 leafMarkup n props = modifyMarkup (`DL.snoc` LeafMarkup (LeafParam n props))
 
@@ -137,8 +137,8 @@ withMarkup f childs = do
 -- "If an attribute/prop is duplicated the last one defined wins."
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
 branchMarkup :: PutMarkup m
-    => J.JSVal
-    -> (DL.DList (J.JSString, J.JSVal))
+    => JSVal
+    -> (DL.DList (JSString, JSVal))
     -> m a
     -> m a
 branchMarkup n props = withMarkup (\childs' ms -> ms `DL.snoc` BranchMarkup (BranchParam n props childs'))

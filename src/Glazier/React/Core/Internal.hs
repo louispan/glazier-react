@@ -23,9 +23,8 @@ import Control.Monad.Trans.Maybe
 import qualified Data.Map.Strict as M
 import Data.IORef
 import Data.IORef.Extras
-import qualified Data.JSString as J
 import Data.Tagged.Extras
-import qualified GHCJS.Types as J
+import JS.Data
 import Glazier.Command
 import Glazier.Logger
 import Glazier.React.Common
@@ -37,7 +36,6 @@ import Glazier.React.Reactant
 import Glazier.React.ReactId
 import Glazier.React.Reactor
 import Glazier.React.ReactPath
-import qualified JavaScript.Extras as JE
 import System.Mem.Weak
 
 ------------------------------------------------------
@@ -52,7 +50,7 @@ type MonadReactant m = (MonadIO m, MonadCommand m, CmdReactant (Command m))
 class (CmdReactant (Command m)
         , AlternativeIO m, forall r. Also r m
         , MonadCont m
-        , MonadLogger J.JSString m
+        , MonadLogger JSString m
         , MonadAsk' LogName m
         , MonadAsk' ReactPath m
         , AskScratch m
@@ -200,17 +198,17 @@ mkListener f = do
     delegatify $ exec' . MkListener plnWkRef f
 
 sequenceProps :: MonadGadget' m
-    => [(J.JSString, ModelT s m J.JSVal)]
-    -> ModelT s m [(J.JSString, J.JSVal)]
+    => [(JSString, ModelT s m JSVal)]
+    -> ModelT s m [(JSString, JSVal)]
 sequenceProps props = concat <$> traverse f props
   where
     -- emit empty list if it fails, otherwise use the first one emitted
-    f :: MonadGadget' m => (J.JSString, ModelT s m J.JSVal) -> ModelT s m [(J.JSString, J.JSVal)]
+    f :: MonadGadget' m => (JSString, ModelT s m JSVal) -> ModelT s m [(JSString, JSVal)]
     f (n, m) = (`also` pure []) $ (\v -> [(n, v)]) <$> m
 
 sequenceGadgets :: MonadGadget' m
-    => [(J.JSString, m Handler)]
-    -> m [(J.JSString, J.JSVal)]
+    => [(JSString, m Handler)]
+    -> m [(JSString, JSVal)]
 sequenceGadgets gads = do
     gads' <- concat <$> traverse f gads -- :: m [(JString, Handler)]
     let gads'' = M.fromListWith (<>) gads' -- combine same keys together
@@ -218,9 +216,9 @@ sequenceGadgets gads = do
         gads''' = case M.lookup "ref" gads'' of
                     Nothing -> gads''
                     Just v -> M.insertWith (<>) "elementRef" v gads''
-        g = fmap JE.toJS . mkListener -- convert to JS callback
+        g = fmap toJS . mkListener -- convert to JS callback
     traverse (traverse g) (M.toList gads''')
   where
     -- emit empty list if it fails, otherwise use the first one emitted
-    f :: MonadGadget' m => (J.JSString, m Handler) -> m [(J.JSString, Handler)]
+    f :: MonadGadget' m => (JSString, m Handler) -> m [(JSString, Handler)]
     f (n, m) = (`also` pure []) $ (\v -> [(n, v)]) <$> m

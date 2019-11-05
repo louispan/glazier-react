@@ -17,18 +17,16 @@ module Glazier.React.Component.Internal
 import Control.DeepSeq
 import Data.String
 import qualified GHC.Generics as G
-import qualified GHCJS.Marshal.Pure as J
-import qualified GHCJS.Types as J
 import Glazier.React.ReactBatch
-import qualified JavaScript.Extras as JE
+import JS.Data
 
 
-class JE.ToJS j => Component j where
-  componentName :: j -> J.JSString
+class ToJS j => Component j where
+  componentName :: j -> JSString
   isStringComponent :: j -> Bool
 
 -- The componentName is used for making the ReactPath for logging
-instance Component J.JSString where
+instance Component JSString where
   componentName = id
   isStringComponent _ = True
 
@@ -37,8 +35,8 @@ instance Component ElementComponent where
   isStringComponent _ = False
 
 -- | Returns a reference to the javascript *class* definition of the react component
-newtype ElementComponent = ElementComponent J.JSVal
-    deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
+newtype ElementComponent = ElementComponent JSVal
+    deriving (G.Generic, Show, ToJS, IsString, NFData)
 
 -- | This returns the javascript class definition of WidgetComponent.
 -- There is ever only one WidgetComponent class, so it is purely available
@@ -46,8 +44,8 @@ elementComponent :: ElementComponent
 elementComponent = ElementComponent js_elementComponent
 
 -- | Returns a reference to the javascript *class* definition of the react component
-newtype WidgetComponent = WidgetComponent J.JSVal
-    deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
+newtype WidgetComponent = WidgetComponent JSVal
+    deriving (G.Generic, Show, ToJS, IsString, NFData)
 
 -- | This returns the javascript class definition of WidgetComponent.
 -- There is ever only one WidgetComponent class, so it is purely available
@@ -63,10 +61,10 @@ batchWidgetRerender :: ReactBatch -> WidgetRef -> IO ()
 batchWidgetRerender b w = js_batchWidgetRerender b w
 
 -- | This is used store the react "ref" to a javascript instance of a react Component.
-newtype WidgetRef = WidgetRef J.JSVal
-    deriving (G.Generic, Show, J.IsJSVal, J.PToJSVal, JE.ToJS, IsString, NFData)
+newtype WidgetRef = WidgetRef JSVal
+    deriving (G.Generic, Show, ToJS, IsString, NFData)
 
-instance JE.FromJS WidgetRef where
+instance FromJS WidgetRef where
     fromJS a | js_isWidgetComponent a = Just $ WidgetRef a
     fromJS _ = Nothing
 
@@ -74,22 +72,22 @@ instance JE.FromJS WidgetRef where
 
 foreign import javascript unsafe
   "$r = hgr$ElementComponent();"
-  js_elementComponent :: J.JSVal
+  js_elementComponent :: JSVal
 
 foreign import javascript unsafe
   "$r = hgr$WidgetComponent();"
-  js_widgetComponent :: J.JSVal
+  js_widgetComponent :: JSVal
 
 -- -- !!blah is javascript way of converting to bool
 -- -- using undocumented api to check if something is react component
 -- -- https://stackoverflow.com/questions/33199959/how-to-detect-a-react-component-vs-a-react-element
 -- foreign import javascript unsafe
 --   "!(!($1 && !(!($1['isReactComponent']))))"
---   js_isReactComponent :: J.JSVal -> Bool
+--   js_isReactComponent :: JSVal -> Bool
 
 foreign import javascript unsafe
     "typeof $1 !== 'undefined' && $1 instanceof hgr$WidgetComponent"
-    js_isWidgetComponent :: J.JSVal -> Bool
+    js_isWidgetComponent :: JSVal -> Bool
 
 foreign import javascript unsafe
     "if ($1 && $1['rerender']){$1['rerender']()};"
@@ -101,13 +99,13 @@ foreign import javascript unsafe
 
 #else
 
-js_elementComponent :: J.JSVal
-js_elementComponent = J.nullRef
+js_elementComponent :: JSVal
+js_elementComponent = nullRef
 
-js_widgetComponent :: J.JSVal
-js_widgetComponent = J.nullRef
+js_widgetComponent :: JSVal
+js_widgetComponent = nullRef
 
-js_isWidgetComponent :: J.JSVal -> Bool
+js_isWidgetComponent :: JSVal -> Bool
 js_isWidgetComponent _ = False
 
 js_rerenderWidget :: WidgetRef -> IO ()

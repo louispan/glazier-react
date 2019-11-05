@@ -18,13 +18,12 @@ import Data.IORef
 import qualified Data.Map.Strict as M
 import Data.Maybe
 import qualified GHC.Generics as G
-import qualified GHCJS.Foreign.Callback as J
-import qualified GHCJS.Types as J
+import GHCJS.Foreign.Callback
 import Glazier.Logger
 import Glazier.React.Common
 import Glazier.React.Component
 import Glazier.React.ReactId
-import qualified JavaScript.Extras as JE
+import JS.Data
 import System.Mem.AnyStableName
 import System.Mem.Weak
 
@@ -35,7 +34,7 @@ data RerenderRequired
 
 data WidgetCallbacks = WidgetCallbacks
     -- render function of the ReactComponent
-    { widgetOnRender :: J.Callback (IO J.JSVal)
+    { widgetOnRender :: Callback (IO JSVal)
     -- updates the shimRef
     , widgetOnRef :: Listener
     } deriving (G.Generic)
@@ -44,8 +43,8 @@ makeLenses_ ''WidgetCallbacks
 
 releaseWidgetCallbacks :: WidgetCallbacks -> IO ()
 releaseWidgetCallbacks (WidgetCallbacks a b) = do
-    J.releaseCallback a
-    J.releaseCallback b
+    releaseCallback a
+    releaseCallback b
 
 ----------------------------------------------------------------------------------
 
@@ -57,7 +56,7 @@ data Plan = Plan
     , logDepth :: IO (Maybe (Maybe LogCallStackDepth))
 
     -- a javascript object to store/set miscellaneous data
-    , scratch :: JE.Object
+    , scratch :: JSObject
 
     -- a react "ref" to the javascript instance of ReactComponent
     -- so that react "componentRef.setState()" can be called.
@@ -67,7 +66,7 @@ data Plan = Plan
     , destructor :: IO ()
 
     -- The prerendered back buffer
-    , prerendered :: J.JSVal
+    , prerendered :: JSVal
 
     -- An IO action that will update 'prerendered' with the latest markup using the associated 'Obj s'
     , prerender :: IO ()
@@ -106,7 +105,7 @@ makeLenses_ ''Plan
 releasePlanCallbacks :: Plan -> IO ()
 releasePlanCallbacks pln = do
     releaseWidgetCallbacks (widgetCallbacks pln)
-    traverse_ (J.releaseCallback . snd) (listeners pln)
+    traverse_ (releaseCallback . snd) (listeners pln)
 
 instance Show Plan where
     showsPrec p pln = showParen

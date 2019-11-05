@@ -33,7 +33,6 @@ import Control.Monad.Trans.Maybe
 import qualified Data.DList as DL
 import Data.IORef
 import Data.Tagged.Extras
-import qualified GHCJS.Types as J
 import Glazier.Command
 import Glazier.Logger
 import Glazier.React.Common
@@ -41,33 +40,33 @@ import Glazier.React.Markup
 import Glazier.React.Model
 import Glazier.React.Plan
 import Glazier.React.ReactPath
-import qualified JavaScript.Extras as JE
+import JS.Data
 import System.Mem.Weak
 
-type AskScratch = MonadAsk' (Tagged "Scratch" JE.Object)
-askScratch :: AskScratch m => m JE.Object
-askScratch = askTagged @"Scratch" @JE.Object
-localScratch :: AskScratch m => (JE.Object -> JE.Object) -> m a -> m a
-localScratch = localTagged @"Scratch" @JE.Object
+type AskScratch = MonadAsk' (Tagged "Scratch" JSObject)
+askScratch :: AskScratch m => m JSObject
+askScratch = askTagged @"Scratch" @JSObject
+localScratch :: AskScratch m => (JSObject -> JSObject) -> m a -> m a
+localScratch = localTagged @"Scratch" @JSObject
 
-deleteScratch :: (MonadIO m, AskScratch m) => J.JSString -> m ()
+deleteScratch :: (MonadIO m, AskScratch m) => JSString -> m ()
 deleteScratch n = do
     d <- askScratch
-    liftIO $ d `JE.deleteProperty` n
+    liftIO $ d `deleteProperty` n
 
-setScratch :: (MonadIO m, AskScratch m, JE.ToJS a) => J.JSString -> a -> m ()
+setScratch :: (MonadIO m, AskScratch m, ToJS a) => JSString -> a -> m ()
 setScratch n v = do
     d <- askScratch
-    liftIO $ d `JE.setProperty` (n, JE.toJS v)
+    liftIO $ d `setProperty` (n, toJS v)
 
-getScratch :: (MonadIO m, AskScratch m) => J.JSString -> m J.JSVal
+getScratch :: (MonadIO m, AskScratch m) => JSString -> m JSVal
 getScratch n = do
     d <- askScratch
-    liftIO $ d `JE.getProperty` n
+    liftIO $ d `getProperty` n
 
-scratchTimes :: (MonadIO m, AskScratch m) => Int -> J.JSString -> m () -> m ()
+scratchTimes :: (MonadIO m, AskScratch m) => Int -> JSString -> m () -> m ()
 scratchTimes maxTimes n m = do
-    d <- JE.fromJS @Int <$> getScratch n
+    d <- fromJS @Int <$> getScratch n
     let (x', m') = case (d, maxTimes) of
             (_, x) | x <= 0         -> (0, pure ())
             (Nothing, _)            -> (1, m)
@@ -77,7 +76,7 @@ scratchTimes maxTimes n m = do
     m'
 
 type Reactor' c =
-    ReaderT (Tagged "Scratch" JE.Object) -- 'AskScratch'
+    ReaderT (Tagged "Scratch" JSObject) -- 'AskScratch'
     (ReaderT (Weak (IORef Notifier)) -- 'AskNotifierWeakRef'
     (ReaderT (Weak (IORef Plan)) -- 'AskPlanWeakRef', 'AskLogLevel', 'AskLogCallStackDepth', 'AskLogName'
     (MaybeT -- 'Alternative'

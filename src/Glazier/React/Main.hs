@@ -24,9 +24,8 @@ import Data.IORef
 import Data.Tagged.Extras
 import Data.Typeable
 import GHCJS.Foreign.Export
-import GHCJS.Types
 import Glazier.React.Exec
-import qualified Glazier.DOM as DOM
+import qualified JS.DOM as DOM
 
 -----------------------------------------------
 

@@ -8,6 +8,7 @@ module Glazier.React
     , module Glazier.React.Common
     , module Glazier.React.ReactId
     , module Glazier.React.Plan
+    , module Glazier.React.Synthetic
     , module Glazier.Command
     , module Glazier.Logger
     , module Control.Also
@@ -23,8 +24,7 @@ module Glazier.React
     , module Control.Monad.Trans.Extras
     , module Control.Monad.Trans.Maybe
     , module GHC.Stack
-    , module GHCJS.Types
-    , module JavaScript.Extras
+    , module JS.Data
     , module Data.Function.Extras
     , module Data.Proxy
     , module Data.String
@@ -50,7 +50,6 @@ import Data.Proxy
 import Data.String
 import Data.Tagged.Extras
 import GHC.Stack
-import GHCJS.Types
 import Glazier.Command
 import Glazier.Logger
 import Glazier.React.Common
@@ -62,4 +61,5 @@ import Glazier.React.Plan
 import Glazier.React.ReactDOM
 import Glazier.React.ReactId
 import Glazier.React.Reactor
-import JavaScript.Extras
+import Glazier.React.Synthetic
+import JS.Data

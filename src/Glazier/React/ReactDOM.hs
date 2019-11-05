@@ -5,8 +5,8 @@ module Glazier.React.ReactDOM
   ( renderDOM
   ) where
 
-import qualified Glazier.DOM.EventTarget.Node.Element as DOM
 import Glazier.React.ReactElement
+import qualified JS.DOM.EventTarget.Node.Element as DOM
 
 -- | Using a React Element (first arg) give React rendering control over a DOM element (second arg).
 -- This should only be called for the topmost component.

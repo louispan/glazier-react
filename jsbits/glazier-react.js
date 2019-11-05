@@ -44,7 +44,7 @@ var hgr$ShimComponent_ = null;
 // the React componentWillUnmount callback.
 function hgr$ShimComponent() {
     if (!hgr$ShimComponent_) {
-        const ReactPureComponent = hgr$React()["PureComponent"];
+        const ReactPureComponent = hgr$React().PureComponent;
         class ShimComponent extends ReactPureComponent {
             static CustomProperties() {
                 return ["onRendered", "onMount", "onUnmount"];
@@ -67,22 +67,22 @@ function hgr$ShimComponent() {
                 // ref is called before componentDidMount
                 // if and only if component got rendered
                 // so this.ref may be null
-                if (this.props['onMount'])
-                    this.props['onMount'](this.getRef());
-                if (this.props['onRendered'])
-                    this.props['onRendered'](this.getRef());
+                if (this.props.onMount)
+                    this.props.onMount(this.getRef());
+                if (this.props.onRendered)
+                    this.props.onRendered(this.getRef());
             }
 
             componentDidUpdate(prevProps, prevState) {
                 // componentDidUpdate is not called on initial render.
                 // ignore prevProps, prevState and forward to a custom callback
-                if (this.props['onRendered'])
-                    this.props['onRendered'](this.getRef());
+                if (this.props.onRendered)
+                    this.props.onRendered(this.getRef());
             }
 
             componentWillUnmount() {
-                if (this.props['onUnmount'])
-                    this.props['onUnmount'](this.getRef());
+                if (this.props.onUnmount)
+                    this.props.onUnmount(this.getRef());
             }
         }
         hgr$ShimComponent_ = ShimComponent;
@@ -263,8 +263,8 @@ function hgr$WidgetComponent() {
             render() {
                 // hide our custom properties
                 props = hgr$objectWithoutProperties(this.props, WidgetComponent.CustomProperties());
-                if (this.props['render'])
-                    return this.props['render']();
+                if (this.props.render)
+                    return this.props.render();
                 return null;
             }
         }

@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -60,10 +61,7 @@ import Data.Profunctor.Unsafe
 import Data.String
 import Data.Tagged.Extras
 import GHC.Stack
-import qualified GHCJS.Types as J
 import Glazier.Command
-import Glazier.DOM.Event
-import Glazier.DOM.EventTarget
 import Glazier.Logger
 import Glazier.React.Common
 import Glazier.React.Component
@@ -75,21 +73,25 @@ import Glazier.React.Plan.Internal
 import Glazier.React.Reactant
 import Glazier.React.Reactor
 import Glazier.React.ReactPath
-import qualified JavaScript.Extras as JE
+import Glazier.React.Synthetic
+import JS.Data
+import JS.DOM.EventTarget
 import System.Mem.Weak
+
+default (JSString)
 
 ------------------------------------------------------
 -- Logging
 ------------------------------------------------------
 
-logPrefix :: MonadGadget' m => m J.JSString
+logPrefix :: MonadGadget' m => m JSString
 logPrefix = do
     ps <- getReactPath <$> askEnv' @ReactPath
     let xs = L.intersperse "." $ (\(n, i) -> n <> (fromString $ show i)) <$> ps
     pure (foldr (<>) "" xs)
 
 logJS :: (HasCallStack, MonadGadget' m)
-    => LogLevel -> IO J.JSString
+    => LogLevel -> IO JSString
     -> m ()
 logJS lvl msg = withFrozenCallStack $ do
     p <- logPrefix
@@ -234,7 +236,7 @@ notifyDirty = do
 -- due to the way ghcjs sync and async threads interact with React js.
 mkHandler ::
     (NFData a, MonadGadget' m)
-    => (J.JSVal -> MaybeT IO a)
+    => (JSVal -> MaybeT IO a)
     -> (a -> m ())
     -> m Handler -- (preprocess, postprocess)
 mkHandler goStrict f = do
@@ -249,12 +251,12 @@ mkHandler' ::
     -> m Handler
 mkHandler' goStrict goLazy = mkHandler (handleSyntheticEvent goStrict) goLazy
 
-handleSyntheticEvent :: Monad m => (SyntheticEvent -> MaybeT m a) -> (J.JSVal -> MaybeT m a)
-handleSyntheticEvent g j = MaybeT (pure $ JE.fromJS j) >>= g
+handleSyntheticEvent :: Monad m => (SyntheticEvent -> MaybeT m a) -> (JSVal -> MaybeT m a)
+handleSyntheticEvent g j = MaybeT (pure $ fromJS j) >>= g
 
 -- | Add a listener with an event target, and automatically removes it on widget destruction
 listenEventTarget :: (NFData a, MonadWidget' m, IEventTarget j)
-    => j -> J.JSString -> (J.JSVal -> MaybeT IO a) -> (a -> m ()) -> m ()
+    => j -> JSString -> (JSVal -> MaybeT IO a) -> (a -> m ()) -> m ()
 listenEventTarget j n goStrict goLazy = do
     hdl <- mkHandler goStrict goLazy
     cb <- mkListener hdl
@@ -264,7 +266,7 @@ listenEventTarget j n goStrict goLazy = do
 -- | Orphan instance because it requires AsReactant
 -- LOUISFIXME: Think about this, use ReaderT (s -> Either e Obj s)?
 -- Use a new typeclass?
--- instance (A.AFromJSON m s, AsReactant c, MonadCommand c m, LogLevelEnv m, MonadTrans t, MonadReader (Widget c s s a, J.JSString) (t m), MonadError a (t m)) => A.AFromJSON (t m) (Obj s) where
+-- instance (A.AFromJSON m s, AsReactant c, MonadCommand c m, LogLevelEnv m, MonadTrans t, MonadReader (Widget c s s a, JSString) (t m), MonadError a (t m)) => A.AFromJSON (t m) (Obj s) where
 --     aparseJSON v = do
 --         ms <- fmap lift (A.aparseJSON v)
 --         let meobj = do
@@ -279,7 +281,7 @@ listenEventTarget j n goStrict goLazy = do
 ----------------------------------------------------------------------------------
 
 -- | Possibly write some text, otherwise do nothing
-txt :: MonadWidget s m => ModelT s m J.JSString -> m ()
+txt :: MonadWidget s m => ModelT s m JSString -> m ()
 txt m = (`also` pure ()) $ do -- catch failure with `also` so we can continue
             t <- fromModelT m
             textMarkup t
@@ -288,10 +290,10 @@ txt m = (`also` pure ()) $ do -- catch failure with `also` so we can continue
 -- Idea from https://github.com/JedWatson/classnames
 -- Any 'Alternative' failures to produce 'Bool' is dropped, and does not affect
 -- the rest of the list.
-classNames :: MonadGadget' m => [(J.JSString, ModelT s m Bool)] -> ModelT s m J.JSVal
+classNames :: MonadGadget' m => [(JSString, ModelT s m Bool)] -> ModelT s m JSVal
 classNames xs = do
     xs' <- filterM (go . snd) xs
-    pure . JE.toJS . J.unwords . fmap fst $ xs'
+    pure . toJS . J.unwords . fmap fst $ xs'
   where
     go m = m `also` pure False
 
@@ -302,8 +304,8 @@ classNames xs = do
 -- following @m@ in the 'DList' evaluated.
 lf :: (Component j, MonadWidget s m)
     => j -- ^ "input" or a @ReactComponent@
-    -> DL.DList (J.JSString, ModelT s m Handler)
-    -> DL.DList (J.JSString, ModelT s m J.JSVal)
+    -> DL.DList (JSString, ModelT s m Handler)
+    -> DL.DList (JSString, ModelT s m JSVal)
     -> m ()
 lf j gads props = do
     modifyEnv' $ nextReactPath (componentName j)
@@ -311,14 +313,14 @@ lf j gads props = do
         props' <- sequenceProps (DL.toList props)
         gads' <- sequenceGadgets (DL.toList gads)
         pure (props', gads')
-    let elemMarkup = leafMarkup (JE.toJS j) (DL.fromList (props' <> gads'))
-        basicMarkup = leafMarkup (JE.toJS elementComponent)
-            (DL.fromList (("elementName", JE.toJS $ componentName j) : props'))
+    let elemMarkup = leafMarkup (toJS j) (DL.fromList (props' <> gads'))
+        basicMarkup = leafMarkup (toJS elementComponent)
+            (DL.fromList (("elementName", toJS $ componentName j) : props'))
     case (isStringComponent j, gads') of
         (True, []) -> basicMarkup
         _ -> elemMarkup
 
-    leafMarkup (JE.toJS j) (DL.fromList (props' <> gads'))
+    leafMarkup (toJS j) (DL.fromList (props' <> gads'))
 
 -- | markup a branch html element, given a DList of @m@ that produces Handlers
 -- and property values, and the @m@ child node.
@@ -327,8 +329,8 @@ lf j gads props = do
 -- following @m@ in the 'DList' evaluated.
 bh :: (Component j, MonadWidget s m)
     => j-- ^ eg "div" or a @ReactComponent@
-    -> DL.DList (J.JSString, ModelT s m Handler)
-    -> DL.DList (J.JSString, ModelT s m J.JSVal)
+    -> DL.DList (JSString, ModelT s m Handler)
+    -> DL.DList (JSString, ModelT s m JSVal)
     -> m a
     -> m a
 bh j gads props child = do
@@ -338,9 +340,9 @@ bh j gads props child = do
         gads' <- sequenceGadgets (DL.toList gads)
         pure (props', gads')
     localEnv' pushReactPath $ do
-        let elemMarkup = branchMarkup (JE.toJS j) (DL.fromList (props' <> gads')) child
-            basicMarkup = branchMarkup (JE.toJS elementComponent)
-                (DL.fromList (("elementName", JE.toJS $ componentName j) : props')) child
+        let elemMarkup = branchMarkup (toJS j) (DL.fromList (props' <> gads')) child
+            basicMarkup = branchMarkup (toJS elementComponent)
+                (DL.fromList (("elementName", toJS $ componentName j) : props')) child
         case (isStringComponent j, gads') of
             (True, []) -> basicMarkup
             _ -> elemMarkup
@@ -354,10 +356,10 @@ displayObj (Obj plnRef _ _ _ _ _) = do
         n = logName pln
     -- These are the callbacks on the 'WidgetComponent'
     -- See jsbits/glazier_react.js
-    leafMarkup (JE.toJS widgetComponent)
-        [ ("key", JE.toJS $ untag' @"LogName" n)
-        , ("render", JE.toJS renderCb)
-        , ("ref", JE.toJS refCb)
+    leafMarkup (toJS widgetComponent)
+        [ ("key", toJS $ untag' @"LogName" n)
+        , ("render", toJS renderCb)
+        , ("ref", toJS refCb)
         ]
 
 

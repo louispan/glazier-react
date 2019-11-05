@@ -14,7 +14,7 @@ module Glazier.React.ReactPath where
 import qualified Data.JSString as J
 import Data.String
 import qualified GHC.Generics as G
-import JavaScript.Extras.Aeson.Instances ()
+-- import JavaScript.Extras.Aeson.Instances ()
 
 default (J.JSString)
 
