@@ -29,11 +29,11 @@ instance ISyntheticEvent SyntheticEvent
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
-    "$1.nativeEvent"
+    "$r = $1.nativeEvent;"
     js_nativeEvent :: JSVal -> JSVal
 
 foreign import javascript unsafe
-    "$1.isPropagationStopped"
+    "$r = $1.isPropagationStopped;"
     js_isPropagationStopped :: JSVal -> IO Bool
 
 #else

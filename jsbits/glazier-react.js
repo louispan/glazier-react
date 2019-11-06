@@ -25,9 +25,12 @@ function hgr$ReactDOM() {
 // frrom babel generated code
 function hgr$objectWithoutProperties(obj, keys) {
     var target = {};
+    // console.log("objectWithoutProperties keys", keys)
     for (var i in obj) {
+        // console.log("objectWithoutProperties i", i)
         if (keys.indexOf(i) >= 0) continue;
         if (!Object.prototype.hasOwnProperty.call(obj, i)) continue;
+        // console.log("objectWithoutProperties i SET", i)
         target[i] = obj[i];
     }
     return target;
@@ -44,8 +47,8 @@ var hgr$ShimComponent_ = null;
 // the React componentWillUnmount callback.
 function hgr$ShimComponent() {
     if (!hgr$ShimComponent_) {
-        const ReactPureComponent = hgr$React().PureComponent;
-        class ShimComponent extends ReactPureComponent {
+        const React = hgr$React();
+        class ShimComponent extends React.PureComponent {
             static CustomProperties() {
                 return ["onRendered", "onMount", "onUnmount"];
             }
@@ -96,6 +99,7 @@ var hgr$ElementComponent_ = null;
 // "elementRef" the ref to the DOM element
 function hgr$ElementComponent() {
     if (!hgr$ElementComponent_) {
+        const React = hgr$React();
         const ShimComponent = hgr$ShimComponent();
         const diff = require('diff');
 
@@ -210,7 +214,7 @@ function hgr$ElementComponent() {
 
             onRef(ref) {
                 this.ref = ref;
-                updateInput();
+                this.updateInput();
                 // also forward to elementRef prop if set
                 if (this.props.elementRef)
                     this.props.elementRef(ref);
@@ -221,18 +225,27 @@ function hgr$ElementComponent() {
             }
 
             rerender() {
-                updateInput();
+                this.updateInput();
                 this.forceUpdate();
             }
 
             render() {
                 // hide ref from ReactElement because we want to pass our handler instead onRef instead
                 // hide our custom properties
-                props = hgr$objectWithoutProperties(this.props, ElementComponent.CustomProperties());
-                props.ref = this.onRef;
+                var props;
                 if (this.props.elementName.localeCompare("input")) {
+                    console.log("ElementComponent.CustomProperties() (input) ", ElementComponent.CustomProperties().concat(["value"]));
+                    props = hgr$objectWithoutProperties(this.props, ElementComponent.CustomProperties().concat(["value"]));
+                    console.log("ElementComponent props (input) ", props);
                     props.defaultValue = this.props.value; // this only works on the first render
                 }
+                else {
+                    console.log("ElementComponent.CustomProperties() ", ElementComponent.CustomProperties());
+                    props = hgr$objectWithoutProperties(this.props, ElementComponent.CustomProperties());
+
+                    console.log("ElementComponent props ", props);
+                }
+                props.ref = this.onRef;
                 return React.createElement(this.props.elementName, props, props.children);
             }
         }
@@ -249,7 +262,7 @@ function hgr$WidgetComponent() {
         const ShimComponent = hgr$ShimComponent();
         class WidgetComponent extends ShimComponent {
             static CustomProperties() {
-                return ElementComponent.CustomProperties().concat(["render"]);
+                return ShimComponent.CustomProperties().concat(["render"]);
             }
 
             constructor(props) {
@@ -262,7 +275,7 @@ function hgr$WidgetComponent() {
 
             render() {
                 // hide our custom properties
-                props = hgr$objectWithoutProperties(this.props, WidgetComponent.CustomProperties());
+                var props = hgr$objectWithoutProperties(this.props, WidgetComponent.CustomProperties());
                 if (this.props.render)
                     return this.props.render();
                 return null;

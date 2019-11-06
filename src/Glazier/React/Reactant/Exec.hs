@@ -61,7 +61,6 @@ import Glazier.React.Reactor
 import Glazier.React.ReactPath
 import JS.Data
 import qualified JS.DOM as DOM
-import System.IO
 import System.Mem.AnyStableName
 import System.Mem.Weak
 
@@ -99,6 +98,8 @@ renderAndExportObj :: (MonadIO m, Typeable s) => DOM.Element -> Obj s -> m (Expo
 renderAndExportObj root' obj = liftIO $ do
     markup <- (`execStateT` mempty) $ displayObj obj
     e <- toElement markup
+    fixme $ liftIO $ putStrLn "renderDOM"
+    js_wack (toJS e)
     renderDOM e root'
 
     -- Export obj to prevent it from being garbage collected
@@ -194,8 +195,9 @@ rerenderDirtyPlans = do
 -- | Called after a mutation
 markPlanDirty :: (AlternativeIO m, AskDirtyPlans m) => Weak (IORef Plan) -> m ()
 markPlanDirty wk = do
-    fixme $ liftIO $ putStrLn "LOUISDEBUG: markDirty"
     plnRef <- guardJustIO $ deRefWeak wk
+    pln <- fixme $ liftIO $ readIORef plnRef
+    fixme $ liftIO $ putStrLn $ "LOUISDEBUG: markDirty " <> show pln
     (oldReq, i) <- liftIO $ atomicModifyIORef' plnRef $ \pln ->
         let (oldReq, pln') = (pln & _rerenderRequired <<.~ RerenderNotRequired)
         in (pln', (oldReq, planId pln))
@@ -263,9 +265,9 @@ execMkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar)
     -- Create automatic garbage collection of the callbacks
     -- that will run when the Obj is garbage collected.
     plnWkRef <- liftIO $ mkWeakIORef plnRef_ $ do
-        fixme $ putStrLn "LOUISDEBUG: release plnRef"
         -- references for finalizers do not keep reference alive
         pln <- readIORef plnRef_
+        fixme $ putStrLn $ "LOUISDEBUG: release plnRef " <> show pln
         (`evalMaybeT` ()) $ do
             notifierRef <- guardJustIO $ deRefWeak notifierWkRef
             liftIO $ atomicModifyIORef_' notifierRef (_watchers.at i .~ Nothing)
@@ -342,8 +344,9 @@ execMkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar)
     setPrerendered :: AlternativeIO m => Weak (IORef Plan) -> DL.DList ReactMarkup -> m ()
     setPrerendered plnWkRef mrkup = do
         frame <- liftIO $ toJS <$> toElement mrkup
-        fixme $ liftIO $ putStrLn "LOUISDEBUG: execSetPrerendered"
         plnRef <- guardJustIO $ deRefWeak plnWkRef
+        pln <- fixme $ liftIO $ readIORef plnRef
+        fixme $ liftIO $ putStrLn $ "LOUISDEBUG: execSetPrerendered " <> show pln
         -- replace the prerendered frame
         liftIO $ atomicModifyIORef_' plnRef $ (_prerendered .~ frame)
 
@@ -482,7 +485,14 @@ foreign import javascript unsafe
     "console.error($1);"
     js_logError :: J.JSString -> IO ()
 
+foreign import javascript unsafe
+    "console.log('wack', $1);"
+    js_wack :: JSVal -> IO ()
+
 #else
+
+js_wack :: JSVal -> IO ()
+js_wack _ = fixme $ pure ()
 
 js_logInfo :: J.JSString -> IO ()
 js_logInfo = putStrLn . J.unpack

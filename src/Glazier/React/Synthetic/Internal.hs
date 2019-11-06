@@ -76,19 +76,19 @@ instance IKeyboardEvent SyntheticKeyboardEvent
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
-    "typeof $1 !== 'undefined' && $1 instanceof Object && $1.nativeEvent instanceof Event"
+    "$r = typeof $1 !== 'undefined' && $1 instanceof Object && $1.nativeEvent instanceof Event;"
     js_isSyntheticEvent :: JSVal -> Bool
 
 foreign import javascript unsafe
-    "typeof $1 !== 'undefined' && $1 instanceof Object && $1.nativeEvent instanceof UIEvent"
+    "$r = typeof $1 !== 'undefined' && $1 instanceof Object && $1.nativeEvent instanceof UIEvent;"
     js_isSyntheticUIEvent :: JSVal -> Bool
 
 foreign import javascript unsafe
-    "typeof $1 !== 'undefined' && $1 instanceof Object && $1.nativeEvent instanceof MouseEvent"
+    "$r = typeof $1 !== 'undefined' && $1 instanceof Object && $1.nativeEvent instanceof MouseEvent;"
     js_isSyntheticMouseEvent :: JSVal -> Bool
 
 foreign import javascript unsafe
-    "typeof $1 !== 'undefined' && $1 instanceof Object && $1.nativeEvent instanceof KeyboardEvent"
+    "$r = typeof $1 !== 'undefined' && $1 instanceof Object && $1.nativeEvent instanceof KeyboardEvent;"
     js_isSyntheticKeyboardEvent :: JSVal -> Bool
 
 #else

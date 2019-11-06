@@ -23,7 +23,7 @@ instance FromJS ReactElement where
 #ifdef __GHCJS__
 
 foreign import javascript unsafe
-    "hgr$React().isValidElement($1)"
+    "$r = hgr$React().isValidElement($1);"
     js_isReactElement :: JSVal -> Bool
 
 #else

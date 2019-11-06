@@ -21,7 +21,9 @@ default (J.JSString)
 -- data ReactPathFocus = NewReactPath | CurrentReactPath
 --     deriving (G.Generic, Read, Show, Eq, Ord)
 
--- 'Contains the current react path. The Int is zero indexed.
+-- | The Maybe component contains the child-most node (if any)
+-- The list component are the descendants
+-- The Int is zero indexed.
 newtype ReactPath = ReactPath (Maybe (J.JSString, Int), [(J.JSString, Int)])
     deriving (G.Generic, Read, Show, Eq, Ord)
 

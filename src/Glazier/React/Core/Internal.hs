@@ -197,16 +197,28 @@ mkListener f = do
     plnWkRef <- askPlanWeakRef
     delegatify $ exec' . MkListener plnWkRef f
 
-sequenceProps :: MonadGadget' m
-    => [(JSString, ModelT s m JSVal)]
-    -> ModelT s m [(JSString, JSVal)]
+-- | Removes all 'PutEnviron' state effects ('Markup', 'ReactPath') from a 'MonadWidget'
+-- This is required when running 'MonadGadgets' for their results
+-- but not the markup (since MonadWidget is also a MonadGadget)
+cleanWidget :: MonadWidget' m => m a -> m a
+cleanWidget m = do
+    -- Make sure @m@ doesn't change react path
+    -- we still want a non-empty react path for logging
+    a <- localEnv' @ReactPath id m
+    -- clear Markup
+    putMarkup mempty
+    pure a
+
+sequenceProps :: MonadWidget' m
+    => [(JSString, m JSVal)]
+    -> m [(JSString, JSVal)]
 sequenceProps props = concat <$> traverse f props
   where
     -- emit empty list if it fails, otherwise use the first one emitted
-    f :: MonadGadget' m => (JSString, ModelT s m JSVal) -> ModelT s m [(JSString, JSVal)]
-    f (n, m) = (`also` pure []) $ (\v -> [(n, v)]) <$> m
+    -- f :: MonadWidget' m => (JSString, m JSVal) -> m [(JSString, JSVal)]
+    f (n, m) = (`also` pure []) $ (\v -> [(n, v)]) <$> (cleanWidget m)
 
-sequenceGadgets :: MonadGadget' m
+sequenceGadgets :: MonadWidget' m
     => [(JSString, m Handler)]
     -> m [(JSString, JSVal)]
 sequenceGadgets gads = do
@@ -220,5 +232,5 @@ sequenceGadgets gads = do
     traverse (traverse g) (M.toList gads''')
   where
     -- emit empty list if it fails, otherwise use the first one emitted
-    f :: MonadGadget' m => (JSString, m Handler) -> m [(JSString, Handler)]
-    f (n, m) = (`also` pure []) $ (\v -> [(n, v)]) <$> m
+    -- f :: MonadGadget' m => (JSString, m Handler) -> m [(JSString, Handler)]
+    f (n, m) = (`also` pure []) $ (\v -> [(n, v)]) <$> (cleanWidget m)

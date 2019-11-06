@@ -33,7 +33,7 @@ foreign import javascript unsafe
   js_mkReactBatch :: IO JSVal
 
 foreign import javascript unsafe
-  "if ($1 && $1['runBatch']){$1['runBatch']()};"
+  "$1.runBatch();"
   js_runReactBatch :: JSVal -> IO ()
 
 #else

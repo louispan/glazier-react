@@ -8,6 +8,8 @@
   "repository": "github:louispan/glazier-react",
   "dependencies": {
     "javascript-extras": "louispan/javascript-extras",
-    "diff": "^4.0.1"
+    "diff": "^4.0.1",
+    "react": "^16.10.2",
+    "react-dom": "^16.10.2"
   }
 }

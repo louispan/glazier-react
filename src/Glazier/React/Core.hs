@@ -36,6 +36,7 @@ module Glazier.React.Core
     , mkListener
     , listenEventTarget
     , txt
+    , cleanWidget
     , classNames
     , lf
     , bh
@@ -290,12 +291,12 @@ txt m = (`also` pure ()) $ do -- catch failure with `also` so we can continue
 -- Idea from https://github.com/JedWatson/classnames
 -- Any 'Alternative' failures to produce 'Bool' is dropped, and does not affect
 -- the rest of the list.
-classNames :: MonadGadget' m => [(JSString, ModelT s m Bool)] -> ModelT s m JSVal
+classNames :: MonadWidget' m => [(JSString, ModelT s m Bool)] -> ModelT s m JSVal
 classNames xs = do
     xs' <- filterM (go . snd) xs
     pure . toJS . J.unwords . fmap fst $ xs'
   where
-    go m = m `also` pure False
+    go m = (cleanWidget m) `also` pure False
 
 -- | markup a leaf html element, given a DList of @m@ that produces Handlers
 -- and property values.
@@ -310,17 +311,16 @@ lf :: (Component j, MonadWidget s m)
 lf j gads props = do
     modifyEnv' $ nextReactPath (componentName j)
     (props', gads') <- fromModelT $ do
-        props' <- sequenceProps (DL.toList props)
-        gads' <- sequenceGadgets (DL.toList gads)
+        props' <- sequenceProps $ DL.toList props
+        gads' <- sequenceGadgets $ DL.toList gads
         pure (props', gads')
-    let elemMarkup = leafMarkup (toJS j) (DL.fromList (props' <> gads'))
-        basicMarkup = leafMarkup (toJS elementComponent)
-            (DL.fromList (("elementName", toJS $ componentName j) : props'))
+    let origMarkup = leafMarkup (toJS j) (DL.fromList (props' <> gads'))
+        elemMarkup = leafMarkup (toJS elementComponent)
+            (DL.fromList $ ("elementName", toJS $ componentName j) : (props' <> gads'))
     case (isStringComponent j, gads') of
-        (True, []) -> basicMarkup
-        _ -> elemMarkup
-
-    leafMarkup (toJS j) (DL.fromList (props' <> gads'))
+        (True, []) -> origMarkup
+        (True, _) -> elemMarkup
+        _ -> origMarkup
 
 -- | markup a branch html element, given a DList of @m@ that produces Handlers
 -- and property values, and the @m@ child node.
@@ -336,16 +336,19 @@ bh :: (Component j, MonadWidget s m)
 bh j gads props child = do
     modifyEnv' $ nextReactPath (componentName j)
     (props', gads') <- fromModelT $ do
-        props' <- sequenceProps (DL.toList props)
-        gads' <- sequenceGadgets (DL.toList gads)
+        props' <- sequenceProps $ DL.toList props
+        gads' <- sequenceGadgets $ DL.toList gads
         pure (props', gads')
     localEnv' pushReactPath $ do
-        let elemMarkup = branchMarkup (toJS j) (DL.fromList (props' <> gads')) child
-            basicMarkup = branchMarkup (toJS elementComponent)
-                (DL.fromList (("elementName", toJS $ componentName j) : props')) child
+        let origMarkup = branchMarkup (toJS j) (DL.fromList (props' <> gads'))
+                child
+            elemMarkup = branchMarkup (toJS elementComponent)
+                (DL.fromList $ ("elementName", toJS $ componentName j) : (props' <> gads'))
+                child
         case (isStringComponent j, gads') of
-            (True, []) -> basicMarkup
-            _ -> elemMarkup
+            (True, []) -> origMarkup
+            (True, _) -> elemMarkup
+            _ -> origMarkup
 
 displayObj :: (MonadIO m, PutMarkup m) => Obj t -> m ()
 displayObj (Obj plnRef _ _ _ _ _) = do

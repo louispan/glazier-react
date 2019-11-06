@@ -86,15 +86,15 @@ foreign import javascript unsafe
 --   js_isReactComponent :: JSVal -> Bool
 
 foreign import javascript unsafe
-    "typeof $1 !== 'undefined' && $1 instanceof hgr$WidgetComponent"
+    "$r = typeof $1 !== 'undefined' && $1 instanceof hgr$WidgetComponent;"
     js_isWidgetComponent :: JSVal -> Bool
 
 foreign import javascript unsafe
-    "if ($1 && $1['rerender']){$1['rerender']()};"
+    "$1.rerender();"
     js_rerenderWidget :: WidgetRef -> IO ()
 
 foreign import javascript unsafe
-    "if ($2 && $2['rerender'] && $1 && $1['batch']){$1['batch'](function(){$2['rerender']()})};"
+    "$1.batch($2.rerender);"
     js_batchWidgetRerender :: ReactBatch -> WidgetRef -> IO ()
 
 #else
