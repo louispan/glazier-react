@@ -44,16 +44,18 @@ module Glazier.React.Core
     , mkModelRef
     ) where
 
-import Control.Also
+import Control.Applicative
 import Control.Concurrent.MVar
 import Control.DeepSeq
 import Control.Lens
 import Control.Monad.Cont
+import Control.Monad.Delegate
 import Control.Monad.Environ
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
 import qualified Data.DList as DL
+import Data.Function.Extras
 import Data.IORef
 import qualified Data.JSString as J
 import qualified Data.List as L
@@ -283,9 +285,17 @@ listenEventTarget j n goStrict goLazy = do
 
 -- | Possibly write some text, otherwise do nothing
 txt :: MonadWidget s m => ModelT s m JSString -> m ()
-txt m = (`also` pure ()) $ do -- catch failure with `also` so we can continue
-            t <- fromModelT m
-            textMarkup t
+txt m = (<|> pure ()) $ do -- catch failure with `<|>` so we can continue
+-- txt m = do -- catch failure with `<|>` so we can continue
+    t <- fromModelT m'
+    textMarkup t
+  where
+    -- temporary code to test firing multiple things in widget
+    m' = fixme $ delegate $ \fire -> do
+            a <- m
+            fire a
+            fire " then "
+            fire a
 
 -- | Creates a JSVal for "className" property from a list of (JSString, Bool)
 -- Idea from https://github.com/JedWatson/classnames
@@ -296,7 +306,7 @@ classNames xs = do
     xs' <- filterM (go . snd) xs
     pure . toJS . J.unwords . fmap fst $ xs'
   where
-    go m = (cleanWidget m) `also` pure False
+    go m = (cleanWidget $ delegateHead m) <|> pure False
 
 -- | markup a leaf html element, given a DList of @m@ that produces Handlers
 -- and property values.
@@ -314,6 +324,7 @@ lf j gads props = do
         props' <- sequenceProps $ DL.toList props
         gads' <- sequenceGadgets $ DL.toList gads
         pure (props', gads')
+
     let origMarkup = leafMarkup (toJS j) (DL.fromList (props' <> gads'))
         elemMarkup = leafMarkup (toJS elementComponent)
             (DL.fromList $ ("elementName", toJS $ componentName j) : (props' <> gads'))
@@ -333,24 +344,29 @@ bh :: (Component j, MonadWidget s m)
     -> DL.DList (JSString, ModelT s m JSVal)
     -> m a
     -> m a
-bh j gads props child = do
+bh j gads props child = delegate $ \fire -> do
     modifyEnv' $ nextReactPath (componentName j)
+    rp <- askEnv' @ReactPath
     (props', gads') <- fromModelT $ do
         props' <- sequenceProps $ DL.toList props
         gads' <- sequenceGadgets $ DL.toList gads
         pure (props', gads')
-    localEnv' pushReactPath $ do
-        let origMarkup = branchMarkup (toJS j) (DL.fromList (props' <> gads'))
-                child
-            elemMarkup = branchMarkup (toJS elementComponent)
-                (DL.fromList $ ("elementName", toJS $ componentName j) : (props' <> gads'))
-                child
-        case (isStringComponent j, gads') of
-            (True, []) -> origMarkup
-            (True, _) -> elemMarkup
-            _ -> origMarkup
 
-displayObj :: (MonadIO m, PutMarkup m) => Obj t -> m ()
+    modifyEnv' @ReactPath (const $ pushReactPath rp)
+    -- make sure child only fires once
+    let child' = fire `discharge` child
+        origMarkup = branchMarkup (toJS j) (DL.fromList (props' <> gads'))
+            child'
+        elemMarkup = branchMarkup (toJS elementComponent)
+            (DL.fromList $ ("elementName", toJS $ componentName j) : (props' <> gads'))
+            child'
+    case (isStringComponent j, gads') of
+        (True, []) -> origMarkup
+        (True, _) -> elemMarkup
+        _ -> origMarkup
+    putEnv' @ReactPath rp
+
+displayObj :: (MonadIO m, MonadPut' Markup m) => Obj t -> m ()
 displayObj (Obj plnRef _ _ _ _ _) = do
     pln <- liftIO $ readIORef plnRef
     let cbs = widgetCallbacks pln

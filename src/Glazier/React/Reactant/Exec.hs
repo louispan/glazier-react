@@ -16,16 +16,16 @@
 
 module Glazier.React.Reactant.Exec where
 
-import Control.Also
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.DeepSeq
 import Control.Lens
 import Control.Lens.Misc
+import Control.Monad.Delegate
 import Control.Monad.Environ
 import Control.Monad.IO.Unlift
 import Control.Monad.Reader
-import Control.Monad.Trans.Cont
+import Control.Monad.Trans.ACont
 import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.State.Strict
@@ -61,6 +61,7 @@ import Glazier.React.Reactor
 import Glazier.React.ReactPath
 import JS.Data
 import qualified JS.DOM as DOM
+import System.IO
 import System.Mem.AnyStableName
 import System.Mem.Weak
 
@@ -99,7 +100,6 @@ renderAndExportObj root' obj = liftIO $ do
     markup <- (`execStateT` mempty) $ displayObj obj
     e <- toElement markup
     fixme $ liftIO $ putStrLn "renderDOM"
-    js_wack (toJS e)
     renderDOM e root'
 
     -- Export obj to prevent it from being garbage collected
@@ -284,14 +284,15 @@ execMkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar)
             case req of
                 RerenderNotRequired -> pure ()
                 RerenderRequired -> do
-                     -- protect against a 'finish'ed widget,
-                     -- so we can get the partial markup.
-                    wid `also` pure ()
+                    -- discharge once
+                    fixme $ liftIO $ putStrLn $ "rerender 1 " <> (show i)
+                    delegateHead wid
+                    fixme $ liftIO $ putStrLn $ "rerender 2 " <> (show i)
                     -- get the window out of wid and set the rendering function
                     -- the window cannot be obtained from execStateT because it
                     -- will return in the partial result due to StateT instance of 'codify'
                     -- So use 'SetPrerendered' to store the final window.
-                    ml <- askMarkup
+                    ml <- askEnv' @Markup
                     setPrerendered plnWkRef ml
 
         mkRerenderCmds = (`evalMaybeT` mempty) $ do
@@ -304,8 +305,8 @@ execMkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar)
             liftIO . execProgramT'
                 . (`evalStateT` mempty) -- markup
                 . (`evalStateT` (ReactPath (Nothing, [])))
-                . evalContT
                 . (`evalMaybeT` ())
+                . evalAContT
                 . (`runReaderT` plnWkRef)
                 . (`runReaderT` notifierWkRef)
                 . (`runReaderT` Tagged @"Scratch" o')
@@ -332,7 +333,9 @@ execMkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar)
 
     -- run the prerender function for the first time
     -- This will also initialize the widget, and set the rendered frame in the Plan
+    liftIO $ putStrLn $ "Initial 1 " <> show i
     liftIO prerndr
+    liftIO $ putStrLn $ "Initial 2 " <> show i
 
     -- We do not want explicitly tell React to show the prendered frame right now.
     -- This is the responsiblity of the caller of MkObj
@@ -485,14 +488,7 @@ foreign import javascript unsafe
     "console.error($1);"
     js_logError :: J.JSString -> IO ()
 
-foreign import javascript unsafe
-    "console.log('wack', $1);"
-    js_wack :: JSVal -> IO ()
-
 #else
-
-js_wack :: JSVal -> IO ()
-js_wack _ = fixme $ pure ()
 
 js_logInfo :: J.JSString -> IO ()
 js_logInfo = putStrLn . J.unpack

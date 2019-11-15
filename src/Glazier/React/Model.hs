@@ -20,7 +20,6 @@
 
 module Glazier.React.Model where
 
-import Control.Also
 import Control.Applicative
 import Control.Lens
 import Control.Monad.Cont
@@ -33,6 +32,7 @@ import Control.Monad.State.Strict
 import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Identity
 import Control.Monad.Trans.Maybe
+import Data.Function.Extras
 import Data.String
 import Data.Tagged.Extras
 import Glazier.Command
@@ -52,7 +52,12 @@ askModelEnv :: AskModelEnv s m => m (Maybe s, IO (Maybe s), ModifyModel s)
 askModelEnv = askEnvP @"Model" Proxy
 
 localModelEnv :: AskModelEnv s m => ((Maybe s, IO (Maybe s), ModifyModel s) -> (Maybe s, IO (Maybe s), ModifyModel s)) -> m b -> m b
-localModelEnv f = localEnvP @"Model" Proxy f
+-- FIXME: javascript compiles with
+-- /Users/louis/repo/js/glazier-react-examples/examples/todo/dist-newstyle/build/x86_64-linux/ghcjs-8.6.0.1/glazier-react-2.0.0.0/build/Glazier/React/Reactor.js_hi
+-- Declaration for $w$clocalEnkP2
+-- Unfolding of $w$clocalEnkP2:
+--   Iface type variable out of scope:  a1
+localModelEnv f = fixme $ localEnvP @"Model" Proxy f
 
 ---------------------------------------------------------------------------
 
@@ -79,8 +84,8 @@ newtype ModelT s m a = ModelT { unModelT :: ModelT' s m a }
     , Alternative
     , MonadPlus
     , MonadCont
-    , Also r
     , MonadDelegate
+    , MonadDischarge
     , MonadProgram
     , MonadAsk "Model" (Maybe s, IO (Maybe s), ModifyModel s) -- AskModelEnv
     )

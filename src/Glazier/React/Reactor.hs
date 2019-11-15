@@ -21,13 +21,13 @@
 
 module Glazier.React.Reactor where
 
-import Control.Also
 import Control.Applicative
 import Control.Monad.Cont
 import Control.Monad.Delegate
 import Control.Monad.Environ
 import Control.Monad.Reader
 import Control.Monad.State.Strict
+import Control.Monad.Trans.ACont
 import Control.Monad.Trans.Identity
 import Control.Monad.Trans.Maybe
 import qualified Data.DList as DL
@@ -79,8 +79,8 @@ type Reactor' c =
     ReaderT (Tagged "Scratch" JSObject) -- 'AskScratch'
     (ReaderT (Weak (IORef Notifier)) -- 'AskNotifierWeakRef'
     (ReaderT (Weak (IORef Plan)) -- 'AskPlanWeakRef', 'AskLogLevel', 'AskLogCallStackDepth', 'AskLogName'
+    (AContT () -- 'MonadDelegate', 'MonadDischarge'
     (MaybeT -- 'Alternative'
-    (ContT () -- 'MonadDelegate'
     -- State monads must be inside ContT to be a 'MonadDelegate'
     (StateT ReactPath -- 'PutReactPath', 'AskReactPath'
     (StateT (DL.DList ReactMarkup) -- 'PutMarkup'
@@ -100,11 +100,11 @@ newtype Reactor c a = Reactor { runReactor :: Reactor' c a }
     , Alternative
     , MonadPlus
     , MonadCont
-    , Also r
     , MonadDelegate
+    , MonadDischarge
     , MonadProgram
-    , AskMarkup
-    , PutMarkup
+    , MonadAsk' Markup
+    , MonadPut' Markup
     , AskLogLevel
     , AskLogCallStackDepth
     , MonadAsk' LogName

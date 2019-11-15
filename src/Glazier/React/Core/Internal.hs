@@ -1,18 +1,19 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE QuantifiedConstraints #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Glazier.React.Core.Internal where
 
-import Control.Also
+import Control.Applicative
 import Control.Concurrent.MVar
 import Control.Lens
 import Control.Monad.Cont
+import Control.Monad.Delegate
 import Control.Monad.Environ
 import Control.Monad.Identity
 import Control.Monad.Morph
@@ -20,11 +21,10 @@ import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
-import qualified Data.Map.Strict as M
 import Data.IORef
 import Data.IORef.Extras
+import qualified Data.Map.Strict as M
 import Data.Tagged.Extras
-import JS.Data
 import Glazier.Command
 import Glazier.Logger
 import Glazier.React.Common
@@ -36,6 +36,7 @@ import Glazier.React.Reactant
 import Glazier.React.ReactId
 import Glazier.React.Reactor
 import Glazier.React.ReactPath
+import JS.Data
 import System.Mem.Weak
 
 ------------------------------------------------------
@@ -46,10 +47,11 @@ type MonadReactant m = (MonadIO m, MonadCommand m, CmdReactant (Command m))
 
 -- | A 'MonadGadget'' is can log, 'instruct' 'Reactant' effects.
 -- It can be safely turned into a 'Handler' and used in event handling code.
--- It is an instance of 'Alternative'. It is an instance of 'Also' so it can be combined.
+-- It is an instance of 'Alternative'.
 class (CmdReactant (Command m)
-        , AlternativeIO m, forall r. Also r m
+        , AlternativeIO m
         , MonadCont m
+        , MonadDischarge m
         , MonadLogger JSString m
         , MonadAsk' LogName m
         , MonadAsk' ReactPath m
@@ -136,7 +138,7 @@ type MonadGadget s m = (MonadGadget' m, MonadModel s m)
 -- and so should not be be for event handling.
 class (CmdReactant (Command m)
     , MonadGadget' m
-    , PutMarkup m
+    , MonadPut' Markup m
     , MonadPut' ReactPath m
     ) => MonadWidget' m
 
@@ -198,15 +200,17 @@ mkListener f = do
     delegatify $ exec' . MkListener plnWkRef f
 
 -- | Removes all 'PutEnviron' state effects ('Markup', 'ReactPath') from a 'MonadWidget'
--- This is required when running 'MonadGadgets' for their results
--- but not the markup (since MonadWidget is also a MonadGadget)
+-- Gadgets that produce handlers should include markup effects.
+-- This functions ensures that badly behaved gadets doesn't break the markup.
 cleanWidget :: MonadWidget' m => m a -> m a
 cleanWidget m = do
+    ml <- askEnv' @Markup
+    rp <- askEnv' @ReactPath
     -- Make sure @m@ doesn't change react path
     -- we still want a non-empty react path for logging
-    a <- localEnv' @ReactPath id m
-    -- clear Markup
-    putMarkup mempty
+    a <- m
+    putEnv' @ReactPath rp
+    putEnv' @Markup ml
     pure a
 
 sequenceProps :: MonadWidget' m
@@ -216,7 +220,7 @@ sequenceProps props = concat <$> traverse f props
   where
     -- emit empty list if it fails, otherwise use the first one emitted
     -- f :: MonadWidget' m => (JSString, m JSVal) -> m [(JSString, JSVal)]
-    f (n, m) = (`also` pure []) $ (\v -> [(n, v)]) <$> (cleanWidget m)
+    f (n, m) = (<|> pure []) $ (\v -> [(n, v)]) <$> (cleanWidget $ delegateHead m)
 
 sequenceGadgets :: MonadWidget' m
     => [(JSString, m Handler)]
@@ -233,4 +237,5 @@ sequenceGadgets gads = do
   where
     -- emit empty list if it fails, otherwise use the first one emitted
     -- f :: MonadGadget' m => (JSString, m Handler) -> m [(JSString, Handler)]
-    f (n, m) = (`also` pure []) $ (\v -> [(n, v)]) <$> (cleanWidget m)
+    f (n, m) = (<|> pure []) $ (\v -> [(n, v)]) <$> (cleanWidget $ delegateHead m)
+

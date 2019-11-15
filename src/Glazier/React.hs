@@ -11,7 +11,6 @@ module Glazier.React
     , module Glazier.React.Synthetic
     , module Glazier.Command
     , module Glazier.Logger
-    , module Control.Also
     , module Control.Applicative
     , module Control.DeepSeq
     , module Control.Monad
@@ -32,7 +31,6 @@ module Glazier.React
     , module Control.Lens.Misc
     ) where
 
-import Control.Also
 import Control.Applicative
 import Control.DeepSeq
 import Control.Lens.Misc

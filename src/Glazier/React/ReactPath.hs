@@ -36,11 +36,11 @@ newtype ReactPath = ReactPath (Maybe (J.JSString, Int), [(J.JSString, Int)])
 
 -- instance A.FromJSONKey ReactPath
 
-reactPathStr :: ReactPath -> J.JSString
-reactPathStr rp =
+prettyReactPath :: ReactPath -> J.JSString
+prettyReactPath rp =
     let xs = getReactPath rp
-        xs' = (\(n, i) -> n <> "-" <> fromString (show i)) <$> xs
-    in J.intercalate "." xs'
+        xs' = (\(n, i) -> n <> "." <> fromString (show i)) <$> xs
+    in J.intercalate "/" (reverse xs')
 
 getReactPath :: ReactPath -> [(J.JSString, Int)]
 getReactPath (ReactPath (Nothing, xs)) = xs

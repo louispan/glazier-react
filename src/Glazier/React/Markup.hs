@@ -9,12 +9,7 @@
 
 -- | 'Lucid.HtmlT' inspired monad for creating 'ReactElement's
 module Glazier.React.Markup
-    ( AskMarkup
-    , askMarkup
-    , PutMarkup
-    , putMarkup
-    , modifyMarkup
-    , appendMarkup
+    ( Markup
     , ReactMarkup(..)
     , BranchParam(..)
     , LeafParam(..)
@@ -32,19 +27,7 @@ import qualified Data.DList as DL
 import Glazier.React.ReactElement
 import JS.Data
 
-type AskMarkup = MonadAsk' (DL.DList ReactMarkup)
-askMarkup :: AskMarkup m => m (DL.DList ReactMarkup)
-askMarkup = askEnv' @(DL.DList ReactMarkup)
-
-type PutMarkup = MonadPut' (DL.DList ReactMarkup)
-putMarkup :: PutMarkup m => DL.DList ReactMarkup -> m ()
-putMarkup = putEnv' @(DL.DList ReactMarkup)
-
-modifyMarkup :: PutMarkup m => (DL.DList ReactMarkup -> DL.DList ReactMarkup) -> m ()
-modifyMarkup = modifyEnv' @(DL.DList ReactMarkup)
-
-appendMarkup :: PutMarkup m => DL.DList ReactMarkup -> m ()
-appendMarkup a = modifyMarkup (*> a)
+type Markup = DL.DList ReactMarkup
 
 -- | The parameters required to create a branch ReactElement with children
 data BranchParam = BranchParam
@@ -79,24 +62,24 @@ fromMarkup (ElementMarkup e) = pure e
 -------------------------------------------------
 
 -- | To use an exisitng ReactElement
-fromElement :: PutMarkup m => ReactElement -> m ()
-fromElement e = modifyMarkup (`DL.snoc` ElementMarkup e)
+fromElement :: MonadPut' Markup m => ReactElement -> m ()
+fromElement e = modifyEnv' @Markup (`DL.snoc` ElementMarkup e)
 
 -- | Convert the ReactMlt to [ReactElement]
-toElements :: DL.DList ReactMarkup -> IO [ReactElement]
+toElements :: Markup -> IO [ReactElement]
 toElements xs = sequenceA $ fromMarkup <$> DL.toList xs
 
 -- | 'Glazier.React.ReactDOM.renderDOM' only allows a single top most element.
 -- Provide a handly function to wrap a list of ReactElements inside a 'div' if required.
 -- If there is only one element in the list, then nothing is changed.
-toElement :: DL.DList ReactMarkup -> IO ReactElement
+toElement :: Markup -> IO ReactElement
 toElement xs = toElements xs >>= mkCombinedElements
 
 -------------------------------------------------
 
 -- | For raw text content
-textMarkup :: PutMarkup m => JSString -> m ()
-textMarkup n = modifyMarkup (`DL.snoc` TextMarkup n)
+textMarkup :: MonadPut' Markup m => JSString -> m ()
+textMarkup n = modifyEnv' @Markup (`DL.snoc` TextMarkup n)
 
 -- | For the contentless elements: eg 'br_'.
 -- Memonic: lf for leaf.
@@ -104,30 +87,30 @@ textMarkup n = modifyMarkup (`DL.snoc` TextMarkup n)
 -- if the same key is used across listeners and props.
 -- "If an attribute/prop is duplicated the last one defined wins."
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
-leafMarkup :: PutMarkup m
+leafMarkup :: MonadPut' Markup m
     => JSVal
     -> (DL.DList (JSString, JSVal))
     -> m ()
-leafMarkup n props = modifyMarkup (`DL.snoc` LeafMarkup (LeafParam n props))
+leafMarkup n props = modifyEnv' @Markup (`DL.snoc` LeafMarkup (LeafParam n props))
 
 -- | Create a MonadState that run the given given a combining function
 -- where the first arg is the state from running the markup producing MonadState with mempty,
 -- and the 2nd arg the starting state of the resultant MonadState.
-withMarkup :: PutMarkup m
-    => (DL.DList ReactMarkup -> DL.DList ReactMarkup -> DL.DList ReactMarkup)
+withMarkup :: MonadPut' Markup m
+    => (Markup -> Markup -> Markup)
     -> m a
     -> m a
 withMarkup f childs = do
     -- save state
-    s <- askMarkup
+    s <- askEnv' @Markup
     -- run children with mempty
-    putMarkup mempty
+    putEnv' @Markup mempty
     a <- childs
-    childs' <- askMarkup
+    childs' <- askEnv' @Markup
     -- restore state
-    putMarkup s
+    putEnv' @Markup s
     -- append the children markup
-    modifyMarkup (f childs')
+    modifyEnv' @Markup (f childs')
     pure a
 
 -- | For the contentful elements: eg 'div_'.
@@ -136,7 +119,7 @@ withMarkup f childs = do
 -- if the same key is used across listeners and props.
 -- "If an attribute/prop is duplicated the last one defined wins."
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
-branchMarkup :: PutMarkup m
+branchMarkup :: MonadPut' Markup m
     => JSVal
     -> (DL.DList (JSString, JSVal))
     -> m a
