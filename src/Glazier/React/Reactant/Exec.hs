@@ -284,9 +284,9 @@ execMkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar)
             case req of
                 RerenderNotRequired -> pure ()
                 RerenderRequired -> do
-                    -- discharge once
                     fixme $ liftIO $ putStrLn $ "rerender 1 " <> (show i)
-                    delegateHead wid
+                    -- discharge to fire only once
+                    discharge wid pure
                     fixme $ liftIO $ putStrLn $ "rerender 2 " <> (show i)
                     -- get the window out of wid and set the rendering function
                     -- the window cannot be obtained from execStateT because it

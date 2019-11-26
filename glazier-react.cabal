@@ -61,6 +61,7 @@ library
                     , lens >= 4
                     , lens-misc >= 0.0.3
                     , mmorph >= 1
+                    , monad-st >= 0.2
                     , mtl >= 2
                     , newtype-generics >= 0.5
                     , profunctors >= 2.5

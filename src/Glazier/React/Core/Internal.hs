@@ -18,6 +18,7 @@ import Control.Monad.Environ
 import Control.Monad.Identity
 import Control.Monad.Morph
 import Control.Monad.Reader
+import Control.Monad.ST.Class
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
@@ -50,6 +51,7 @@ type MonadReactant m = (MonadIO m, MonadCommand m, CmdReactant (Command m))
 -- It is an instance of 'Alternative'.
 class (CmdReactant (Command m)
         , AlternativeIO m
+        , MonadST m
         , MonadCont m
         , MonadDischarge m
         , MonadLogger JSString m
@@ -220,7 +222,7 @@ sequenceProps props = concat <$> traverse f props
   where
     -- emit empty list if it fails, otherwise use the first one emitted
     -- f :: MonadWidget' m => (JSString, m JSVal) -> m [(JSString, JSVal)]
-    f (n, m) = (<|> pure []) $ (\v -> [(n, v)]) <$> (cleanWidget $ delegateHead m)
+    f (n, m) = (<|> pure []) $ (maybe [] (\v -> [(n, v)])) <$> (cleanWidget $ dischargeHead m)
 
 sequenceGadgets :: MonadWidget' m
     => [(JSString, m Handler)]
@@ -237,5 +239,5 @@ sequenceGadgets gads = do
   where
     -- emit empty list if it fails, otherwise use the first one emitted
     -- f :: MonadGadget' m => (JSString, m Handler) -> m [(JSString, Handler)]
-    f (n, m) = (<|> pure []) $ (\v -> [(n, v)]) <$> (cleanWidget $ delegateHead m)
+    f (n, m) = (<|> pure []) $ (maybe [] (\v -> [(n, v)])) <$> (cleanWidget $ dischargeHead m)
 

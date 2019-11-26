@@ -26,6 +26,7 @@ import Control.Monad.Cont
 import Control.Monad.Delegate
 import Control.Monad.Environ
 import Control.Monad.Reader
+import Control.Monad.ST.Class
 import Control.Monad.State.Strict
 import Control.Monad.Trans.ACont
 import Control.Monad.Trans.Identity
@@ -97,6 +98,7 @@ newtype Reactor c a = Reactor { runReactor :: Reactor' c a }
     , Applicative
     , Monad
     , MonadIO
+    , MonadST
     , Alternative
     , MonadPlus
     , MonadCont

@@ -59,6 +59,7 @@ import Data.Function.Extras
 import Data.IORef
 import qualified Data.JSString as J
 import qualified Data.List as L
+import Data.Maybe
 import Data.Monoid
 import Data.Profunctor.Unsafe
 import Data.String
@@ -286,7 +287,8 @@ listenEventTarget j n goStrict goLazy = do
 -- | Possibly write some text, otherwise do nothing
 txt :: MonadWidget s m => ModelT s m JSString -> m ()
 txt m = (<|> pure ()) $ do -- catch failure with `<|>` so we can continue
--- txt m = do -- catch failure with `<|>` so we can continue
+-- WTF: pure <|> breaks delegateHead!
+-- txt m = fixme $ do -- catch failure with `<|>` so we can continue
     t <- fromModelT m'
     textMarkup t
   where
@@ -294,8 +296,8 @@ txt m = (<|> pure ()) $ do -- catch failure with `<|>` so we can continue
     m' = fixme $ delegate $ \fire -> do
             a <- m
             fire a
-            fire " then "
-            fire a
+            -- fire " then "
+            -- fire a
 
 -- | Creates a JSVal for "className" property from a list of (JSString, Bool)
 -- Idea from https://github.com/JedWatson/classnames
@@ -306,7 +308,7 @@ classNames xs = do
     xs' <- filterM (go . snd) xs
     pure . toJS . J.unwords . fmap fst $ xs'
   where
-    go m = (cleanWidget $ delegateHead m) <|> pure False
+    go m = ((fromMaybe False) <$> (cleanWidget $ dischargeHead m)) <|> pure False
 
 -- | markup a leaf html element, given a DList of @m@ that produces Handlers
 -- and property values.
@@ -354,7 +356,7 @@ bh j gads props child = delegate $ \fire -> do
 
     modifyEnv' @ReactPath (const $ pushReactPath rp)
     -- make sure child only fires once
-    let child' = fire `discharge` child
+    let child' = child `discharge` fire
         origMarkup = branchMarkup (toJS j) (DL.fromList (props' <> gads'))
             child'
         elemMarkup = branchMarkup (toJS elementComponent)
