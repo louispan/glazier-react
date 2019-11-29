@@ -32,7 +32,6 @@ import Control.Monad.State.Strict
 import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Identity
 import Control.Monad.Trans.Maybe
-import Data.Function.Extras
 import Data.String
 import Data.Tagged.Extras
 import Glazier.Command
@@ -46,18 +45,18 @@ newtype ModifyModel s = ModifyModel { unModifyModel :: forall a. MaybeT (State s
 type AskModelEnv s m = (MonadAsk "Model" (Maybe s, IO (Maybe s), ModifyModel s) m)
 instance {-# OVERLAPPING #-} Monad m => MonadAsk "Model" (Maybe s, IO (Maybe s), ModifyModel s) (ReaderT (Tagged "Model" (Maybe s, IO (Maybe s), ModifyModel s)) m) where
     askEnvP _ = (untag' @"Model") <$> ask
-    localEnvP _ f = local (Tagged @"Model" . f . untag' @"Model")
+    -- localEnvP _ f = local (Tagged @"Model" . f . untag' @"Model")
 
 askModelEnv :: AskModelEnv s m => m (Maybe s, IO (Maybe s), ModifyModel s)
 askModelEnv = askEnvP @"Model" Proxy
 
-localModelEnv :: AskModelEnv s m => ((Maybe s, IO (Maybe s), ModifyModel s) -> (Maybe s, IO (Maybe s), ModifyModel s)) -> m b -> m b
--- FIXME: javascript compiles with
--- /Users/louis/repo/js/glazier-react-examples/examples/todo/dist-newstyle/build/x86_64-linux/ghcjs-8.6.0.1/glazier-react-2.0.0.0/build/Glazier/React/Reactor.js_hi
--- Declaration for $w$clocalEnkP2
--- Unfolding of $w$clocalEnkP2:
---   Iface type variable out of scope:  a1
-localModelEnv f = fixme $ localEnvP @"Model" Proxy f
+-- localModelEnv :: AskModelEnv s m => ((Maybe s, IO (Maybe s), ModifyModel s) -> (Maybe s, IO (Maybe s), ModifyModel s)) -> m b -> m b
+-- -- FIXME: javascript compiles with
+-- -- /Users/louis/repo/js/glazier-react-examples/examples/todo/dist-newstyle/build/x86_64-linux/ghcjs-8.6.0.1/glazier-react-2.0.0.0/build/Glazier/React/Reactor.js_hi
+-- -- Declaration for $w$clocalEnkP2
+-- -- Unfolding of $w$clocalEnkP2:
+-- --   Iface type variable out of scope:  a1
+-- localModelEnv f = fixme $ localEnvP @"Model" Proxy f
 
 ---------------------------------------------------------------------------
 

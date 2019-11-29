@@ -244,9 +244,12 @@ mkHandler ::
     -> (a -> m ())
     -> m Handler -- (preprocess, postprocess)
 mkHandler goStrict f = do
+    liftIO $ putStrLn "mkHandler 1"
     plnWkRef <- askPlanWeakRef
     f' <- codify f
-    delegatify $ exec' . MkHandler plnWkRef goStrict f'
+    a <- delegatify $ exec' . MkHandler plnWkRef goStrict f'
+    liftIO $ putStrLn "mkHandler 2"
+    pure a
 
 mkHandler' ::
     (NFData a, MonadGadget' m)
@@ -284,20 +287,18 @@ listenEventTarget j n goStrict goLazy = do
 
 ----------------------------------------------------------------------------------
 
--- | Possibly write some text, otherwise do nothing
+-- | Write some text
 txt :: MonadWidget s m => ModelT s m JSString -> m ()
-txt m = (<|> pure ()) $ do -- catch failure with `<|>` so we can continue
--- WTF: pure <|> breaks delegateHead!
--- txt m = fixme $ do -- catch failure with `<|>` so we can continue
-    t <- fromModelT m'
+txt m = do -- catch failure with `<|>` so we can continue
+    t <- fromModelT m
     textMarkup t
-  where
-    -- temporary code to test firing multiple things in widget
-    m' = fixme $ delegate $ \fire -> do
-            a <- m
-            fire a
-            -- fire " then "
-            -- fire a
+  -- where
+  --   -- temporary code to test firing multiple things in widget
+  --   m' = fixme $ delegate $ \fire -> do
+  --           a <- m
+  --           fire a
+  --           -- fire " then "
+  --           -- fire a
 
 -- | Creates a JSVal for "className" property from a list of (JSString, Bool)
 -- Idea from https://github.com/JedWatson/classnames
@@ -308,7 +309,7 @@ classNames xs = do
     xs' <- filterM (go . snd) xs
     pure . toJS . J.unwords . fmap fst $ xs'
   where
-    go m = ((fromMaybe False) <$> (cleanWidget $ dischargeHead m)) <|> pure False
+    go m = ((fromMaybe False) <$> (dischargeHead $ cleanWidget m)) <|> pure False
 
 -- | markup a leaf html element, given a DList of @m@ that produces Handlers
 -- and property values.
@@ -331,9 +332,15 @@ lf j gads props = do
         elemMarkup = leafMarkup (toJS elementComponent)
             (DL.fromList $ ("elementName", toJS $ componentName j) : (props' <> gads'))
     case (isStringComponent j, gads') of
-        (True, []) -> origMarkup
-        (True, _) -> elemMarkup
-        _ -> origMarkup
+        (True, []) -> do
+            liftIO $ putStrLn $ "lf 0 " <> show (componentName j)
+            origMarkup
+        (True, _) -> do
+            liftIO $ putStrLn $ "lf 1 " <> show (componentName j)
+            elemMarkup
+        _ -> do
+            liftIO $ putStrLn $ "lf 2 " <> show (componentName j)
+            origMarkup
 
 -- | markup a branch html element, given a DList of @m@ that produces Handlers
 -- and property values, and the @m@ child node.
@@ -346,7 +353,7 @@ bh :: (Component j, MonadWidget s m)
     -> DL.DList (JSString, ModelT s m JSVal)
     -> m a
     -> m a
-bh j gads props child = delegate $ \fire -> do
+bh j gads props child = do
     modifyEnv' $ nextReactPath (componentName j)
     rp <- askEnv' @ReactPath
     (props', gads') <- fromModelT $ do
@@ -354,9 +361,14 @@ bh j gads props child = delegate $ \fire -> do
         gads' <- sequenceGadgets $ DL.toList gads
         pure (props', gads')
 
+    fixme $ liftIO $ putStrLn $ "bh 1 " <> show (componentName j)
     modifyEnv' @ReactPath (const $ pushReactPath rp)
-    -- make sure child only fires once
-    let child' = child `discharge` fire
+    -- discharge child with noop (no extra markup effects)
+    -- to get a child that only fires once
+    -- for its markup effects
+    -- FIXME: This is wrong too! as discharge doesn't fully run
+    -- the commands
+    let child' = discharge child (const $ pure ())
         origMarkup = branchMarkup (toJS j) (DL.fromList (props' <> gads'))
             child'
         elemMarkup = branchMarkup (toJS elementComponent)
@@ -367,6 +379,10 @@ bh j gads props child = delegate $ \fire -> do
         (True, _) -> elemMarkup
         _ -> origMarkup
     putEnv' @ReactPath rp
+    -- now actually use child's events (but not markup)
+    a <- cleanWidget $ child
+    fixme $ liftIO $ putStrLn $ "bh 2 " <> show (componentName j)
+    pure a
 
 displayObj :: (MonadIO m, MonadPut' Markup m) => Obj t -> m ()
 displayObj (Obj plnRef _ _ _ _ _) = do

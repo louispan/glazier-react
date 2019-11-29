@@ -160,7 +160,6 @@ function hgr$ElementComponent() {
 
         // For <input>, React uses controlled input if input.value is not null
         // and there is an onChange handler.
-
         // Vanilla React uncontrolled input only reads "defaultValue" once.
 
         // On rerender, this widget will read "props.value", and set the DOM input value in javascript.
@@ -233,6 +232,7 @@ function hgr$ElementComponent() {
                 // hide ref from ReactElement because we want to pass our handler instead onRef instead
                 // hide our custom properties
                 var props;
+                console.log("wack", this.props);
                 if (this.props.elementName.localeCompare("input")) {
                     console.log("ElementComponent.CustomProperties() (input) ", ElementComponent.CustomProperties().concat(["value"]));
                     props = hgr$objectWithoutProperties(this.props, ElementComponent.CustomProperties().concat(["value"]));
@@ -245,6 +245,7 @@ function hgr$ElementComponent() {
 
                     console.log("ElementComponent props ", props);
                 }
+                // override any existig props.ref (elementRef is used instead)
                 props.ref = this.onRef;
                 return React.createElement(this.props.elementName, props, props.children);
             }

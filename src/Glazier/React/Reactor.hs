@@ -27,11 +27,7 @@ import Control.Monad.Delegate
 import Control.Monad.Environ
 import Control.Monad.Reader
 import Control.Monad.ST.Class
-import Control.Monad.State.Strict
-import Control.Monad.Trans.ACont
 import Control.Monad.Trans.Identity
-import Control.Monad.Trans.Maybe
-import qualified Data.DList as DL
 import Data.IORef
 import Data.Tagged.Extras
 import Glazier.Command
@@ -40,6 +36,7 @@ import Glazier.React.Common
 import Glazier.React.Markup
 import Glazier.React.Model
 import Glazier.React.Plan
+import Glazier.React.ReactCont
 import Glazier.React.ReactPath
 import JS.Data
 import System.Mem.Weak
@@ -47,8 +44,8 @@ import System.Mem.Weak
 type AskScratch = MonadAsk' (Tagged "Scratch" JSObject)
 askScratch :: AskScratch m => m JSObject
 askScratch = askTagged @"Scratch" @JSObject
-localScratch :: AskScratch m => (JSObject -> JSObject) -> m a -> m a
-localScratch = localTagged @"Scratch" @JSObject
+-- localScratch :: AskScratch m => (JSObject -> JSObject) -> m a -> m a
+-- localScratch = localTagged @"Scratch" @JSObject
 
 deleteScratch :: (MonadIO m, AskScratch m) => JSString -> m ()
 deleteScratch n = do
@@ -80,13 +77,7 @@ type Reactor' c =
     ReaderT (Tagged "Scratch" JSObject) -- 'AskScratch'
     (ReaderT (Weak (IORef Notifier)) -- 'AskNotifierWeakRef'
     (ReaderT (Weak (IORef Plan)) -- 'AskPlanWeakRef', 'AskLogLevel', 'AskLogCallStackDepth', 'AskLogName'
-    (AContT () -- 'MonadDelegate', 'MonadDischarge'
-    (MaybeT -- 'Alternative'
-    -- State monads must be inside ContT to be a 'MonadDelegate'
-    (StateT ReactPath -- 'PutReactPath', 'AskReactPath'
-    (StateT (DL.DList ReactMarkup) -- 'PutMarkup'
-    (ProgramT c IO -- 'MonadComand', 'MonadIO'
-    )))))))
+    (ReactCont c)))
 
 type instance Command (Reactor c) = c
 
@@ -103,7 +94,6 @@ newtype Reactor c a = Reactor { runReactor :: Reactor' c a }
     , MonadPlus
     , MonadCont
     , MonadDelegate
-    , MonadDischarge
     , MonadProgram
     , MonadAsk' Markup
     , MonadPut' Markup
@@ -118,6 +108,7 @@ newtype Reactor c a = Reactor { runReactor :: Reactor' c a }
     )
 
 deriving via (IdentityT (Reactor' c)) instance (Cmd' IO c, Cmd' [] c) => MonadCodify (Reactor c)
+deriving via (IdentityT (Reactor' c)) instance (Cmd' IO c, Cmd' [] c) => MonadDischarge (Reactor c)
 
 -- | 'Widget' is a concrete transformer stack that is an instance of 'MonadModel'
 -- 'Glazier.React.Rector.Internal.MonadGadget' and 'Glazier.React.Rector.Internal.MonadWidget'
@@ -150,3 +141,4 @@ instance (Functor m, MonadUnliftWidget s m) => MonadUnliftWidget s (ReaderT r m)
 instance (Functor m, MonadUnliftWidget s m) => MonadUnliftWidget s (IdentityT m) where
     askUnliftWidget = IdentityT $
         (\u -> UnliftWidget (unliftWidget u . runIdentityT)) <$> askUnliftWidget
+

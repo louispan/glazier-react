@@ -41,6 +41,7 @@ library
                       Glazier.React.Reactant
                       Glazier.React.Reactant.Exec
                       Glazier.React.Reactor
+                      Glazier.React.ReactCont
                       Glazier.React.ReactPath
                       Glazier.React.Synthetic
                       Glazier.React.Synthetic.Internal

@@ -2,11 +2,11 @@ module Glazier.React.Plan
     ( Plan
     , AskPlanWeakRef
     , askPlanWeakRef
-    , localPlanWeakRef
+    -- , localPlanWeakRef
     , Notifier
     , AskNotifierWeakRef
     , askNotifierWeakRef
-    , localNotifierWeakRef
+    -- , localNotifierWeakRef
     ) where
 
 import Glazier.React.Plan.Internal

@@ -55,6 +55,7 @@ import Glazier.React.Obj.Internal
 import Glazier.React.Plan.Internal
 import Glazier.React.Reactant
 import Glazier.React.ReactBatch
+import Glazier.React.ReactCont
 import Glazier.React.ReactDOM
 import Glazier.React.ReactId.Internal
 import Glazier.React.Reactor
@@ -108,6 +109,7 @@ renderAndExportObj root' obj = liftIO $ do
 -- | Returns commands that need to be processed last
 execReactant ::
     ( MonadUnliftIO m
+    , Cmd' IO c
     , Cmd' [] c
     , AskNextReactIdRef m
     , AskLogConfigRef m
@@ -231,6 +233,7 @@ execMkObj ::
     , MonadUnliftIO m
     , AskLogConfigRef m
     , AskNextReactIdRef m
+    , Cmd' IO c
     , Cmd' [] c
     )
     => (c -> m ())
@@ -287,12 +290,14 @@ execMkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar)
                     fixme $ liftIO $ putStrLn $ "rerender 1 " <> (show i)
                     -- discharge to fire only once
                     discharge wid pure
+                    -- wid
                     fixme $ liftIO $ putStrLn $ "rerender 2 " <> (show i)
                     -- get the window out of wid and set the rendering function
                     -- the window cannot be obtained from execStateT because it
                     -- will return in the partial result due to StateT instance of 'codify'
                     -- So use 'SetPrerendered' to store the final window.
                     ml <- askEnv' @Markup
+                    fixme $ liftIO $ putStrLn $ "rerender markup size " <> show (length ml)
                     setPrerendered plnWkRef ml
 
         mkRerenderCmds = (`evalMaybeT` mempty) $ do
@@ -307,6 +312,7 @@ execMkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar)
                 . (`evalStateT` (ReactPath (Nothing, [])))
                 . (`evalMaybeT` ())
                 . evalAContT
+                . unReactCont
                 . (`runReaderT` plnWkRef)
                 . (`runReaderT` notifierWkRef)
                 . (`runReaderT` Tagged @"Scratch" o')

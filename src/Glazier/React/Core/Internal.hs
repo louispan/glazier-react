@@ -222,7 +222,12 @@ sequenceProps props = concat <$> traverse f props
   where
     -- emit empty list if it fails, otherwise use the first one emitted
     -- f :: MonadWidget' m => (JSString, m JSVal) -> m [(JSString, JSVal)]
-    f (n, m) = (<|> pure []) $ (maybe [] (\v -> [(n, v)])) <$> (cleanWidget $ dischargeHead m)
+    f a@(n, _) = do
+        liftIO $ putStrLn $ "prop 1 " <> show n
+        r <- f' a <|> pure []
+        liftIO $ putStrLn $ "prop 2 " <> show n
+        pure r
+    f' (n, m) = (maybe [] (\v -> [(n, v)])) <$> (dischargeHead (cleanWidget m))
 
 sequenceGadgets :: MonadWidget' m
     => [(JSString, m Handler)]
@@ -230,7 +235,7 @@ sequenceGadgets :: MonadWidget' m
 sequenceGadgets gads = do
     gads' <- concat <$> traverse f gads -- :: m [(JString, Handler)]
     let gads'' = M.fromListWith (<>) gads' -- combine same keys together
-        -- ElementComponent's ref callback is actuall elementRef, so rename ref to elementRef
+        -- ElementComponent's ref callback is actually elementRef, so rename ref to elementRef
         gads''' = case M.lookup "ref" gads'' of
                     Nothing -> gads''
                     Just v -> M.insertWith (<>) "elementRef" v gads''
@@ -239,5 +244,14 @@ sequenceGadgets gads = do
   where
     -- emit empty list if it fails, otherwise use the first one emitted
     -- f :: MonadGadget' m => (JSString, m Handler) -> m [(JSString, Handler)]
-    f (n, m) = (<|> pure []) $ (maybe [] (\v -> [(n, v)])) <$> (cleanWidget $ dischargeHead m)
+    f' (n, m) = do
+        liftIO $ putStrLn $ (show n) <> " 1"
+        a <- (maybe [] (\v -> [(n, v)])) <$> (dischargeHead (cleanWidget m))
+        liftIO $ putStrLn $ (show n) <> " 2 " <> show (length a)
+        pure a
+    f a@(n, _) = do
+        liftIO $ putStrLn $ "gad 1 " <> show n
+        r <- f' a <|> pure []
+        liftIO $ putStrLn $ "gad 2 " <> show n
+        pure r
 

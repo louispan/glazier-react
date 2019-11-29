@@ -24,6 +24,7 @@ import JS.Data
 class ToJS j => Component j where
   componentName :: j -> JSString
   isStringComponent :: j -> Bool
+  isStringComponent _ = False
 
 -- The componentName is used for making the ReactPath for logging
 instance Component JSString where
@@ -32,18 +33,17 @@ instance Component JSString where
 
 instance Component ElementComponent where
   componentName _ = "element"
-  isStringComponent _ = False
 
--- | Returns a reference to the javascript *class* definition of the react component
+-- | Returns a reference to the javascript *class* definition of the hgr$ElementComponent
 newtype ElementComponent = ElementComponent JSVal
     deriving (G.Generic, Show, ToJS, IsString, NFData)
 
--- | This returns the javascript class definition of WidgetComponent.
--- There is ever only one WidgetComponent class, so it is purely available
+-- | This returns the javascript class definition of ElementComponent.
+-- There is ever only one ElementComponent class, so it is purely available
 elementComponent :: ElementComponent
 elementComponent = ElementComponent js_elementComponent
 
--- | Returns a reference to the javascript *class* definition of the react component
+-- | Returns a reference to the javascript *class* definition of the hgr$WidgetComponent
 newtype WidgetComponent = WidgetComponent JSVal
     deriving (G.Generic, Show, ToJS, IsString, NFData)
 
