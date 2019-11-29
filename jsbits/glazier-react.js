@@ -25,12 +25,9 @@ function hgr$ReactDOM() {
 // frrom babel generated code
 function hgr$objectWithoutProperties(obj, keys) {
     var target = {};
-    // console.log("objectWithoutProperties keys", keys)
     for (var i in obj) {
-        // console.log("objectWithoutProperties i", i)
         if (keys.indexOf(i) >= 0) continue;
         if (!Object.prototype.hasOwnProperty.call(obj, i)) continue;
-        // console.log("objectWithoutProperties i SET", i)
         target[i] = obj[i];
     }
     return target;
@@ -232,18 +229,12 @@ function hgr$ElementComponent() {
                 // hide ref from ReactElement because we want to pass our handler instead onRef instead
                 // hide our custom properties
                 var props;
-                console.log("wack", this.props);
                 if (this.props.elementName.localeCompare("input")) {
-                    console.log("ElementComponent.CustomProperties() (input) ", ElementComponent.CustomProperties().concat(["value"]));
                     props = hgr$objectWithoutProperties(this.props, ElementComponent.CustomProperties().concat(["value"]));
-                    console.log("ElementComponent props (input) ", props);
                     props.defaultValue = this.props.value; // this only works on the first render
                 }
                 else {
-                    console.log("ElementComponent.CustomProperties() ", ElementComponent.CustomProperties());
                     props = hgr$objectWithoutProperties(this.props, ElementComponent.CustomProperties());
-
-                    console.log("ElementComponent props ", props);
                 }
                 // override any existig props.ref (elementRef is used instead)
                 props.ref = this.onRef;

@@ -44,8 +44,6 @@ import System.Mem.Weak
 type AskScratch = MonadAsk' (Tagged "Scratch" JSObject)
 askScratch :: AskScratch m => m JSObject
 askScratch = askTagged @"Scratch" @JSObject
--- localScratch :: AskScratch m => (JSObject -> JSObject) -> m a -> m a
--- localScratch = localTagged @"Scratch" @JSObject
 
 deleteScratch :: (MonadIO m, AskScratch m) => JSString -> m ()
 deleteScratch n = do

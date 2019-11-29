@@ -30,7 +30,6 @@ import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.State.Strict
 import qualified Data.DList as DL
-import Data.Function.Extras
 import qualified Data.HashMap.Strict as HM
 import Data.IORef.Extras
 import qualified Data.JSString as J
@@ -100,7 +99,6 @@ renderAndExportObj :: (MonadIO m, Typeable s) => DOM.Element -> Obj s -> m (Expo
 renderAndExportObj root' obj = liftIO $ do
     markup <- (`execStateT` mempty) $ displayObj obj
     e <- toElement markup
-    fixme $ liftIO $ putStrLn "renderDOM"
     renderDOM e root'
 
     -- Export obj to prevent it from being garbage collected
@@ -198,8 +196,6 @@ rerenderDirtyPlans = do
 markPlanDirty :: (AlternativeIO m, AskDirtyPlans m) => Weak (IORef Plan) -> m ()
 markPlanDirty wk = do
     plnRef <- guardJustIO $ deRefWeak wk
-    pln <- fixme $ liftIO $ readIORef plnRef
-    fixme $ liftIO $ putStrLn $ "LOUISDEBUG: markDirty " <> show pln
     (oldReq, i) <- liftIO $ atomicModifyIORef' plnRef $ \pln ->
         let (oldReq, pln') = (pln & _rerenderRequired <<.~ RerenderNotRequired)
         in (pln', (oldReq, planId pln))
@@ -243,7 +239,6 @@ execMkObj ::
     -> m (Obj s)
 execMkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar) = do
     UnliftIO u <- askUnliftIO
-    fixme $ liftIO $ putStrLn "LOUISDEBUG: execMkObj"
     (logLevel', logDepth') <- getLogConfig logName'
     i <- execMkReactId
     o <- mkObject
@@ -270,7 +265,6 @@ execMkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar)
     plnWkRef <- liftIO $ mkWeakIORef plnRef_ $ do
         -- references for finalizers do not keep reference alive
         pln <- readIORef plnRef_
-        fixme $ putStrLn $ "LOUISDEBUG: release plnRef " <> show pln
         (`evalMaybeT` ()) $ do
             notifierRef <- guardJustIO $ deRefWeak notifierWkRef
             liftIO $ atomicModifyIORef_' notifierRef (_watchers.at i .~ Nothing)
@@ -287,17 +281,13 @@ execMkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar)
             case req of
                 RerenderNotRequired -> pure ()
                 RerenderRequired -> do
-                    fixme $ liftIO $ putStrLn $ "rerender 1 " <> (show i)
                     -- discharge to fire only once
                     discharge wid pure
-                    -- wid
-                    fixme $ liftIO $ putStrLn $ "rerender 2 " <> (show i)
                     -- get the window out of wid and set the rendering function
                     -- the window cannot be obtained from execStateT because it
                     -- will return in the partial result due to StateT instance of 'codify'
                     -- So use 'SetPrerendered' to store the final window.
                     ml <- askEnv' @Markup
-                    fixme $ liftIO $ putStrLn $ "rerender markup size " <> show (length ml)
                     setPrerendered plnWkRef ml
 
         mkRerenderCmds = (`evalMaybeT` mempty) $ do
@@ -339,9 +329,7 @@ execMkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar)
 
     -- run the prerender function for the first time
     -- This will also initialize the widget, and set the rendered frame in the Plan
-    liftIO $ putStrLn $ "Initial 1 " <> show i
     liftIO prerndr
-    liftIO $ putStrLn $ "Initial 2 " <> show i
 
     -- We do not want explicitly tell React to show the prendered frame right now.
     -- This is the responsiblity of the caller of MkObj
@@ -354,8 +342,6 @@ execMkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar)
     setPrerendered plnWkRef mrkup = do
         frame <- liftIO $ toJS <$> toElement mrkup
         plnRef <- guardJustIO $ deRefWeak plnWkRef
-        pln <- fixme $ liftIO $ readIORef plnRef
-        fixme $ liftIO $ putStrLn $ "LOUISDEBUG: execSetPrerendered " <> show pln
         -- replace the prerendered frame
         liftIO $ atomicModifyIORef_' plnRef $ (_prerendered .~ frame)
 
@@ -388,7 +374,6 @@ execNotifyDirty ::
     => Weak (IORef Notifier)
     -> m ()
 execNotifyDirty notifierWkRef = do
-    liftIO $ putStrLn $ "LOUISDEBUG: execNotifyDirty"
     (`evalMaybeT` ()) $ do
         notifierRef <- guardJustIO $ deRefWeak notifierWkRef
         ws <- liftIO $ watchers <$> readIORef notifierRef
@@ -443,7 +428,6 @@ execMkHandler executor plnkWk goStrict goLazy = do
 -- running all of the postprocessor handlers.
 mkEventProcessor :: (NFData a) => (evt -> MaybeT IO a) -> IO (evt -> IO (), MaybeT IO a)
 mkEventProcessor goStrict = do
-    liftIO $ putStrLn "LOUISDEBUG: mkEventProcessor"
     -- create a channel to write preprocessed data for the postprocessor
     -- 'Chan' guarantees that the writer is never blocked by the reader.
     -- There is only one reader/writer per channel.

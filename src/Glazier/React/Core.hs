@@ -55,7 +55,6 @@ import Control.Monad.State.Strict
 import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
 import qualified Data.DList as DL
-import Data.Function.Extras
 import Data.IORef
 import qualified Data.JSString as J
 import qualified Data.List as L
@@ -244,11 +243,9 @@ mkHandler ::
     -> (a -> m ())
     -> m Handler -- (preprocess, postprocess)
 mkHandler goStrict f = do
-    liftIO $ putStrLn "mkHandler 1"
     plnWkRef <- askPlanWeakRef
     f' <- codify f
     a <- delegatify $ exec' . MkHandler plnWkRef goStrict f'
-    liftIO $ putStrLn "mkHandler 2"
     pure a
 
 mkHandler' ::
@@ -292,13 +289,6 @@ txt :: MonadWidget s m => ModelT s m JSString -> m ()
 txt m = do -- catch failure with `<|>` so we can continue
     t <- fromModelT m
     textMarkup t
-  -- where
-  --   -- temporary code to test firing multiple things in widget
-  --   m' = fixme $ delegate $ \fire -> do
-  --           a <- m
-  --           fire a
-  --           -- fire " then "
-  --           -- fire a
 
 -- | Creates a JSVal for "className" property from a list of (JSString, Bool)
 -- Idea from https://github.com/JedWatson/classnames
@@ -333,13 +323,10 @@ lf j gads props = do
             (DL.fromList $ ("elementName", toJS $ componentName j) : (props' <> gads'))
     case (isStringComponent j, gads') of
         (True, []) -> do
-            liftIO $ putStrLn $ "lf 0 " <> show (componentName j)
             origMarkup
         (True, _) -> do
-            liftIO $ putStrLn $ "lf 1 " <> show (componentName j)
             elemMarkup
         _ -> do
-            liftIO $ putStrLn $ "lf 2 " <> show (componentName j)
             origMarkup
 
 -- | markup a branch html element, given a DList of @m@ that produces Handlers
@@ -361,7 +348,6 @@ bh j gads props child = do
         gads' <- sequenceGadgets $ DL.toList gads
         pure (props', gads')
 
-    fixme $ liftIO $ putStrLn $ "bh 1 " <> show (componentName j)
     modifyEnv' @ReactPath (const $ pushReactPath rp)
     -- discharge child with noop (no extra markup effects)
     -- to get a child that only fires once
@@ -381,7 +367,6 @@ bh j gads props child = do
     putEnv' @ReactPath rp
     -- now actually use child's events (but not markup)
     a <- cleanWidget $ child
-    fixme $ liftIO $ putStrLn $ "bh 2 " <> show (componentName j)
     pure a
 
 displayObj :: (MonadIO m, MonadPut' Markup m) => Obj t -> m ()
