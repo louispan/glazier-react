@@ -89,7 +89,7 @@ default (JSString)
 
 logPrefix :: MonadGadget' m => m JSString
 logPrefix = do
-    ps <- getReactPath <$> askEnv' @ReactPath
+    ps <- getReactPath <$> getEnv' @ReactPath
     let xs = L.intersperse "." $ (\(n, i) -> n <> (fromString $ show i)) <$> ps
     pure (foldr (<>) "" xs)
 
@@ -342,7 +342,7 @@ bh :: (Component j, MonadWidget s m)
     -> m a
 bh j gads props child = do
     modifyEnv' $ nextReactPath (componentName j)
-    rp <- askEnv' @ReactPath
+    rp <- getEnv' @ReactPath
     (props', gads') <- fromModelT $ do
         props' <- sequenceProps $ DL.toList props
         gads' <- sequenceGadgets $ DL.toList gads

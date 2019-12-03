@@ -102,11 +102,11 @@ withMarkup :: MonadPut' Markup m
     -> m a
 withMarkup f childs = do
     -- save state
-    s <- askEnv' @Markup
+    s <- getEnv' @Markup
     -- run children with mempty
     putEnv' @Markup mempty
     a <- childs
-    childs' <- askEnv' @Markup
+    childs' <- getEnv' @Markup
     -- restore state
     putEnv' @Markup s
     -- append the children markup

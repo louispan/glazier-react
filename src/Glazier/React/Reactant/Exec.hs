@@ -28,7 +28,7 @@ import Control.Monad.Reader
 import Control.Monad.Trans.ACont
 import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
-import Control.Monad.Trans.State.Strict
+import Control.Monad.Trans.State.Lazy as Lazy
 import qualified Data.DList as DL
 import qualified Data.HashMap.Strict as HM
 import Data.IORef.Extras
@@ -287,7 +287,7 @@ execMkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar)
                     -- the window cannot be obtained from execStateT because it
                     -- will return in the partial result due to StateT instance of 'codify'
                     -- So use 'SetPrerendered' to store the final window.
-                    ml <- askEnv' @Markup
+                    ml <- getEnv' @Markup
                     setPrerendered plnWkRef ml
 
         mkRerenderCmds = (`evalMaybeT` mempty) $ do
@@ -481,7 +481,8 @@ foreign import javascript unsafe
 #else
 
 js_logInfo :: J.JSString -> IO ()
-js_logInfo = putStrLn . J.unpack
+js_logInfo = putStrLn
+ . J.unpack
 
 js_logWarn :: J.JSString -> IO ()
 js_logWarn = hPutStrLn stderr . J.unpack

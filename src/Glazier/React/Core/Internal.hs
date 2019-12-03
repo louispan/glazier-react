@@ -56,7 +56,7 @@ class (CmdReactant (Command m)
         , MonadDischarge m
         , MonadLogger JSString m
         , MonadAsk' LogName m
-        , MonadAsk' ReactPath m
+        , MonadPut' ReactPath m
         , AskScratch m
         , AskPlanWeakRef m
         , AskNotifierWeakRef m
@@ -141,7 +141,6 @@ type MonadGadget s m = (MonadGadget' m, MonadModel s m)
 class (CmdReactant (Command m)
     , MonadGadget' m
     , MonadPut' Markup m
-    , MonadPut' ReactPath m
     ) => MonadWidget' m
 
 instance {-# OVERLAPPABLE #-} (CmdReactant c) => MonadWidget' (Reactor c)
@@ -206,8 +205,8 @@ mkListener f = do
 -- This functions ensures that badly behaved gadets doesn't break the markup.
 cleanWidget :: MonadWidget' m => m a -> m a
 cleanWidget m = do
-    ml <- askEnv' @Markup
-    rp <- askEnv' @ReactPath
+    ml <- getEnv' @Markup
+    rp <- getEnv' @ReactPath
     -- Make sure @m@ doesn't change react path
     -- we still want a non-empty react path for logging
     a <- m

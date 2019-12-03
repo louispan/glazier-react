@@ -44,6 +44,8 @@ import System.Mem.Weak
 type AskScratch = MonadAsk' (Tagged "Scratch" JSObject)
 askScratch :: AskScratch m => m JSObject
 askScratch = askTagged @"Scratch" @JSObject
+localScratch :: AskScratch m => (JSObject -> JSObject) -> m a -> m a
+localScratch = localTagged @"Scratch" @JSObject
 
 deleteScratch :: (MonadIO m, AskScratch m) => JSString -> m ()
 deleteScratch n = do
@@ -93,12 +95,10 @@ newtype Reactor c a = Reactor { runReactor :: Reactor' c a }
     , MonadCont
     , MonadDelegate
     , MonadProgram
-    , MonadAsk' Markup
     , MonadPut' Markup
     , AskLogLevel
     , AskLogCallStackDepth
     , MonadAsk' LogName
-    , MonadAsk' ReactPath
     , MonadPut' ReactPath
     , AskPlanWeakRef
     , AskNotifierWeakRef

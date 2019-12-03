@@ -45,9 +45,13 @@ newtype ModifyModel s = ModifyModel { unModifyModel :: forall a. MaybeT (State s
 type AskModelEnv s m = (MonadAsk "Model" (Maybe s, IO (Maybe s), ModifyModel s) m)
 instance {-# OVERLAPPING #-} Monad m => MonadAsk "Model" (Maybe s, IO (Maybe s), ModifyModel s) (ReaderT (Tagged "Model" (Maybe s, IO (Maybe s), ModifyModel s)) m) where
     askEnvP _ = (untag' @"Model") <$> ask
+    localEnvP _ f = local (Tagged @"Model" . f . untag' @"Model")
 
 askModelEnv :: AskModelEnv s m => m (Maybe s, IO (Maybe s), ModifyModel s)
 askModelEnv = askEnvP @"Model" Proxy
+
+localModelEnv :: AskModelEnv s m => ((Maybe s, IO (Maybe s), ModifyModel s) -> (Maybe s, IO (Maybe s), ModifyModel s)) -> m b -> m b
+localModelEnv f = localEnvP @"Model" Proxy f
 
 ---------------------------------------------------------------------------
 
