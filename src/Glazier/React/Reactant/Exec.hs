@@ -30,6 +30,7 @@ import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.State.Lazy as Lazy
 import qualified Data.DList as DL
+import Data.Function.Extras
 import qualified Data.HashMap.Strict as HM
 import Data.IORef.Extras
 import qualified Data.JSString as J
@@ -61,9 +62,12 @@ import Glazier.React.Reactor
 import Glazier.React.ReactPath
 import JS.Data
 import qualified JS.DOM as DOM
-import System.IO
 import System.Mem.AnyStableName
 import System.Mem.Weak
+
+#ifndef __GHCJS__
+import System.IO
+#endif
 
 #if MIN_VERSION_base(4,9,0) && !MIN_VERSION_base(4,10,0)
 import Data.Semigroup
@@ -98,7 +102,7 @@ makeLenses_ ''LogConfig
 renderAndExportObj :: (MonadIO m, Typeable s) => DOM.Element -> Obj s -> m (Export (Obj s))
 renderAndExportObj root' obj = liftIO $ do
     markup <- (`execStateT` mempty) $ displayObj obj
-    e <- toElement markup
+    e <- toElement (DL.toList markup)
     renderDOM e root'
 
     -- Export obj to prevent it from being garbage collected
@@ -178,7 +182,7 @@ rerenderDirtyPlans = do
     ds <- liftIO $ atomicModifyIORef' ref $ \ds -> (mempty, ds)
     liftIO $ foldMap prerndr ds >>= liftIO -- possibly async GHCJS
     -- by this time, there is a possibilty that shms were removed,
-    -- only only batch shms that are still valid
+    -- only batch the shms that are still valid
     btch <- askEnv' @ReactBatch
     liftIO $ foldMap (batchWid btch) ds >>= liftIO -- possibly async GHCJS
     -- now run the batch tell react to use the prerendered frames
@@ -197,7 +201,7 @@ markPlanDirty :: (AlternativeIO m, AskDirtyPlans m) => Weak (IORef Plan) -> m ()
 markPlanDirty wk = do
     plnRef <- guardJustIO $ deRefWeak wk
     (oldReq, i) <- liftIO $ atomicModifyIORef' plnRef $ \pln ->
-        let (oldReq, pln') = (pln & _rerenderRequired <<.~ RerenderNotRequired)
+        let (oldReq, pln') = (pln & _rerenderRequired <<.~ RerenderRequired)
         in (pln', (oldReq, planId pln))
     case oldReq of
         RerenderRequired -> pure () -- we have scheduled already
@@ -281,14 +285,12 @@ execMkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar)
             case req of
                 RerenderNotRequired -> pure ()
                 RerenderRequired -> do
-                    -- discharge to fire only once
+                    fixme $ liftIO $ putStrLn $ "RerenderRequired 1"
                     discharge wid pure
-                    -- get the window out of wid and set the rendering function
-                    -- the window cannot be obtained from execStateT because it
-                    -- will return in the partial result due to StateT instance of 'codify'
-                    -- So use 'SetPrerendered' to store the final window.
+                    fixme $ liftIO $ putStrLn $ "RerenderRequired 2"
                     ml <- getEnv' @Markup
-                    setPrerendered plnWkRef ml
+                    setPrerendered plnWkRef (DL.toList ml)
+                    fixme $ liftIO $ putStrLn $ "RerenderRequired 3"
 
         mkRerenderCmds = (`evalMaybeT` mempty) $ do
             -- get the latest state from the weak ref
@@ -296,13 +298,13 @@ execMkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar)
             mdl <- liftIO $ readMVar mdlVar'
             plnRef' <- guardJustIO $ deRefWeak plnWkRef
             o' <- liftIO $ scratch <$> readIORef plnRef'
-            -- then get the latest markup using the state
+            -- then get the latest markup
             liftIO . execProgramT'
                 . (`evalStateT` mempty) -- markup
-                . (`evalStateT` (ReactPath (Nothing, [])))
                 . (`evalMaybeT` ())
                 . evalAContT
                 . unReactCont
+                . (`runReaderT` (ReactPath (Nothing, [])))
                 . (`runReaderT` plnWkRef)
                 . (`runReaderT` notifierWkRef)
                 . (`runReaderT` Tagged @"Scratch" o')
@@ -338,7 +340,7 @@ execMkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar)
     pure $ Obj plnRef_ plnWkRef notifierRef_ notifierWkRef mdlVar_ mdlWkVar
 
   where
-    setPrerendered :: AlternativeIO m => Weak (IORef Plan) -> DL.DList ReactMarkup -> m ()
+    setPrerendered :: AlternativeIO m => Weak (IORef Plan) -> [ReactMarkup] -> m ()
     setPrerendered plnWkRef mrkup = do
         frame <- liftIO $ toJS <$> toElement mrkup
         plnRef <- guardJustIO $ deRefWeak plnWkRef
@@ -481,8 +483,7 @@ foreign import javascript unsafe
 #else
 
 js_logInfo :: J.JSString -> IO ()
-js_logInfo = putStrLn
- . J.unpack
+js_logInfo = putStrLn . J.unpack
 
 js_logWarn :: J.JSString -> IO ()
 js_logWarn = hPutStrLn stderr . J.unpack

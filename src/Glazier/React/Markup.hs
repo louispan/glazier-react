@@ -14,9 +14,9 @@ module Glazier.React.Markup
     , BranchParam(..)
     , LeafParam(..)
     , fromMarkup
-    , fromElement
     , toElements
     , toElement
+    , elementMarkup
     , textMarkup
     , leafMarkup
     , branchMarkup
@@ -32,13 +32,13 @@ type Markup = DL.DList ReactMarkup
 -- | The parameters required to create a branch ReactElement with children
 data BranchParam = BranchParam
     JSVal
-    (DL.DList (JSString, JSVal))
-    (DL.DList ReactMarkup)
+    [(JSString, JSVal)]
+    [ReactMarkup]
 
 -- | The parameters required to create a leaf ReactElement (no children)
 data LeafParam = LeafParam
     JSVal
-    (DL.DList (JSString, JSVal))
+    [(JSString, JSVal)]
 
 data ReactMarkup
     = ElementMarkup ReactElement
@@ -49,11 +49,11 @@ data ReactMarkup
 -- | Create 'ReactElement's from a 'ReactMarkup'
 fromMarkup :: ReactMarkup -> IO ReactElement
 fromMarkup (BranchMarkup (BranchParam n props xs)) = do
-    xs' <- sequenceA $ fromMarkup <$> (DL.toList xs)
-    mkBranchElement n (DL.toList props) xs'
+    xs' <- sequenceA $ fromMarkup <$> xs
+    mkBranchElement n props xs'
 
 fromMarkup (LeafMarkup (LeafParam n props)) =
-    mkLeafElement n (DL.toList props)
+    mkLeafElement n props
 
 fromMarkup (TextMarkup str) = pure $ rawTextElement str
 
@@ -61,21 +61,21 @@ fromMarkup (ElementMarkup e) = pure e
 
 -------------------------------------------------
 
--- | To use an exisitng ReactElement
-fromElement :: MonadPut' Markup m => ReactElement -> m ()
-fromElement e = modifyEnv' @Markup (`DL.snoc` ElementMarkup e)
-
 -- | Convert the ReactMlt to [ReactElement]
-toElements :: Markup -> IO [ReactElement]
-toElements xs = sequenceA $ fromMarkup <$> DL.toList xs
+toElements :: [ReactMarkup] -> IO [ReactElement]
+toElements xs = sequenceA $ fromMarkup <$> xs
 
 -- | 'Glazier.React.ReactDOM.renderDOM' only allows a single top most element.
 -- Provide a handly function to wrap a list of ReactElements inside a 'div' if required.
 -- If there is only one element in the list, then nothing is changed.
-toElement :: Markup -> IO ReactElement
+toElement :: [ReactMarkup] -> IO ReactElement
 toElement xs = toElements xs >>= mkCombinedElements
 
 -------------------------------------------------
+
+-- | To use an exisitng ReactElement
+elementMarkup :: MonadPut' Markup m => ReactElement -> m ()
+elementMarkup e = modifyEnv' @Markup (`DL.snoc` ElementMarkup e)
 
 -- | For raw text content
 textMarkup :: MonadPut' Markup m => JSString -> m ()
@@ -89,7 +89,7 @@ textMarkup n = modifyEnv' @Markup (`DL.snoc` TextMarkup n)
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
 leafMarkup :: MonadPut' Markup m
     => JSVal
-    -> (DL.DList (JSString, JSVal))
+    -> [(JSString, JSVal)]
     -> m ()
 leafMarkup n props = modifyEnv' @Markup (`DL.snoc` LeafMarkup (LeafParam n props))
 
@@ -121,10 +121,10 @@ withMarkup f childs = do
 -- https://www.reactenlightenment.com/react-nodes/4.4.html
 branchMarkup :: MonadPut' Markup m
     => JSVal
-    -> (DL.DList (JSString, JSVal))
+    -> [(JSString, JSVal)]
     -> m a
     -> m a
-branchMarkup n props = withMarkup (\childs' ms -> ms `DL.snoc` BranchMarkup (BranchParam n props childs'))
+branchMarkup n props = withMarkup (\childs' ms -> ms `DL.snoc` BranchMarkup (BranchParam n props (DL.toList childs')))
 
 -- -- Given a mapping function, apply it to children of the markup
 -- modifyMarkup :: MonadState (DL.DList ReactMarkup) m

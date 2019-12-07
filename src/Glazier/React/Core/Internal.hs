@@ -56,7 +56,7 @@ class (CmdReactant (Command m)
         , MonadDischarge m
         , MonadLogger JSString m
         , MonadAsk' LogName m
-        , MonadPut' ReactPath m
+        , MonadAsk' ReactPath m
         , AskScratch m
         , AskPlanWeakRef m
         , AskNotifierWeakRef m
@@ -200,34 +200,30 @@ mkListener f = do
     plnWkRef <- askPlanWeakRef
     delegatify $ exec' . MkListener plnWkRef f
 
--- | Removes all 'PutEnviron' state effects ('Markup', 'ReactPath') from a 'MonadWidget'
--- Gadgets that produce handlers should include markup effects.
+-- | Removes all 'AppendMarkup' effects from a 'MonadWidget'
+-- Gadgets that produce handlers should not include markup effects.
 -- This functions ensures that badly behaved gadets doesn't break the markup.
 cleanWidget :: MonadWidget' m => m a -> m a
 cleanWidget m = do
-    ml <- getEnv' @Markup
-    rp <- getEnv' @ReactPath
-    -- Make sure @m@ doesn't change react path
-    -- we still want a non-empty react path for logging
+    s <- getEnv' @Markup
     a <- m
-    putEnv' @ReactPath rp
-    putEnv' @Markup ml
+    putEnv' @Markup s
     pure a
 
 sequenceProps :: MonadWidget' m
     => [(JSString, m JSVal)]
     -> m [(JSString, JSVal)]
-sequenceProps props = concat <$> traverse f props
+sequenceProps props = cleanWidget $ concat <$> traverse f props
   where
     -- emit empty list if it fails, otherwise use the first one emitted
     -- f :: MonadWidget' m => (JSString, m JSVal) -> m [(JSString, JSVal)]
     f (n, m) = (<|> pure []) $
-        (maybe [] (\v -> [(n, v)])) <$> (dischargeHead (cleanWidget m))
+        (maybe [] (\v -> [(n, v)])) <$> (dischargeHead m)
 
 sequenceGadgets :: MonadWidget' m
     => [(JSString, m Handler)]
     -> m [(JSString, JSVal)]
-sequenceGadgets gads = do
+sequenceGadgets gads = cleanWidget $ do
     gads' <- concat <$> traverse f gads -- :: m [(JString, Handler)]
     let gads'' = M.fromListWith (<>) gads' -- combine same keys together
         -- ElementComponent's ref callback is actually elementRef, so rename ref to elementRef
@@ -240,5 +236,5 @@ sequenceGadgets gads = do
     -- emit empty list if it fails, otherwise use the first one emitted
     -- f :: MonadGadget' m => (JSString, m Handler) -> m [(JSString, Handler)]
     f (n, m) = (<|> pure []) $
-        (maybe [] (\v -> [(n, v)])) <$> (dischargeHead (cleanWidget m))
+        (maybe [] (\v -> [(n, v)])) <$> (dischargeHead m)
 

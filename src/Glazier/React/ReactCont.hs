@@ -23,15 +23,13 @@ import Control.Monad.Trans.Maybe
 import Data.STRef
 import Glazier.Command
 import Glazier.React.Markup
-import Glazier.React.ReactPath
 
 type ReactCont' c = AContT () -- 'MonadDelegate', 'MonadDischarge'
     (MaybeT -- 'Alternative'
     -- State monads must be inside ContT to be a 'MonadDelegate'
-    (Lazy.StateT ReactPath -- 'PutReactPath'x
-    (Lazy.StateT Markup -- 'PutMarkup'
+    (Lazy.StateT Markup -- 'PutMarkups'
     (ProgramT c IO -- 'MonadCodify', 'MonadProgram', 'MonadST', 'MonadIO'
-    ))))
+    )))
 
 newtype ReactCont c a = ReactCont { unReactCont :: ReactCont' c a }
     deriving
@@ -44,7 +42,6 @@ newtype ReactCont c a = ReactCont { unReactCont :: ReactCont' c a }
         , MonadST
         , MonadCont
         , MonadProgram
-        , MonadPut' ReactPath
         , MonadPut' Markup
         , MonadDelegate
         )
@@ -56,7 +53,7 @@ type instance Command (ReactCont c) = c
 -- | This instance 'MonadDischarge' ensures the @()@ is fired
 -- after the 'MonadProgram' commands are evaluated.
 instance (Cmd' IO c, Cmd' [] c) => MonadDischarge (ReactCont c) where
-    discharge m f = do
+    discharge (ReactCont (AContT g)) f = do
         -- Warning, the effects (Markup, ReactPath) inside ContT
         -- and above ProgramT are not the latest version after discharge,
         -- since 'codify'ed handlers are evaluated later.
@@ -64,31 +61,18 @@ instance (Cmd' IO c, Cmd' [] c) => MonadDischarge (ReactCont c) where
         -- from running the 'codify'ed handlers.
         ok <- liftST $ newSTRef True
         mlv <- getEnv' @Markup >>= liftST . newSTRef
-        rpv <- getEnv' @ReactPath >>= liftST . newSTRef
 
 
         let f' a = do
                 f a <|> resetGuard
                 liftST $ writeSTRef ok True
                 getEnv' @Markup >>= liftST . writeSTRef mlv
-                getEnv' @ReactPath >>= liftST . writeSTRef rpv
 
-        -- This doens't work!
-        -- let finally' = delegate $ \fire -> do
-        --         fire () <|> resetGuard
-        --         liftST $ writeSTRef ok True
-        --         getEnv' @Markup >>= liftST . writeSTRef mlv
-        --         getEnv' @ReactPath >>= liftST . writeSTRef rpv
             resetGuard = do
                 liftST $ writeSTRef ok False
                 empty
-            m' = do
-                -- finally'
-                m
-            (ReactCont (AContT g)) = m'
 
         ReactCont $ lift $ g (evalAContT . unReactCont . f')
-        -- ReactCont $ lift $ g (evalAContT . unReactCont . f)
 
         -- now make sure the bind to this monad will only fire
         -- after all commands has been evaluated
@@ -98,6 +82,5 @@ instance (Cmd' IO c, Cmd' [] c) => MonadDischarge (ReactCont c) where
         -- now read the latest state from the refs
         (liftST $ readSTRef ok) >>= guard
         (liftST $ readSTRef mlv) >>= putEnv' @Markup
-        (liftST $ readSTRef rpv) >>= putEnv' @ReactPath
 
 

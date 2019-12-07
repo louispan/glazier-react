@@ -77,7 +77,8 @@ type Reactor' c =
     ReaderT (Tagged "Scratch" JSObject) -- 'AskScratch'
     (ReaderT (Weak (IORef Notifier)) -- 'AskNotifierWeakRef'
     (ReaderT (Weak (IORef Plan)) -- 'AskPlanWeakRef', 'AskLogLevel', 'AskLogCallStackDepth', 'AskLogName'
-    (ReactCont c)))
+    (ReaderT ReactPath -- 'MonadAsk ReactPath'x
+    (ReactCont c))))
 
 type instance Command (Reactor c) = c
 
@@ -93,13 +94,13 @@ newtype Reactor c a = Reactor { runReactor :: Reactor' c a }
     , Alternative
     , MonadPlus
     , MonadCont
-    , MonadDelegate
     , MonadProgram
-    , MonadPut' Markup
+    , MonadDelegate
     , AskLogLevel
     , AskLogCallStackDepth
     , MonadAsk' LogName
-    , MonadPut' ReactPath
+    , MonadAsk' ReactPath
+    , MonadPut' Markup
     , AskPlanWeakRef
     , AskNotifierWeakRef
     , AskScratch

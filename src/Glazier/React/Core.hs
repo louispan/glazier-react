@@ -89,7 +89,7 @@ default (JSString)
 
 logPrefix :: MonadGadget' m => m JSString
 logPrefix = do
-    ps <- getReactPath <$> getEnv' @ReactPath
+    ps <- getReactPath <$> askEnv' @ReactPath
     let xs = L.intersperse "." $ (\(n, i) -> n <> (fromString $ show i)) <$> ps
     pure (foldr (<>) "" xs)
 
@@ -295,11 +295,11 @@ txt m = do -- catch failure with `<|>` so we can continue
 -- Any 'Alternative' failures to produce 'Bool' is dropped, and does not affect
 -- the rest of the list.
 classNames :: MonadWidget' m => [(JSString, ModelT s m Bool)] -> ModelT s m JSVal
-classNames xs = do
+classNames xs = cleanWidget $ do
     xs' <- filterM (go . snd) xs
     pure . toJS . J.unwords . fmap fst $ xs'
   where
-    go m = ((fromMaybe False) <$> (dischargeHead $ cleanWidget m)) <|> pure False
+    go m = ((fromMaybe False) <$> (dischargeHead m)) <|> pure False
 
 -- | markup a leaf html element, given a DList of @m@ that produces Handlers
 -- and property values.
@@ -311,16 +311,15 @@ lf :: (Component j, MonadWidget s m)
     -> DL.DList (JSString, ModelT s m Handler)
     -> DL.DList (JSString, ModelT s m JSVal)
     -> m ()
-lf j gads props = do
-    modifyEnv' $ nextReactPath (componentName j)
+lf j gads props = localEnv' @ReactPath (nextReactPath (componentName j)) $ do
     (props', gads') <- fromModelT $ do
         props' <- sequenceProps $ DL.toList props
         gads' <- sequenceGadgets $ DL.toList gads
         pure (props', gads')
 
-    let origMarkup = leafMarkup (toJS j) (DL.fromList (props' <> gads'))
+    let origMarkup = leafMarkup (toJS j) (props' <> gads')
         elemMarkup = leafMarkup (toJS elementComponent)
-            (DL.fromList $ ("elementName", toJS $ componentName j) : (props' <> gads'))
+            (("elementName", toJS $ componentName j) : (props' <> gads'))
     case (isStringComponent j, gads') of
         (True, []) -> do
             origMarkup
@@ -340,34 +339,21 @@ bh :: (Component j, MonadWidget s m)
     -> DL.DList (JSString, ModelT s m JSVal)
     -> m a
     -> m a
-bh j gads props child = do
-    modifyEnv' $ nextReactPath (componentName j)
-    rp <- getEnv' @ReactPath
+bh j gads props child = localEnv' @ReactPath (nextReactPath (componentName j)) $ do
     (props', gads') <- fromModelT $ do
         props' <- sequenceProps $ DL.toList props
         gads' <- sequenceGadgets $ DL.toList gads
         pure (props', gads')
 
-    modifyEnv' @ReactPath (const $ pushReactPath rp)
-    -- discharge child with noop (no extra markup effects)
-    -- to get a child that only fires once
-    -- for its markup effects
-    -- FIXME: This is wrong too! as discharge doesn't fully run
-    -- the commands
-    let child' = discharge child (const $ pure ())
-        origMarkup = branchMarkup (toJS j) (DL.fromList (props' <> gads'))
-            child'
+    let origMarkup = branchMarkup (toJS j) (props' <> gads')
+            child
         elemMarkup = branchMarkup (toJS elementComponent)
-            (DL.fromList $ ("elementName", toJS $ componentName j) : (props' <> gads'))
-            child'
+            (("elementName", toJS $ componentName j) : (props' <> gads'))
+            child
     case (isStringComponent j, gads') of
         (True, []) -> origMarkup
         (True, _) -> elemMarkup
         _ -> origMarkup
-    putEnv' @ReactPath rp
-    -- now actually use child's events (but not markup)
-    a <- cleanWidget $ child
-    pure a
 
 displayObj :: (MonadIO m, MonadPut' Markup m) => Obj t -> m ()
 displayObj (Obj plnRef _ _ _ _ _) = do
