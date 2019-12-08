@@ -93,26 +93,6 @@ leafMarkup :: MonadPut' Markup m
     -> m ()
 leafMarkup n props = modifyEnv' @Markup (`DL.snoc` LeafMarkup (LeafParam n props))
 
--- | Create a MonadState that run the given given a combining function
--- where the first arg is the state from running the markup producing MonadState with mempty,
--- and the 2nd arg the starting state of the resultant MonadState.
-withMarkup :: MonadPut' Markup m
-    => (Markup -> Markup -> Markup)
-    -> m a
-    -> m a
-withMarkup f childs = do
-    -- save state
-    s <- getEnv' @Markup
-    -- run children with mempty
-    putEnv' @Markup mempty
-    a <- childs
-    childs' <- getEnv' @Markup
-    -- restore state
-    putEnv' @Markup s
-    -- append the children markup
-    modifyEnv' @Markup (f childs')
-    pure a
-
 -- | For the contentful elements: eg 'div_'.
 -- Memonic: bh for branch.
 -- Duplicate listeners with the same key will be combined, but it is a silent error
@@ -124,7 +104,18 @@ branchMarkup :: MonadPut' Markup m
     -> [(JSString, JSVal)]
     -> m a
     -> m a
-branchMarkup n props = withMarkup (\childs' ms -> ms `DL.snoc` BranchMarkup (BranchParam n props (DL.toList childs')))
+branchMarkup n props child = do
+    -- save state
+    s <- getEnv' @Markup
+    -- run children with mempty
+    putEnv' @Markup mempty
+    a <- child
+    child' <- getEnv' @Markup
+    -- restore state
+    putEnv' @Markup s
+    -- append the children markup
+    modifyEnv' @Markup (`DL.snoc` BranchMarkup (BranchParam n props (DL.toList child')))
+    pure a
 
 -- -- Given a mapping function, apply it to children of the markup
 -- modifyMarkup :: MonadState (DL.DList ReactMarkup) m
