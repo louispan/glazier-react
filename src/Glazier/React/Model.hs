@@ -105,7 +105,7 @@ instance (MonadIO m, MonadCodify m) => MonadCodify (ModelT s m) where
             x <- liftIO y
             lift $ codify $ \a -> (`runModelT` (x, y, z)) $ f a
 
-instance (Monad m, MonadObserver p a m) => MonadObserver p a (ModelT s m) where
+instance (Monad m, Observer p a m) => Observer p a (ModelT s m) where
     askObserver p = lift $ (lift .) <$> askObserver p
 
 runModelT :: ModelT s m a -> (Maybe s, IO (Maybe s), ModifyModel s) -> m a
