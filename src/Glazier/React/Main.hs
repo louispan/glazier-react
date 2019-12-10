@@ -71,7 +71,7 @@ simpleWidgetMain logCfg rerenderDelayMicroseconds root wid logname s = do
     dirtyPlansRef <- Tagged @"DirtyPlans" <$> newIORef @DirtyPlans mempty
     rb <- mkReactBatch
 
-    void $ forkIO $ do
+    void $ forkIO $ forever $ do
         threadDelay rerenderDelayMicroseconds
         void . (`runReaderT` rb)
             . (`runReaderT` dirtyPlansRef)

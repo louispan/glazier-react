@@ -230,12 +230,15 @@ function hgr$ElementComponent() {
                 // hide our custom properties
                 var props;
                 if (this.props.elementName.localeCompare("input")) {
+                    // not input
+                    props = hgr$objectWithoutProperties(this.props, ElementComponent.CustomProperties());
+                }
+                else {
+                    // input
                     props = hgr$objectWithoutProperties(this.props, ElementComponent.CustomProperties().concat(["value"]));
                     props.defaultValue = this.props.value; // this only works on the first render
                 }
-                else {
-                    props = hgr$objectWithoutProperties(this.props, ElementComponent.CustomProperties());
-                }
+                console.log(props);
                 // override any existig props.ref (elementRef is used instead)
                 props.ref = this.onRef;
                 return React.createElement(this.props.elementName, props, props.children);

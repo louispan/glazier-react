@@ -1,7 +1,6 @@
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
 {-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -64,14 +63,6 @@ import JS.Data
 import qualified JS.DOM as DOM
 import System.Mem.AnyStableName
 import System.Mem.Weak
-
-#ifndef __GHCJS__
-import System.IO
-#endif
-
-#if MIN_VERSION_base(4,9,0) && !MIN_VERSION_base(4,10,0)
-import Data.Semigroup
-#endif
 
 -----------------------------------------------
 
@@ -180,6 +171,7 @@ rerenderDirtyPlans :: (MonadAsk' ReactBatch m, AskDirtyPlans m, AlternativeIO m)
 rerenderDirtyPlans = do
     ref <- untag' @"DirtyPlans" <$> askDirtyPlans
     ds <- liftIO $ atomicModifyIORef' ref $ \ds -> (mempty, ds)
+    fixme $ liftIO $ consoleInfo1 $ toJS $ "rerenderDirtyPlans ds=" <> show (length ds)
     liftIO $ foldMap prerndr ds >>= liftIO -- possibly async GHCJS
     -- by this time, there is a possibilty that shms were removed,
     -- only batch the shms that are still valid
@@ -199,13 +191,17 @@ rerenderDirtyPlans = do
 -- | Called after a mutation
 markPlanDirty :: (AlternativeIO m, AskDirtyPlans m) => Weak (IORef Plan) -> m ()
 markPlanDirty wk = do
+    fixme $ liftIO $ consoleInfo1 "markPlanDirty 1"
     plnRef <- guardJustIO $ deRefWeak wk
     (oldReq, i) <- liftIO $ atomicModifyIORef' plnRef $ \pln ->
         let (oldReq, pln') = (pln & _rerenderRequired <<.~ RerenderRequired)
         in (pln', (oldReq, planId pln))
     case oldReq of
-        RerenderRequired -> pure () -- we have scheduled already
+        RerenderRequired -> do
+            fixme $ liftIO $ consoleInfo1 "RerenderRequired already"
+            pure () -- we have scheduled already
         RerenderNotRequired -> do
+            fixme $ liftIO $ consoleInfo1 "RerenderNotRequired schedule"
             -- Add plan to pending list for worker thread
             dirtRef <- untag' @"DirtyPlans" <$> askDirtyPlans
             liftIO $ atomicModifyIORef_' dirtRef $ M.insert i wk
@@ -218,11 +214,11 @@ execLogLineJS (LogLine cs lvl msg) = do
     liftIO $ msg >>= go
   where
     f = case lvl of
-        TRACE -> js_logInfo
-        DEBUG -> js_logInfo
-        INFO_ -> js_logInfo
-        WARN_ -> js_logInfo
-        ERROR -> js_logError
+        TRACE -> consoleInfo1 . toJS
+        DEBUG -> consoleInfo1 . toJS
+        INFO_ -> consoleInfo1 . toJS
+        WARN_ -> consoleWarn1 . toJS
+        ERROR -> consoleError1 . toJS
     go a = f $ (fromString $ show lvl) <> "-" <> a <> "-" <> prettyCs
     prettyCs = case prettyCallStack' "; " cs of
         Nothing -> ""
@@ -377,9 +373,11 @@ execNotifyDirty ::
     -> m ()
 execNotifyDirty notifierWkRef = do
     (`evalMaybeT` ()) $ do
+        fixme $ liftIO $ consoleInfo1 "notify 1"
         notifierRef <- guardJustIO $ deRefWeak notifierWkRef
         ws <- liftIO $ watchers <$> readIORef notifierRef
         foldr (\wk b -> markPlanDirty wk *> b) (pure ()) ws
+        fixme $ liftIO $ consoleInfo1 "notify 2"
 
 execMkHandler :: (NFData a, MonadIO m, MonadUnliftIO m)
         => (c -> m ())
@@ -389,6 +387,7 @@ execMkHandler :: (NFData a, MonadIO m, MonadUnliftIO m)
         -- (preprocess, postprocess)
         -> MaybeT m Handler
 execMkHandler executor plnkWk goStrict goLazy = do
+    fixme $ liftIO $ putStrLn "execMkHandler 1"
     -- 'makeStableName' might return different names if unevaluated
     -- so use bang patterns to help prevent that.
     UnliftIO u <- lift $ askUnliftIO
@@ -400,8 +399,11 @@ execMkHandler executor plnkWk goStrict goLazy = do
     plnRef <- guardJustIO $ deRefWeak plnkWk
     hs <- liftIO $ handlers <$> readIORef plnRef
     case L.find ((== k) . fst) hs of
-        Just (_, v) -> pure v
+        Just (_, v) -> do
+            fixme $ liftIO $ putStrLn "execMkHandler 3 (cached)"
+            pure v
         Nothing -> do
+            fixme $ liftIO $ putStrLn "execMkHandler 2"
             (x, y) <- liftIO $ mkEventProcessor goStrict'
             let f = (x, (`evalMaybeT` ()) (y >>= lift . goLazy'))
             liftIO $ atomicModifyIORef_ plnRef (_handlers %~ ((k, f) :))
@@ -449,6 +451,7 @@ execMkListener :: (MonadIO m)
         -> Handler
         -> MaybeT m (Callback (JSVal -> IO ()))
 execMkListener plnkWk (g, h) = do
+    fixme $ liftIO $ putStrLn "execMkListener 1"
     -- 'makeStableName' might return different names if unevaluated
     -- so use bang patterns to help prevent that.
     let !g' = g
@@ -460,35 +463,18 @@ execMkListener plnkWk (g, h) = do
     plnRef <- guardJustIO $ deRefWeak plnkWk
     cs <- liftIO $ listeners <$> readIORef plnRef
     case L.find ((== k) . fst) cs of
-        Just (_, v) -> pure v
+        Just (_, v) -> do
+            fixme $ liftIO $ putStrLn "execMkListener 3 (cached)"
+            pure v
         Nothing -> do
-            f <- liftIO $ asyncCallback1 (\j -> g' j *> h')
+            fixme $ liftIO $ putStrLn "execMkListener 2 (new)"
+            f <- liftIO $ syncCallback1 ContinueAsync $ \j -> do
+                fixme $ liftIO $ consoleInfo1 "execMkListener 4a pre"
+                g' j -- this must be sync
+                fixme $ liftIO $ consoleInfo1 "execMkListener 5a post"
+                h' -- this may become async
+                fixme $ liftIO $ consoleInfo1 "execMkListener 6a end"
             liftIO $ atomicModifyIORef_ plnRef (_listeners %~ ((k, f) :))
             pure f
 
-#ifdef __GHCJS__
 
-foreign import javascript unsafe
-    "console.info($1);"
-    js_logInfo :: J.JSString -> IO ()
-
-foreign import javascript unsafe
-    "console.warn($1);"
-    js_logWarn :: J.JSString -> IO ()
-
-foreign import javascript unsafe
-    "console.error($1);"
-    js_logError :: J.JSString -> IO ()
-
-#else
-
-js_logInfo :: J.JSString -> IO ()
-js_logInfo = putStrLn . J.unpack
-
-js_logWarn :: J.JSString -> IO ()
-js_logWarn = hPutStrLn stderr . J.unpack
-
-js_logError :: J.JSString -> IO ()
-js_logError = hPutStrLn stderr . J.unpack
-
-#endif
