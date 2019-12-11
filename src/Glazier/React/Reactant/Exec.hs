@@ -29,7 +29,6 @@ import Control.Monad.Trans.Extras
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.State.Lazy as Lazy
 import qualified Data.DList as DL
-import Data.Function.Extras
 import qualified Data.HashMap.Strict as HM
 import Data.IORef.Extras
 import qualified Data.JSString as J
@@ -171,7 +170,6 @@ rerenderDirtyPlans :: (MonadAsk' ReactBatch m, AskDirtyPlans m, AlternativeIO m)
 rerenderDirtyPlans = do
     ref <- untag' @"DirtyPlans" <$> askDirtyPlans
     ds <- liftIO $ atomicModifyIORef' ref $ \ds -> (mempty, ds)
-    fixme $ liftIO $ consoleInfo1 $ toJS $ "rerenderDirtyPlans ds=" <> show (length ds)
     liftIO $ foldMap prerndr ds >>= liftIO -- possibly async GHCJS
     -- by this time, there is a possibilty that shms were removed,
     -- only batch the shms that are still valid
@@ -191,17 +189,13 @@ rerenderDirtyPlans = do
 -- | Called after a mutation
 markPlanDirty :: (AlternativeIO m, AskDirtyPlans m) => Weak (IORef Plan) -> m ()
 markPlanDirty wk = do
-    fixme $ liftIO $ consoleInfo1 "markPlanDirty 1"
     plnRef <- guardJustIO $ deRefWeak wk
     (oldReq, i) <- liftIO $ atomicModifyIORef' plnRef $ \pln ->
         let (oldReq, pln') = (pln & _rerenderRequired <<.~ RerenderRequired)
         in (pln', (oldReq, planId pln))
     case oldReq of
-        RerenderRequired -> do
-            fixme $ liftIO $ consoleInfo1 "RerenderRequired already"
-            pure () -- we have scheduled already
+        RerenderRequired -> pure () -- we have scheduled already
         RerenderNotRequired -> do
-            fixme $ liftIO $ consoleInfo1 "RerenderNotRequired schedule"
             -- Add plan to pending list for worker thread
             dirtRef <- untag' @"DirtyPlans" <$> askDirtyPlans
             liftIO $ atomicModifyIORef_' dirtRef $ M.insert i wk
@@ -281,12 +275,9 @@ execMkObj executor wid logName' (notifierRef_, notifierWkRef, mdlVar_, mdlWkVar)
             case req of
                 RerenderNotRequired -> pure ()
                 RerenderRequired -> do
-                    fixme $ liftIO $ putStrLn $ "RerenderRequired 1"
                     discharge wid pure
-                    fixme $ liftIO $ putStrLn $ "RerenderRequired 2"
                     ml <- getEnv' @Markup
                     setPrerendered plnWkRef (DL.toList ml)
-                    fixme $ liftIO $ putStrLn $ "RerenderRequired 3"
 
         mkRerenderCmds = (`evalMaybeT` mempty) $ do
             -- get the latest state from the weak ref
@@ -373,11 +364,9 @@ execNotifyDirty ::
     -> m ()
 execNotifyDirty notifierWkRef = do
     (`evalMaybeT` ()) $ do
-        fixme $ liftIO $ consoleInfo1 "notify 1"
         notifierRef <- guardJustIO $ deRefWeak notifierWkRef
         ws <- liftIO $ watchers <$> readIORef notifierRef
         foldr (\wk b -> markPlanDirty wk *> b) (pure ()) ws
-        fixme $ liftIO $ consoleInfo1 "notify 2"
 
 execMkHandler :: (NFData a, MonadIO m, MonadUnliftIO m)
         => (c -> m ())
@@ -387,7 +376,6 @@ execMkHandler :: (NFData a, MonadIO m, MonadUnliftIO m)
         -- (preprocess, postprocess)
         -> MaybeT m Handler
 execMkHandler executor plnkWk goStrict goLazy = do
-    fixme $ liftIO $ putStrLn "execMkHandler 1"
     -- 'makeStableName' might return different names if unevaluated
     -- so use bang patterns to help prevent that.
     UnliftIO u <- lift $ askUnliftIO
@@ -399,11 +387,8 @@ execMkHandler executor plnkWk goStrict goLazy = do
     plnRef <- guardJustIO $ deRefWeak plnkWk
     hs <- liftIO $ handlers <$> readIORef plnRef
     case L.find ((== k) . fst) hs of
-        Just (_, v) -> do
-            fixme $ liftIO $ putStrLn "execMkHandler 3 (cached)"
-            pure v
+        Just (_, v) -> pure v
         Nothing -> do
-            fixme $ liftIO $ putStrLn "execMkHandler 2"
             (x, y) <- liftIO $ mkEventProcessor goStrict'
             let f = (x, (`evalMaybeT` ()) (y >>= lift . goLazy'))
             liftIO $ atomicModifyIORef_ plnRef (_handlers %~ ((k, f) :))
@@ -451,7 +436,6 @@ execMkListener :: (MonadIO m)
         -> Handler
         -> MaybeT m (Callback (JSVal -> IO ()))
 execMkListener plnkWk (g, h) = do
-    fixme $ liftIO $ putStrLn "execMkListener 1"
     -- 'makeStableName' might return different names if unevaluated
     -- so use bang patterns to help prevent that.
     let !g' = g
@@ -463,18 +447,14 @@ execMkListener plnkWk (g, h) = do
     plnRef <- guardJustIO $ deRefWeak plnkWk
     cs <- liftIO $ listeners <$> readIORef plnRef
     case L.find ((== k) . fst) cs of
-        Just (_, v) -> do
-            fixme $ liftIO $ putStrLn "execMkListener 3 (cached)"
-            pure v
+        Just (_, v) -> pure v
         Nothing -> do
-            fixme $ liftIO $ putStrLn "execMkListener 2 (new)"
             f <- liftIO $ syncCallback1 ContinueAsync $ \j -> do
-                fixme $ liftIO $ consoleInfo1 "execMkListener 4a pre"
                 g' j -- this must be sync
-                fixme $ liftIO $ consoleInfo1 "execMkListener 5a post"
                 h' -- this may become async
-                fixme $ liftIO $ consoleInfo1 "execMkListener 6a end"
             liftIO $ atomicModifyIORef_ plnRef (_listeners %~ ((k, f) :))
             pure f
 
+
+-- FIXME: use previous rendered frame if there was any exceptions rerendering and also show error message
 

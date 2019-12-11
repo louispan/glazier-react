@@ -229,7 +229,7 @@ sequenceGadgets gads = cleanWidget $ do
         -- ElementComponent's ref callback is actually elementRef, so rename ref to elementRef
         gads''' = case M.lookup "ref" gads'' of
                     Nothing -> gads''
-                    Just v -> M.insertWith (<>) "elementRef" v gads''
+                    Just v -> M.delete "ref" $ M.insertWith (<>) "elementRef" v gads''
         g = fmap toJS . mkListener -- convert to JS callback
     traverse (traverse g) (M.toList gads''')
   where

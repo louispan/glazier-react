@@ -62,8 +62,8 @@ getScratch n = do
     d <- askScratch
     liftIO $ d `getProperty` n
 
-scratchTimes :: (MonadIO m, AskScratch m) => Int -> JSString -> m () -> m ()
-scratchTimes maxTimes n m = do
+scratches :: (MonadIO m, AskScratch m) => Int -> JSString -> m () -> m ()
+scratches maxTimes n m = do
     d <- fromJS @Int <$> getScratch n
     let (x', m') = case (d, maxTimes) of
             (_, x) | x <= 0         -> (0, pure ())

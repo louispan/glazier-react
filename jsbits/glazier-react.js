@@ -51,6 +51,7 @@ function hgr$ShimComponent() {
             }
 
             getRef() {
+                // should be overridden
                 return null;
             }
 
@@ -179,8 +180,9 @@ function hgr$ElementComponent() {
                 this.onRef= this.onRef.bind(this);
             }
 
+            // update the DOM element indeterminate property and value from the props model
             updateInput() {
-                if (this.ref && this.props.elementName.localeCompare("input")) {
+                if (this.ref && !this.props.elementName.localeCompare("input")) {
                     // safe if this.props.indeterminate is undefined
                     this.ref.indeterminate = this.props.indeterminate
                     // Using uncontrolled input
@@ -194,7 +196,7 @@ function hgr$ElementComponent() {
                         const ds = diff.diffChars(this.ref.value, this.props.value, {ignoreCase: true});
                         var s1 = 0;
                         var e1 = 0;
-                        for (d of ds) {
+                        for (const d of ds) {
                             if (s0 <= 0 && e0 <= 0)
                                 break;
                             [s0, s1] = stepSelection(d, s0, s1);
@@ -238,7 +240,6 @@ function hgr$ElementComponent() {
                     props = hgr$objectWithoutProperties(this.props, ElementComponent.CustomProperties().concat(["value"]));
                     props.defaultValue = this.props.value; // this only works on the first render
                 }
-                console.log(props);
                 // override any existig props.ref (elementRef is used instead)
                 props.ref = this.onRef;
                 return React.createElement(this.props.elementName, props, props.children);
@@ -270,7 +271,6 @@ function hgr$WidgetComponent() {
 
             render() {
                 // hide our custom properties
-                var props = hgr$objectWithoutProperties(this.props, WidgetComponent.CustomProperties());
                 if (this.props.render)
                     return this.props.render();
                 return null;
@@ -284,18 +284,18 @@ function hgr$WidgetComponent() {
 var hgr$ReactBatcher_ = null;
 function hgr$ReactBatcher() {
     if (!hgr$ReactBatcher_) {
-        hgr$ReactBatcher_ = class hgr$ReactBatcher {
+        hgr$ReactBatcher_ = class ReactBatcher {
             constructor() {
-                this.batch = [];
+                this.batched = [];
             }
 
             batch(f) {
-                this.batch.push(f);
+                this.batched.push(f);
             }
 
             runBatch() {
-              const btch = this.batch;
-              this.batch = []
+              const btch = this.batched;
+              this.batched = []
               hgr$ReactDOM().unstable_batchedUpdates(() => {
                 for (const f of btch){
                     f();
